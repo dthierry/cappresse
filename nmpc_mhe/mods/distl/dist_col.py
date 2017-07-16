@@ -17,10 +17,12 @@ I thought of doing this in a class, but I couldn't find a really motivating reas
 __author__ = 'David M Thierry @dthierry'
 
 
-class DistDiehlNegrete(object):
+class DistDiehlNegrete(ConcreteModel):
     def __init__(self, nfe_t, ncp_t, **kwargs):
+        ConcreteModel.__init__(self)
+
         steady = kwargs.pop('steady', False)
-        self._t = kwargs.pop('_t', 1.0)
+        _t = kwargs.pop('_t', 1.0)
 
         self._alp_gauB_t = 1
         self._bet_gauB_t = 0
@@ -53,27 +55,258 @@ class DistDiehlNegrete(object):
         self.cp_t = Set(initialize=[ii for ii in range(0, self.ncp_t + 1)])
         self.cp_ta = Set(within=self.cp_t, initialize=[ii for ii in range(1, self.ncp_t + 1)])
 
-        # components
-        self.sp = Set(initialize=['c', 'h', 'n'])
-
         # create collocation param
-
         self.taucp_t = Param(self.cp_t, initialize=self.tau_i_t)
 
         # (lambda m, i, j: fldoti_x(m, i, j, ncp_x, self._alp_gauB_x, self._bet_gauB_x)))
         self.ldot_t = Param(self.cp_t, self.cp_t, initialize=
-        (lambda m, i, j: fldoti_t(m, i, j, self.ncp_t, self._alp_gauB_t, self._bet_gauB_t)))
-        self.lydot = Param(self.cp_x, self.cp_x, initialize=
-        (lambda m, i, j: fldotyi(m, i, j, ncp_x, self._alp_gauB_x, self._bet_gauB_x)))
-        self.l1_x = Param(self.cp_x, initialize=
-        (lambda m, i: flj1_x(m, i, ncp_x, self._alp_gauB_x, self._bet_gauB_x)))
-        self.l1_t = Param(self.cp_t, initialize=
-        (lambda m, i: flj1_t(m, i, self.ncp_t, self._alp_gauB_t, self._bet_gauB_t)))
-        self.l1y = Param(self.cp_x, initialize=
-        (lambda m, i: fljy1(m, i, ncp_x, self._alp_gauB_x, self._bet_gauB_x)))
-        self.lgr = Param(self.cp_x, self.cp_x, initialize=
-        (lambda m, i, j: f_lj_x(m, i, j, ncp_x, self._alp_gauB_x, self._bet_gauB_x)))
+        (lambda m, j, k: lgrdot(j, m.taucp_t[k], ncp_t, self._alp_gauB_t, self._bet_gauB_t)))
 
+        self.l1_t = Param(self.cp_t, initialize=
+        (lambda m, j: lgr(j, 1, self.ncp_t, self._alp_gauB_t, self._bet_gauB_t)))
+
+        Ntray = 42
+
+        self.Ntray = Ntray
+
+        self.tray = Set(initialize=[i for i in range(1, Ntray + 1)])
+
+        def __init_feed(m, t):
+            if t == 21:
+                return 57.5294
+            else:
+                return 0
+
+        self.feed = Param(m.tray, initialize=__init_feed, mutable=True)
+
+        self.xf = Param(initialize=0.32, mutable=True)  # feed mole fraction
+        self.hf = Param(initialize=9081.3)  # feed enthalpy
+
+        self.hlm0 = Param(initialize=2.6786e-04)
+        self.hlma = Param(initialize=-0.14779)
+        self.hlmb = Param(initialize=97.4289)
+        self.hlmc = Param(initialize=-2.1045e04)
+
+        self.hln0 = Param(initialize=4.0449e-04)
+        self.hlna = Param(initialize=-0.1435)
+        self.hlnb = Param(initialize=121.7981)
+        self.hlnc = Param(initialize=-3.0718e04)
+
+        self.r = Param(initialize=8.3147)
+        self.a = Param(initialize=6.09648)
+        self.b = Param(initialize=1.28862)
+        self.c1 = Param(initialize=1.016)
+        self.d = Param(initialize=15.6875)
+        self.l = Param(initialize=13.4721)
+        self.f = Param(initialize=2.615)
+
+        self.gm = Param(initialize=0.557)
+        self.Tkm = Param(initialize=512.6)
+        self.Pkm = Param(initialize=8.096e06)
+
+        self.gn = Param(initialize=0.612)
+        self.Tkn = Param(initialize=536.7)
+        self.Pkn = Param(initialize=5.166e06)
+
+        self.CapAm = Param(initialize=23.48)
+        self.CapBm = Param(initialize=3626.6)
+        self.CapCm = Param(initialize=-34.29)
+
+        self.CapAn = Param(initialize=22.437)
+        self.CapBn = Param(initialize=3166.64)
+        self.CapCn = Param(initialize=-80.15)
+
+        self.pstrip = Param(initialize=250)
+        self.prect = Param(initialize=190)
+
+        def _p_init(m, t):
+            ptray = 9.39e04
+            if t <= 20:
+                return _p_init(m, 21) + m.pstrip * (21 - t)
+            elif 20 < t < m.Ntray:
+                return ptray + m.prect * (m.Ntray - t)
+            elif t == m.Ntray:
+                return 9.39e04
+
+        self.p = Param(self.tray, initialize=_p_init)
+
+        self.T29_des = Param(initialize=343.15)
+        self.T15_des = Param(initialize=361.15)
+        self.Dset = Param(initialize=1.83728)
+        self.Qcset = Param(initialize=1.618890)
+        self.Qrset = Param(initialize=1.786050)
+        self.Recset = Param()
+
+        self.alpha_T29 = Param(initialize=1)
+        self.alpha_T15 = Param(initialize=1)
+        self.alpha_D = Param(initialize=1)
+        self.alpha_Qc = Param(initialize=1)
+        self.alpha_Qr = Param(initialize=1)
+        self.alpha_Rec = Param(initialize=1)
+
+        def _alpha_init(m, i):
+            if i <= 21:
+                return 0.62
+            else:
+                return 0.35
+
+        self.alpha = Param(self.tray, initialize=_alpha_init)
+
+        # States section
+        zero_tray = dict.fromkeys(self.tray)
+
+        self.M_ic = zero_tray if steady else Param(self.tray, initialize=0.0, mutable=True)
+        self.x_ic = zero_tray if steady else Param(self.tray, initialize=0.0, mutable=True)
+
+        def __m_init(m, i, j, t):
+            if m.i_flag:
+                if t < m.Ntray:
+                    return 4000.
+                elif t == 1:
+                    return 104340.
+                elif t == m.Ntray:
+                    return 5000.
+            else:
+                return 0.
+
+        def __x_init(m, i, j, t):
+            if m.i_flag:
+                return (0.999 / m.Ntray) * t
+            else:
+                return 1
+
+        # Liquid hold-up
+        self.M = Var(self.fe_t, self.cp_t, self.tray, initialize=__m_init)
+        # Mole-frac
+        self.x = Var(self.fe_t, self.cp_t, self.tray, initialize=__x_init)
+
+        self.dM_dt = None if steady else Var(self.fe_t, self.cp_t, self.tray, initialize=0.0)
+        self.dx_dt = None if steady else Var(self.fe_t, self.cp_t, self.tray, initialize=0.0)
+
+        # m.M_0 = Var(m.fe, m.tray, initialize=1e07)
+
+        def __t_init(m, i, j, t):
+            if m.i_flag:
+                return ((370.781 - 335.753) / m.Ntray) * t + 370.781
+            else:
+                return 10.
+
+        # Tray temperature
+        self.T = Var(self.fe_t, self.cp_ta, self.tray, initialize=__t_init)
+        self.Tdot = Var(self.fe_t, self.cp_ta, self.tray, initialize=0.0)  #: Not really a der_var
+
+        # saturation pressures
+        self.pm = Var(self.fe_t, self.cp_ta, self.tray, initialize=1e4)
+        self.pn = Var(self.fe_t, self.cp_ta, self.tray, initialize=1e4)
+
+        # define l-v flowrate
+        def _v_init(m, i, j, t):
+            if m.i_flag:
+                return 44.
+            else:
+                return 0.
+
+        # Vapor mole flowrate
+        self.V = Var(self.fe_t, self.cp_ta, self.tray, initialize=_v_init)
+
+        def _l_init(m, i, j, t):
+            if m.i_flag:
+                if 2 <= t <= 21:
+                    return 83.
+                elif 22 <= t <= 42:
+                    return 23
+                elif t == 1:
+                    return 40
+            else:
+                return 0.
+
+        # Liquid mole flowrate
+        self.L = Var(self.fe_t, self.cp_ta, self.tray, initialize=_l_init)
+
+        # mol frac l-v
+        # Liquid mole frac & diff var
+        # m.x_0 = Var(m.fe, m.tray)
+        # av
+
+        def __y_init(m, i, j, t):
+            if m.i_flag:
+                return ((0.99 - 0.005) / m.Ntray) * t + 0.005
+            else:
+                return 1
+
+        # Vapor mole frac & diff var
+        self.y = Var(self.fe_t, self.cp_ta, self.tray, initialize=__y_init)
+
+        # Liquid enthalpy    # enthalpy
+        self.hl = Var(self.fe_t, self.cp_ta, self.tray, initialize=10000.)
+
+        def __hv_init(m, i, j, t):
+            if m.i_flag:
+                if t < m.Ntray:
+                    return 5e4
+            else:
+                return 0.0
+
+        # Liquid enthalpy    # enthalpy
+        self.hv = Var(self.fe_t, self.cp_ta, self.tray, initialize=__hv_init)
+        # reboiler & condenser heat
+        self.Qc = Var(self.fe_t, self.cp_ta, initialize=1.6e06)
+        self.D = Var(self.fe_t, self.cp_ta, initialize=18.33)
+        # vol holdups
+        self.Vm = Var(self.fe_t, self.cp_ta, self.tray, initialize=6e-05)
+
+        def __mv_init(m, i, j, t):
+            if m.i_flag:
+                if 1 < t < m.Ntray:
+                    return 0.23
+            else:
+                return 0.0
+
+        self.Mv = Var(self.fe_t, self.cp_ta, self.tray, initialize=__mv_init)
+        self.Mv1 = Var(self.fe_t, self.cp_ta, initialize=8.57)
+        self.Mvn = Var(self.fe_t, self.cp_ta, initialize=0.203)
+
+        # Process-noise is optional
+        self.all_d_states = ["M", "x"]
+        # case - dynamic sim and noisy -> disaster
+        noisy_states = {}
+        self.w_M = Var(self.fe_t, self.tray, initialize=0.0) if "M" in noisy_states.keys() else 0.0
+        self.w_x = Var(self.fe_t, self.tray, initialize=0.0) if "x" in noisy_states.keys() else 0.0
+
+        # Dictionary for process disturbance expression.
+        self.W = {}
+        d_state_list = []
+        for i in self.all_d_states:
+            var = getattr(self, i)
+            l = [j for j in iterkeys(var)]
+            d_state_list += map(lambda v: (i, v), l)
+
+        self.W = self.W.fromkeys(d_state_list, 0.0)
+
+        self.noisy_f = {}
+
+        # Filter for w term in the continuation equations
+        if noisy_states.__len__() > 0:
+            # print("noisy > 1")
+            for i in noisy_states.keys():
+                idxs = noisy_states[i]
+                var = getattr(self, "w_" + i)
+                for j in idxs:
+                    self.noisy_f[(i, j)] = True
+                    for i_fe in range(1, nfe_t + 1):
+                        idx = (i_fe, 0) + j
+                        self.W[i, idx] = var[i_fe, j]
+
+        # Controls
+        self.Rec = Param(self.fe_t, initialize=7.72700925775773761472464684629813E-01, mutable=True)
+        self.Qr = Param(self.fe_t, initialize=1.78604740940007800236344337463379E+06, mutable=True)
+        # Controls
+
+        hi_t = dict.fromkeys(self.fe_t)
+        for key in hi_t.keys():
+            hi_t[key] = 1.0 if steady else _t/self.nfe_t
+
+        self.hi_t = hi_t if steady else Param(self.fe_t, initialize=hi_t)
 
 
 def dist_col_rodrigo(nfe_t, ncp_t, hi_t, kind, init0=True, bnd_set=True,
