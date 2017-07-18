@@ -4,12 +4,13 @@
 from __future__ import division
 from __future__ import print_function
 from pyomo.core.base import ConcreteModel, Set, Constraint, Var,\
-    Param, Objective, minimize, sqrt, exp, Suffix
+    Param, Objective, minimize, sqrt, exp, Suffix, Expression
 from nmpc_mhe.aux.cpoinsc import collptsgen
 from nmpc_mhe.aux.lagrange_f import lgr, lgry, lgrdot, lgrydot
 from dist_col_mod import *
 from six import itervalues, iterkeys
-from pyomo.opt import ProblemFormat
+from pyomo.opt import ProblemFormat, SolverFactory
+import re, os
 
 """
 Version 03.
@@ -229,16 +230,16 @@ class DistDiehlNegrete(ConcreteModel):
         self.Mv1 = Var(self.fe_t, self.cp_ta, initialize=8.57)
         self.Mvn = Var(self.fe_t, self.cp_ta, initialize=0.203)
 
-        # Controls
-        self.Rec = Param(self.fe_t, initialize=7.72700925775773761472464684629813E-01, mutable=True)
-        self.Qr = Param(self.fe_t, initialize=1.78604740940007800236344337463379E+06, mutable=True)
-
         hi_t = dict.fromkeys(self.fe_t)
         for key in hi_t.keys():
             hi_t[key] = 1.0 if steady else _t/self.nfe_t
 
         self.hi_t = hi_t if steady else Param(self.fe_t, initialize=hi_t)
 
+        # --------------------------------------------------------------------------------------------------------------
+        #: Controls
+        self.Rec = Param(self.fe_t, initialize=7.72700925775773761472464684629813E-01, mutable=True)
+        self.Qr = Param(self.fe_t, initialize=1.78604740940007800236344337463379E+06, mutable=True)
         # --------------------------------------------------------------------------------------------------------------
 
         # Constraint section (differential equations)
@@ -252,8 +253,15 @@ class DistDiehlNegrete(ConcreteModel):
 
         #: Continuation equations (redundancy here)
         if self.nfe_t > 1:
-            self.cp_M_c = None if steady else Constraint(self.fe_t, self.tray, rule=M_CONT)
-            self.cp_x_c = None if steady else Constraint(self.fe_t, self.tray, rule=x_cont)
+            self.noisy_M = None if steady else Expression(self.fe_t, self.tray, rule=M_CONT)
+            self.noisy_x = None if steady else Expression(self.fe_t, self.tray, rule=x_cont)
+
+            self.cp_M_c = None if steady else \
+                Constraint(self.fe_t, self.tray,
+                           rule=lambda m, i, t: self.noisy_M[i, t] == 0.0 if i < self.nfe_t else Constraint.Skip)
+            self.cp_x_c = None if steady else \
+                Constraint(self.fe_t, self.tray,
+                           rule=lambda m, i, t: self.noisy_x[i, t] == 0.0 if i < self.nfe_t else Constraint.Skip)
 
         # --------------------------------------------------------------------------------------------------------------
         # Constraint section (algebraic equations)
@@ -295,6 +303,7 @@ class DistDiehlNegrete(ConcreteModel):
                    io_options={"symbolic_solver_labels": True})
 
     def create_bounds(self):
+        """Creates bounds for the variables"""
         for value in itervalues(self.M):
             value.setlb(1.0)
         for value in itervalues(self.T):
@@ -368,3 +377,45 @@ class DistDiehlNegrete(ConcreteModel):
             value.setub(1e+04)
         for value in itervalues(self.Mvn):
             value.setub(1e+04)
+
+    @staticmethod
+    def parse_ig_ampl(file_i):
+        lines = file_i.readlines()
+        dict = {}
+        for line in lines:
+            kk = re.split('(?:let)|[:=\s\[\]]', line)
+            try:
+                var = kk[2]
+                print(var)
+                key = kk[3]
+                key = re.split(',', key)
+                actual_key = []
+                for k in key:
+                    actual_key.append(int(k))
+                actual_key.append(actual_key.pop(0))
+                actual_key = tuple(actual_key)
+
+                value = kk[8]
+                value = float(value)
+                dict[var, actual_key] = value
+            except IndexError:
+                continue
+        file_i.close()
+        return dict
+
+    def init_steady_ref(self):
+        """If the model is steady, we try to initialize it with an initial guess from ampl"""
+        cur_dir = os.path.dirname(__file__)
+        ampl_ig = os.path.join(cur_dir, "iv_ss.txt")
+        file_tst = open(ampl_ig, "r")
+        if self.nfe_t == 1 and self.ncp_t == 1:
+            somedict = self.parse_ig_ampl(file_tst)
+            for var in self.component_objects(Var, active=True):
+                vx = getattr(self, str(var))
+                for v, k in var.iteritems():
+                    try:
+                        vx[v] = somedict[str(var), v]
+                    except KeyError:
+                        continue
+            solver = SolverFactory('ipopt')
+            someresults = solver.solve(self, tee=True)

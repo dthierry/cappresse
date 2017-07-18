@@ -1,7 +1,7 @@
 from __future__ import division
 from __future__ import print_function
 from pyomo.core.base import ConcreteModel, Set, Constraint, Var,\
-    Param, Objective, minimize, sqrt, exp, Suffix
+    Param, Objective, minimize, sqrt, exp, Suffix, Expression
 
 """
 Version 03. 
@@ -53,10 +53,9 @@ def M_COLL(m, i, j, t):
 ## !!!!!
 def M_CONT(m, i, t):
     if i < m.nfe_t and m.nfe_t > 1:
-        return m.M[i + 1, 0, t] == \
-               sum(m.l1_t[j] * m.M[i, j, t] for j in m.cp_t)
+        return m.M[i + 1, 0, t] - sum(m.l1_t[j] * m.M[i, j, t] for j in m.cp_t)
     else:
-        return Constraint.Skip
+        return Expression.Skip
 
 
 def x_ode(m, i, j, t):
@@ -102,10 +101,9 @@ def x_coll(m, i, j, t):
 
 def x_cont(m, i, t):
     if i < m.nfe_t and m.nfe_t > 1:
-        return m.x[i + 1, 0, t] == \
-               sum(m.l1_t[j] * m.x[i, j, t] for j in m.cp_t)
+        return m.x[i + 1, 0, t] - sum(m.l1_t[j] * m.x[i, j, t] for j in m.cp_t)
     else:
-        return Constraint.Skip
+        return Expression.Skip
 
 
 def hrc(m, i, j):
