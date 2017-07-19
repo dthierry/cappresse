@@ -4,7 +4,7 @@
 from __future__ import division
 from __future__ import print_function
 from pyomo.core.base import ConcreteModel, Set, Constraint, Var,\
-    Param, Objective, minimize, sqrt, exp, Suffix, Expression
+    Param, Objective, minimize, sqrt, exp, Suffix, Expression, value
 from nmpc_mhe.aux.cpoinsc import collptsgen
 from nmpc_mhe.aux.lagrange_f import lgr, lgry, lgrdot, lgrydot
 from dist_col_mod import *
@@ -42,7 +42,7 @@ class DistDiehlNegrete(ConcreteModel):
             self.nfe_t = nfe_t
             self.ncp_t = ncp_t
 
-        self.tau_t = collptsgen(ncp_t, self._alp_gauB_t, self._bet_gauB_t)
+        self.tau_t = collptsgen(self.ncp_t, self._alp_gauB_t, self._bet_gauB_t)
 
         # start at zero
         self.tau_i_t = {0: 0.}
@@ -67,7 +67,7 @@ class DistDiehlNegrete(ConcreteModel):
         self.taucp_t = Param(self.cp_t, initialize=self.tau_i_t)
 
         self.ldot_t = Param(self.cp_t, self.cp_t, initialize=
-        (lambda m, j, k: lgrdot(j, m.taucp_t[k], ncp_t, self._alp_gauB_t, self._bet_gauB_t)))
+        (lambda m, j, k: lgrdot(j, m.taucp_t[k], self.ncp_t, self._alp_gauB_t, self._bet_gauB_t)))
 
         self.l1_t = Param(self.cp_t, initialize=
         (lambda m, j: lgr(j, 1, self.ncp_t, self._alp_gauB_t, self._bet_gauB_t)))
@@ -238,11 +238,20 @@ class DistDiehlNegrete(ConcreteModel):
 
         # --------------------------------------------------------------------------------------------------------------
         #: Controls
-        self.Rec = Param(self.fe_t, initialize=7.72700925775773761472464684629813E-01, mutable=True)
-        self.Qr = Param(self.fe_t, initialize=1.78604740940007800236344337463379E+06, mutable=True)
-        # --------------------------------------------------------------------------------------------------------------
+        self.u1 = Param(self.fe_t, initialize=7.72700925775773761472464684629813E-01, mutable=True)  #: Dummy
+        self.u2 = Param(self.fe_t, initialize=1.78604740940007800236344337463379E+06, mutable=True)  #: Dummy
 
+        self.Rec = Var(self.fe_t, initialize=7.72700925775773761472464684629813E-01)
+        self.Qr = Var(self.fe_t, initialize=1.78604740940007800236344337463379E+06)
+        # --------------------------------------------------------------------------------------------------------------
         # Constraint section (differential equations)
+        #: Control constraint
+        self.u1_e = Expression(self.fe_t, rule=lambda m, i: self.Rec[i])
+        self.u2_e = Expression(self.fe_t, rule=lambda m, i: self.Qr[i])
+
+        self.u1_c = Constraint(self.fe_t, rule=lambda m, i: self.u1[i] == self.u1_e[i])
+        self.u2_c = Constraint(self.fe_t, rule=lambda m, i: self.u2[i] == self.u2_e[i])
+
         #: Differential equations
         self.de_M = Constraint(self.fe_t, self.cp_ta, self.tray, rule=m_ode)
         self.de_x = Constraint(self.fe_t, self.cp_ta, self.tray, rule=x_ode)
@@ -256,12 +265,15 @@ class DistDiehlNegrete(ConcreteModel):
             self.noisy_M = None if steady else Expression(self.fe_t, self.tray, rule=M_CONT)
             self.noisy_x = None if steady else Expression(self.fe_t, self.tray, rule=x_cont)
 
-            self.cp_M_c = None if steady else \
+            self.cp_M = None if steady else \
                 Constraint(self.fe_t, self.tray,
                            rule=lambda m, i, t: self.noisy_M[i, t] == 0.0 if i < self.nfe_t else Constraint.Skip)
-            self.cp_x_c = None if steady else \
+            self.cp_x = None if steady else \
                 Constraint(self.fe_t, self.tray,
                            rule=lambda m, i, t: self.noisy_x[i, t] == 0.0 if i < self.nfe_t else Constraint.Skip)
+
+        self.M_icc = None if steady else Constraint(self.tray, rule=acm)
+        self.x_icc = None if steady else Constraint(self.tray, rule=acx)
 
         # --------------------------------------------------------------------------------------------------------------
         # Constraint section (algebraic equations)
@@ -285,8 +297,6 @@ class DistDiehlNegrete(ConcreteModel):
         self.hyd1 = Constraint(self.fe_t, self.cp_ta, rule=hyd1)
         self.hydN = Constraint(self.fe_t, self.cp_ta, rule=hydN)
         self.dvself = Constraint(self.fe_t, self.cp_ta, self.tray, rule=dvm)
-        self.acm = None if steady else Constraint(self.tray, rule=acm)
-        self.acx = None if steady else Constraint(self.tray, rule=acx)
 
         # Suffixes
         self.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
@@ -419,3 +429,10 @@ class DistDiehlNegrete(ConcreteModel):
                         continue
             solver = SolverFactory('ipopt')
             someresults = solver.solve(self, tee=True)
+
+    def equalize_u(self):
+        """set current controls to the values of their respective dummies"""
+        for i in iterkeys(self.Rec):
+            self.Rec[i].set_value(value(self.u1[i]))
+        for i in iterkeys(self.Rec):
+            self.Qr[i].set_value(value(self.u2[i]))

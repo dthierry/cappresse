@@ -16,18 +16,11 @@ class DynGen(object):
     def __init__(self, **kwargs):
         self.d_mod = kwargs.pop('d_mod', None)
 
-        self.nfe_t = 5
-        self.ncp_t = 3
+        self.nfe_t = kwargs.pop('nfe_t', 5)
+        self.ncp_t = kwargs.pop('nfe_t', 3)
 
-        self._t = 100
-
-        if kwargs.get("ncp_t"):
-            self.ncp_x = kwargs["ncp_t"]
-        if kwargs.get("nfe_t"):
-            self.ncp_x = kwargs["nfe_t"]
-
-        if kwargs.get("t"):
-            self._t = kwargs["t"]
+        self._t = kwargs.pop('_t', 100)
+        self.states = kwargs.pop('states', [])
 
         self.hi_t = self._t/self.nfe_t
         self.ss = self.d_mod(1, 1, steady=True)
@@ -37,14 +30,12 @@ class DynGen(object):
         self.ss.name = "ss"
         self.d1.name = "d1"
 
-        self.states = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"]
-        # self.controls = []
-        # self.measurements = []
-
         self.ipopt = SolverFactory("ipopt")
-        self.k_aug = SolverFactory("k_aug")
+        self.k_aug = SolverFactory("k_aug",
+                                   executable="/home/dav0/k2/KKT_matrix/src/kmatrix/k_aug")
         self.dot_driver = SolverFactory("dot_driver",
                                         executable="/home/dav0/k2/KKT_matrix/src/kmatrix/dot_driver/dot_driver")
+
         # self.k_aug.options["eig_rh"] = ""
         # self.ipopt.options["halt_on_ampl_error"] = "yes"
 
@@ -94,25 +85,29 @@ class DynGen(object):
     def load_d_s(self, dmod):
         """Loads the solution of the steady state model into the dynamic
         Args:
-            None
+            dmod (pyomo.core.base.PyomoModel.ConcreteModel): Target model
         Return:
             None"""
         s = self.ss
         d = dmod
         for vs in s.component_objects(Var, active=True):
             vd = getattr(d, vs.getname())
-            for ks in vs.iterkeys():
-                kj = ks[2:]
-                # for i in range(1, self.nfe_t + 1):
-                for j in range(1, self.ncp_t + 1):
-                    vd[(1, j) + kj].set_value(value(vs[ks]))
+            if vs.is_indexed():
+                if len(vs.keys()) > 1:
+                    for ks in vs.iterkeys():
+                        kj = ks[2:]
+                        # for i in range(1, self.nfe_t + 1):
+                        for j in range(1, self.ncp_t + 1):
+                            vd[(1, j) + kj].set_value(value(vs[ks]))
 
         for i in self.states:
             pn = i + "_ic"
             p = getattr(d, pn)
             vs = getattr(s, i)
+            vd0 = getattr(d, i)
             for ks in p.iterkeys():
-                p[ks].value = value(vs[(1, 1)+ks])
+                p[ks].value = value(vs[(1, 1)+(ks,)])
+                vd0[(1, 0)+(ks,)].set_value(value(vs[(1, 1)+(ks,)]))
 
     def solve_d(self, mod, **kwargs):
         """Solves dynamic model
