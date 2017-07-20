@@ -92,13 +92,25 @@ class DynGen(object):
         d = dmod
         for vs in s.component_objects(Var, active=True):
             vd = getattr(d, vs.getname())
+            print(vs.getname())
             if vs.is_indexed():
                 if len(vs.keys()) > 1:
+                    print(vs.getname())
                     for ks in vs.iterkeys():
                         kj = ks[2:]
                         # for i in range(1, self.nfe_t + 1):
                         for j in range(1, self.ncp_t + 1):
                             vd[(1, j) + kj].set_value(value(vs[ks]))
+                else:
+                    for ks in vs.iterkeys():
+                        for kd in vd.keys():
+                            vd[kd].set_value(value(vs[ks]))
+
+        for x in self.states:
+            dv = getattr(dmod, "d" + x + "_dt")
+            for i in dv.itervalues():
+                i.set_value(0.0)
+
 
         for i in self.states:
             pn = i + "_ic"
@@ -185,7 +197,6 @@ class DynGen(object):
                 sys.exit()
             self.journalizer("W", self._c_it, "solve_d", "Not-optimal.")
             return 1
-
 
     def cycle_ics(self):
         """Patches the initial conditions with the last result from the simulation
@@ -313,8 +324,6 @@ class DynGen(object):
                 f.write("\t" + self._dt_list[i])
                 f.write("\n")
             f.close()
-
-
 
     # NMPC or just dyn?
     def cycle_ics_noisy(self, sigma_bar=0.01):
