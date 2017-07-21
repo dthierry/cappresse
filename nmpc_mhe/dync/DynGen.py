@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
 from __future__ import print_function
 from __future__ import division
 
@@ -21,6 +22,7 @@ class DynGen(object):
 
         self._t = kwargs.pop('_t', 100)
         self.states = kwargs.pop('states', [])
+        self.u = kwargs.pop('u', [])  #: The inputs (controls)
 
         self.hi_t = self._t/self.nfe_t
         self.ss = self.d_mod(1, 1, steady=True)
@@ -61,7 +63,13 @@ class DynGen(object):
         self.ip_time = 0
 
         self._stall_iter = 0
+        self._window_keep = self.nfe_t + 2
 
+        self._u_plant = {}  #: key: (ui, time)
+        for i in self.u:
+            u = getattr(self.d1, i)
+            for t in range(0, self._window_keep):
+                self._u_plant[(i, t)] = value(u[1])
 
     def load_iguess_ss(self):
         """"Call the method for loading initial guess from steady-state"""
@@ -92,7 +100,6 @@ class DynGen(object):
         d = dmod
         for vs in s.component_objects(Var, active=True):
             vd = getattr(d, vs.getname())
-            print(vs.getname())
             if vs.is_indexed():
                 if len(vs.keys()) > 1:
                     print(vs.getname())
@@ -105,13 +112,10 @@ class DynGen(object):
                     for ks in vs.iterkeys():
                         for kd in vd.keys():
                             vd[kd].set_value(value(vs[ks]))
-
         for x in self.states:
             dv = getattr(dmod, "d" + x + "_dt")
             for i in dv.itervalues():
                 i.set_value(0.0)
-
-
         for i in self.states:
             pn = i + "_ic"
             p = getattr(d, pn)
@@ -224,14 +228,30 @@ class DynGen(object):
             None"""
         for vs in src.component_objects(Var, active=True):
             vd = getattr(tgt, vs.getname())
-            for ks in vs.iterkeys():
-                kj = ks[2:]
-                if vs.getname() in self.states:
-                    for j in range(0, self.ncp_t + 1):
-                        vd[(i, j) + kj].set_value(value(vs[ks]))
-                else:
-                    for j in range(1, self.ncp_t + 1):
-                        vd[(i, j) + kj].set_value(value(vs[ks]))
+            # there are two cases: 1 key 1 elem, several keys 1 element
+            vskeys = vs.keys()
+            if len(vskeys) == 1:
+                #: One key
+                for ks in vskeys:
+                    for v in vd.itervalues():
+                        v.set_value(value(vs[ks]))
+            else:
+                k = 0
+                for ks in vskeys:
+                    if k == 0:
+                        if type(ks) != tuple:
+                            #: Several keys of 1 element each!!
+                            for ks1 in vskeys:
+                                vd[ks1].set_value(value(vs[ks1]))  #: This has got to be true
+                            break
+                        k += 1
+                    kj = ks[2:]
+                    if vs.getname() in self.states:  #: States start at 0
+                        for j in range(0, self.ncp_t + 1):
+                            vd[(i, j) + kj].set_value(value(vs[ks]))
+                    else:
+                        for j in range(1, self.ncp_t + 1):
+                            vd[(i, j) + kj].set_value(value(vs[ks]))
 
     def create_dyn(self, initialize=True):
         print("-" * 120)

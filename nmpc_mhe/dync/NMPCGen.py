@@ -20,7 +20,6 @@ class NmpcGen(DynGen):
         # We need a list of the relevant controls smth like u = [u1, u2, ..., un]
         # We need a list of tuples that contain the bounds of u
 
-        self.u = kwargs.pop('u', [])
 
         print("-" * 120)
         print("I[[create_olnmpc]] olnmpc (full) model created.")

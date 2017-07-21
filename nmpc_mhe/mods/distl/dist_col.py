@@ -67,7 +67,7 @@ class DistDiehlNegrete(ConcreteModel):
         self.taucp_t = Param(self.cp_t, initialize=self.tau_i_t)
 
         self.ldot_t = Param(self.cp_t, self.cp_t, initialize=
-        (lambda m, j, k: lgrdot(j, m.taucp_t[k], self.ncp_t, self._alp_gauB_t, self._bet_gauB_t)))
+        (lambda m, j, k: lgrdot(k, m.taucp_t[j], self.ncp_t, self._alp_gauB_t, self._bet_gauB_t)))  #: watch out for this!
 
         self.l1_t = Param(self.cp_t, initialize=
         (lambda m, j: lgr(j, 1, self.ncp_t, self._alp_gauB_t, self._bet_gauB_t)))
