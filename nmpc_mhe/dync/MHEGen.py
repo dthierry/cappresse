@@ -7,15 +7,16 @@ from pyomo.core.base import Var, Objective, minimize, value, Set, Constraint, Ex
 from pyomo.core.base.sets import SimpleSet
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
 from nmpc_mhe.dync.DynGen import DynGen
+from nmpc_mhe.dync.NMPCGen import NmpcGen
 import numpy as np
 from itertools import product
 import sys
 
 __author__ = "David M Thierry @dthierry"
-"""Not yet."""
+"""Not yet. Our people, they don't understand."""
 
 
-class MheGen(DynGen):
+class MheGen(NmpcGen):
     def __init__(self, **kwargs):
         DynGen.__init__(self, **kwargs)
 
@@ -54,16 +55,13 @@ class MheGen(DynGen):
                 self.xkN_key[(x, jth)] = k
                 k += 1
 
-        self.lsmhe.xkNk = Set(initialize=[i for i in range(0, len(self.xkN_l))])  #: Create set of noisy_states
-
-        # self.lsmhe.x_pi = Var(self.lsmhe.xkNk, initialize=0.0)  #: Create variable x-x0 for objective
-        # prior-state?
-        self.lsmhe.x_0 = Param(self.lsmhe.xkNk, initialize=0.0, mutable=True)  #: Prior-state
-        self.lsmhe.wk = Var(self.lsmhe.fe_t, self.lsmhe.xkNk, initialize=0.0)  #: Model disturbance
-        self.lsmhe.PikN = Param(self.lsmhe.xkNk, self.lsmhe.xkNk,
+        self.lsmhe.xkNk_mhe = Set(initialize=[i for i in range(0, len(self.xkN_l))])  #: Create set of noisy_states
+        self.lsmhe.x_0_mhe = Param(self.lsmhe.xkNk_mhe, initialize=0.0, mutable=True)  #: Prior-state
+        self.lsmhe.wk_mhe = Var(self.lsmhe.fe_t, self.lsmhe.xkNk_mhe, initialize=0.0)  #: Model disturbance
+        self.lsmhe.PikN_mhe = Param(self.lsmhe.xkNk_mhe, self.lsmhe.xkNk_mhe,
                                 initialize=lambda m, i, ii: 1. if i == ii else 0.0, mutable=True)  #: Prior-Covariance
-        self.lsmhe.Q_mhe = Param(range(1, self.nfe_t), self.lsmhe.xkNk, initialize=1, mutable=True) if self.diag_Q_R\
-            else Param(range(1, self.nfe_t), self.lsmhe.xkNk, self.lsmhe.xkNk,
+        self.lsmhe.Q_mhe = Param(range(1, self.nfe_t), self.lsmhe.xkNk_mhe, initialize=1, mutable=True) if self.diag_Q_R\
+            else Param(range(1, self.nfe_t), self.lsmhe.xkNk_mhe, self.lsmhe.xkNk_mhe,
                              initialize=lambda m, t, i, ii: 1. if i == ii else 0.0, mutable=True)  #: Disturbance-weight
 
         #: Create list of measurements vars
@@ -85,19 +83,20 @@ class MheGen(DynGen):
                 for jth in self.y_vars[y]:  #: the jth variable
                     self.yk_l[t].append(m_v[(1, self.ncp_t) + jth])
 
-        self.lsmhe.ykk = Set(initialize=[i for i in range(0, len(self.yk_l[1]))])  #: Create set of measured_vars
-        self.lsmhe.nuk = Var(self.lsmhe.fe_t, self.lsmhe.ykk, initialize=0.0)   #: Measurement noise
-        self.lsmhe.yk0 = Param(self.lsmhe.fe_t, self.lsmhe.ykk, initialize=1.0, mutable=True)
-        self.lsmhe.hyk_c = Constraint(self.lsmhe.fe_t, self.lsmhe.ykk,
-                                      rule=lambda mod, t, i: mod.yk0[t, i] - self.yk_l[t][i] - mod.nuk[t, i] == 0.0)
-        self.lsmhe.R_mhe = Param(self.lsmhe.fe_t, self.lsmhe.ykk, initialize=1.0, mutable=True) if self.diag_Q_R else \
-            Param(self.lsmhe.fe_t, self.lsmhe.ykk, self.lsmhe.ykk,
+        self.lsmhe.ykk_mhe = Set(initialize=[i for i in range(0, len(self.yk_l[1]))])  #: Create set of measured_vars
+        self.lsmhe.nuk_mhe = Var(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, initialize=0.0)   #: Measurement noise
+        self.lsmhe.yk0_mhe = Param(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, initialize=1.0, mutable=True)
+        self.lsmhe.hyk_c_mhe = Constraint(self.lsmhe.fe_t, self.lsmhe.ykk_mhe,
+                                      rule=lambda mod, t, i: mod.yk0_mhe[t, i] - self.yk_l[t][i] - mod.nuk_mhe[t, i] == 0.0)
+        self.lsmhe.R_mhe = Param(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, initialize=1.0, mutable=True) if self.diag_Q_R else \
+            Param(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, self.lsmhe.ykk_mhe,
                              initialize=lambda mod, t, i, ii: 1.0 if i == ii else 0.0, mutable=True)
 
         #: Deactivate icc constraints
         if self.deact_ics:
-            for i in self.states:
-                self.lsmhe.del_component(i + "_icc")
+            pass
+            # for i in self.states:
+                # self.lsmhe.del_component(i + "_icc")
         #: Maybe only for a subset of the states
         else:
             for i in self.states:
@@ -113,43 +112,42 @@ class MheGen(DynGen):
             cp_exp = getattr(self.lsmhe, "noisy_" + i)
             for k in self.x_vars[i]:  #: This should keep the same order
                 for t in range(1, self.nfe_t):
-                    cp_con[t, k].set_value(cp_exp[t, k] == self.lsmhe.wk[t, j])
+                    cp_con[t, k].set_value(cp_exp[t, k] == self.lsmhe.wk_mhe[t, j])
                 j += 1
 
         #: Expressions for the objective function (least-squares)
-        self.lsmhe.Q_expr = Expression(
-            expr=sum(
+        self.lsmhe.Q_e_mhe = Expression(
+            expr=0.5 * sum(
                 sum(
-                    self.lsmhe.Q_mhe[i, k] * self.lsmhe.wk[i, k]**2 for k in self.lsmhe.xkNk)
+                    self.lsmhe.Q_mhe[i, k] * self.lsmhe.wk_mhe[i, k]**2 for k in self.lsmhe.xkNk_mhe)
                 for i in range(1, self.nfe_t))) if self.diag_Q_R else Expression(
-            expr=sum(sum(self.lsmhe.wk[i, j] *
-                         sum(self.lsmhe.Q_mhe[i, j, k] * self.lsmhe.wk[i, k] for k in self.lsmhe.xkNk)
-                         for j in self.lsmhe.xkNk) for i in range(1, self.nfe_t)))
+            expr=sum(sum(self.lsmhe.wk_mhe[i, j] *
+                         sum(self.lsmhe.Q_mhe[i, j, k] * self.lsmhe.wk_mhe[i, k] for k in self.lsmhe.xkNk_mhe)
+                         for j in self.lsmhe.xkNk_mhe) for i in range(1, self.nfe_t)))
 
-        self.lsmhe.R_expr = Expression(
-            expr=sum(
+        self.lsmhe.R_e_mhe = Expression(
+            expr=0.5 * sum(
                 sum(
-                    self.lsmhe.R_mhe[i, k] * self.lsmhe.nuk[i, k]**2 for k in self.lsmhe.xkNk)
+                    self.lsmhe.R_mhe[i, k] * self.lsmhe.nuk_mhe[i, k]**2 for k in self.lsmhe.xkNk_mhe)
                 for i in self.lsmhe.fe_t)) if self.diag_Q_R else Expression(
-            expr=sum(sum(self.lsmhe.nuk[i, j] *
-                         sum(self.lsmhe.R_mhe[i, j, k] * self.lsmhe.nuk[i, k] for k in self.lsmhe.xkNk)
-                         for j in self.lsmhe.xkNk) for i in self.lsmhe.fe_t))
+            expr=sum(sum(self.lsmhe.nuk_mhe[i, j] *
+                         sum(self.lsmhe.R_mhe[i, j, k] * self.lsmhe.nuk_mhe[i, k] for k in self.lsmhe.xkNk_mhe)
+                         for j in self.lsmhe.xkNk_mhe) for i in self.lsmhe.fe_t))
 
-        self.lsmhe.Arrival_expr = Expression(
-            expr=sum((self.xkN_l[j] - self.lsmhe.x_0[j]) *
-                     sum(self.lsmhe.PikN[j, k] * (self.xkN_l[k] - self.lsmhe.x_0[k]) for k in self.lsmhe.xkNk)
-                     for j in self.lsmhe.xkNk))
+        self.lsmhe.Arrival_e_mhe = Expression(
+            expr=0.5 * sum((self.xkN_l[j] - self.lsmhe.x_0_mhe[j]) *
+                     sum(self.lsmhe.PikN_mhe[j, k] * (self.xkN_l[k] - self.lsmhe.x_0_mhe[k]) for k in self.lsmhe.xkNk_mhe)
+                     for j in self.lsmhe.xkNk_mhe))
 
-        self.lsmhe.mhe_obfun_dum = Objective(sense=minimize,
-                                             expr=self.lsmhe.Q_expr + self.lsmhe.R_expr)
-        self.lsmhe.mhe_obfun_dum.deactivate()
+        self.lsmhe.obfun_dum_mhe = Objective(sense=minimize,
+                                             expr=self.lsmhe.Q_e_mhe + self.lsmhe.R_e_mhe)
+        self.lsmhe.obfun_dum_mhe.activate()
 
+        self.lsmhe.obfun_mhe = Objective(sense=minimize,
+                                         expr=self.lsmhe.Arrival_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.R_e_mhe)
+        self.lsmhe.obfun_mhe.deactivate()
 
-        self.lsmhe.mhe_obfun = Objective(sense=minimize,
-                                         expr=self.lsmhe.Arrival_expr + self.lsmhe.Q_expr + self.lsmhe.R_expr)
-
-
-
+        self._PI = {}  #: Container of the KKT matrix
         self.xreal_W = {}
 
     def initialize_xreal(self, ref):
@@ -175,11 +173,11 @@ class MheGen(DynGen):
                         print(i)
                         self.xreal_W[(i, fe)].append(value(xs[k]))
 
-    def initialize_lsmhe(self, ref):
-        """Initializes the lsmhe DEAL WITH INPUTS!!
+    def init_lsmhe_prep(self, ref):
+        """Initializes the lsmhe in preparation phase
         Args
             ref (pyomo.core.base.PyomoModel.ConcreteModel): The reference model"""
-        self.journalizer("I", self._c_it, "initialize_olnmpc", "Attempting to initialize lsmhe")
+        self.journalizer("I", self._c_it, "initialize_lsmhe", "Attempting to initialize lsmhe")
         dum = self.d_mod(1, self.ncp_t, _t=self.hi_t)
         dum.name = "Dummy I"
         #: Load current solution
@@ -192,20 +190,20 @@ class MheGen(DynGen):
                 p = getattr(dum, pn)
                 vs = getattr(dum, i)
                 for ks in p.iterkeys():
-                    p[ks].value = value(vs[(1, self.ncp_t) + ks])
+                    p[ks].value = value(vs[(1, self.ncp_t) + (ks,)])
             if finite_elem == 1:
                 for i in self.states:
                     pn = i + "_ic"
-                    p = getattr(self.olnmpc, pn)  #: Target
+                    p = getattr(self.lsmhe, pn)  #: Target
                     vs = getattr(dum, i)  #: Source
                     for ks in p.iterkeys():
-                        p[ks].value = value(vs[(1, self.ncp_t) + ks])
+                        p[ks].value = value(vs[(1, self.ncp_t) + (ks,)])
             #: Solve
             self.solve_d(dum, o_tee=False)
             #: Patch
-            self.load_d_d(dum, self.olnmpc, finite_elem)
-
-        self.journalizer("I", self._c_it, "initialize_olnmpc", "Attempting to initialize olnmpc Done")
+            self.load_d_d(dum, self.lsmhe, finite_elem)
+            self.load_inputsmhe(dum, finite_elem)
+        self.journalizer("I", self._c_it, "initialize_lsmhe", "Attempting to initialize lsmhe Done")
 
     def extract_meas_(self, t, **kwargs):
         """Mechanism to assign a value of y0 to the current mhe from the dynamic model
@@ -228,7 +226,7 @@ class MheGen(DynGen):
             meas_dic[i] = lm
 
         if not skip_update:  #: Update the mhe model
-            y0dest = getattr(self.lsmhe, "yk0")
+            y0dest = getattr(self.lsmhe, "yk0_mhe")
 
             for i in self.y:
                 for j in self.y_vars[i]:
@@ -242,8 +240,8 @@ class MheGen(DynGen):
             k = 0
             for i in self.y:
                 for j in self.y_vars[i]:
-                    target = value(self.lsmhe.yk0[t, k]) - value(self.yk_l[t][k])
-                    self.lsmhe.nuk[t, k].set_value(target)
+                    target = value(self.lsmhe.yk0_mhe[t, k]) - value(self.yk_l[t][k])
+                    self.lsmhe.nuk_mhe[t, k].set_value(target)
                     k += 1
 
     def set_covariance_meas(self, cov_dict):
@@ -304,3 +302,189 @@ class MheGen(DynGen):
                         except ValueError:
                             continue
 
+    def load_inputsmhe(self, src, fe=1):
+        """Loads inputs into the mhe model"""
+        for u in self.u:
+            usrc = getattr(src, u)
+            utrg = getattr(self.lsmhe, u)
+            utrg[fe] = (value(usrc[1]))
+
+    def init_step_mhe(self, tgt, i):
+        """Takes the last state-estimate from the mhe to perform an open-loop simulation
+        that initializes the last slice of the mhe horizon
+        Args:
+            tgt (pyomo.core.base.PyomoModel.ConcreteModel): The target"""
+        src = self.lsmhe
+        for vs in src.component_objects(Var, active=True):
+            if vs.getname()[-4:] == "_mhe":
+                continue
+            vd = getattr(tgt, vs.getname())
+            # there are two cases: 1 key 1 elem, several keys 1 element
+            vskeys = vs.keys()
+            if len(vskeys) == 1:
+                #: One key
+                for ks in vskeys:
+                    for v in vd.itervalues():
+                        v.set_value(value(vs[ks]))
+            else:
+                k = 0
+                for ks in vskeys:
+                    if k == 0:
+                        if type(ks) != tuple:
+                            #: Several keys of 1 element each!!
+                            vd[1].set_value(value(vs[vskeys[-1]]))  #: This has got to be true
+                            break
+                        k += 1
+                    kj = ks[2:]
+                    if vs.getname() in self.states:  #: States start at 0
+                        for j in range(0, self.ncp_t + 1):
+                            vd[(1, j) + kj].set_value(value(vs[(i, j) + kj]))
+                    else:
+                        for j in range(1, self.ncp_t + 1):
+                            vd[(1, j) + kj].set_value(value(vs[(i, j) + kj]))
+        for u in self.u:
+            usrc = getattr(src, u)
+            utgt = getattr(tgt, u)
+            utgt[1] = (value(usrc[i]))
+        for x in self.states:
+            pn = x + "_ic"
+            p = getattr(tgt, pn)
+            vs = getattr(self.lsmhe, x)
+            for ks in p.iterkeys():
+                p[ks].value = value(vs[(i, self.ncp_t) + (ks,)])
+
+    def create_rh_sfx(self):
+        """Creates relevant suffixes for K_Matrix (prior at fe=2)
+        Args:
+            None
+        Returns:
+            None
+        """
+        # Degree of freedom variable
+        self.lsmhe.dof_v = Suffix(direction=Suffix.EXPORT)
+        self.lsmhe.rh_name = Suffix(direction=Suffix.IMPORT)
+        self.lsmhe.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+        self.lsmhe.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+        self.lsmhe.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+        self.lsmhe.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+
+        for key in self.x_noisy:
+            var = getattr(self.lsmhe, key)
+            for j in self.x_vars[key]:
+                var[(2, 0) + j].set_suffix_value(self.lsmhe.dof_v, 1)
+
+    def check_active_bound_noisy(self):
+        """Checks if the dof_(super-basic) have active bounds, if so, add them to the exclusion list"""
+        self.xkN_exl = []
+        k = 0
+        for key in self.x_noisy:
+            v = getattr(self.lsmhe, key)
+            for j in self.x_noisy[key]:
+                if v[(2, 0) + j].value - v[(2, 0) + j].lb < 1e-08 or v[(2, 0) + j].ub - v[(2, 0) + j].value < 1e-08:
+                    print("Active bound {:s}, {:d}, value {:f}".format(key, j[0], v[(2, 0) + j].value))
+                    v[(2, 0) + j].set_suffix_value(self.lsmhe.dof_v, 0)
+                    self.xkN_exl.append(0)
+                    k += 1
+                else:
+                    v[(2, 0) + j].set_suffix_value(self.lsmhe.dof_v, 1)
+                    self.xkN_exl.append(1)
+        if k > 0:
+            print("I[[check_active_bound_noisy]] {:d} Active bounds.".format(k))
+
+    def deact_icc_mhe(self):
+        """Deactivates the icc constraints in the mhe problem"""
+        if self.deact_ics:
+            for i in self.states:
+                icccon = getattr(i + "_icc")
+                icccon.deactivate()
+        #: Maybe only for a subset of the states
+        else:
+            for i in self.states:
+                if i in self.x_noisy:
+                    ic_con = getattr(self.lsmhe, i + "_icc")
+                    for k in ic_con.keys():
+                        if k[2:] in self.x_vars[i]:
+                            ic_con[k].deactivate()
+
+    def regen_objective_fun(self):
+        """Given the exclusion list, regenerate the expression for the arrival cost"""
+        self.lsmhe.Arrival_e_mhe.set_value(0.5 * sum((self.xkN_l[j] - self.lsmhe.x_0_mhe[j]) *
+                                                     sum(self.lsmhe.PikN_mhe[j, k] *
+                                                         (self.xkN_l[k] - self.lsmhe.x_0_mhe[k]) for k in
+                                                         self.lsmhe.xkNk_mhe if self.xkN_exl[k])
+                                                     for j in self.lsmhe.xkNk_mhe if self.xkN_exl[j]))
+        self.lsmhe.obfun_mhe.set_value(self.lsmhe.Arrival_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.R_e_mhe)
+        if not self.lsmhe.obfun_mhe.active:
+            self.lsmhe.obfun_mhe.activate()
+
+    def load_covariance_prior(self):
+        """Reads the result_hessian.txt file that contains the covariance information"""
+        self.k_aug.solve(self.lsmhe, tee=True)
+
+        self.k_aug.options["eig_rh"] = ""
+        self._PI.clear()
+        with open("inv_.txt", "r") as rh:
+            ll = []
+            l = rh.readlines()
+            row = 1
+            for i in l:
+                ll = i.split()
+                col = 1
+                for j in ll:
+                    self._PI[row, col] = float(j)
+                    col += 1
+                row += 1
+            rh.close()
+        print("-" * 120)
+        print("I[[load covariance]] e-states nrows {:d} ncols {:d}".format(len(l), len(ll)))
+        print("-" * 120)
+
+    def set_state_covariance(self):
+        """Sets covariance(inverse) for the prior_state.
+        Args:
+            None
+        Return:
+            None
+        """
+        pikn = getattr(self.lsmhe, "PikN_mhe")
+        for key_j in self.x_noisy:
+            for key_k in self.x_noisy:
+                vj = getattr(self.lsmhe, key_j)
+                vk = getattr(self.lsmhe, key_k)
+                for j in self.x_vars[key_j]:
+                    if vj[(2, 0) + j].get_suffix_value(self.lsmhe.dof_v) == 0:
+                        #: This state is at its bound, skip
+                        continue
+                    for k in self.x_vars[key_k]:
+                        if vk[(2, 0) + k].get_suffix_value(self.lsmhe.dof_v) == 0:
+                            #: This state is at its bound, skip
+                            print("vj {:s} {:d} .sfx={:d}, vk {:s} {:d}.sfx={:d}"
+                                  .format(key_j, j[0], vj[(2, 0) + j].get_suffix_value(self.lsmhe.dof_v),
+                                          key_k, k[0], vk[(2, 0) + k].get_suffix_value(self.lsmhe.dof_v),))
+                            continue
+                        row = vj[(2, 0) + j].get_suffix_value(self.lsmhe.rh_name)
+                        col = vk[(2, 0) + k].get_suffix_value(self.lsmhe.rh_name)
+
+                        q0j = self.xkN_key[key_j, j]
+                        q0k = self.xkN_key[key_k, k]
+                        pi = self._PI[row, col]
+                        try:
+                            pikn[q0j, q0k] = pi
+                        except KeyError:
+                            errk = key_j + "_" + str(j) + ", " + key_k + "_" + str(k)
+                            print("Kerror, var {:}".format(errk))
+                            pikn[q0j, q0k] = 0.0
+
+    def set_prior_state_from_prior_mhe(self):
+        """Mechanism to assign a value to z0 (prior-state) from the previous mhe
+        Args:
+            None
+        Returns:
+            None:
+        """
+        for x in self.x_noisy:
+            var = getattr(self.lsmhe, x)
+            for j in self.x_vars[x]:
+                z0dest = getattr(self.lsmhe, "x_0_mhe")
+                z0 = self.xkN_key[x, j]
+                z0dest[z0] = value(var[(2, 0,) + j])

@@ -19,12 +19,12 @@ class NmpcGen(DynGen):
         DynGen.__init__(self, **kwargs)
         # We need a list of the relevant controls smth like u = [u1, u2, ..., un]
         # We need a list of tuples that contain the bounds of u
-
-
+        self.olnmpc = object
         print("-" * 120)
         print("I[[create_olnmpc]] olnmpc (full) model created.")
         print("-" * 120)
 
+    def create_nmpc(self):
         self.olnmpc = self.d_mod(self.nfe_t, self.ncp_t, _t=self._t)
         self.olnmpc.name = "olnmpc (Open-Loop NMPC)"
         self.olnmpc.create_bounds()
@@ -41,8 +41,6 @@ class NmpcGen(DynGen):
             cc.rule = lambda m, i: cv[i] == ce[i]
             cc.reconstruct()
 
-
-
     def initialize_olnmpc(self, ref):
         """Initializes the olnmpc
         Args
@@ -58,8 +56,6 @@ class NmpcGen(DynGen):
             for i in cv.iterkeys():
                 cv[i].value = value(cv_ref[i])
 
-        # dum.per_opening2[1].value = value(ref.per_opening2[1])
-        # dum.per_opening1[1].value = value(ref.per_opening1[1])
         #: Patching of finite elements
         for finite_elem in range(1, self.nfe_t + 1):
             #: Cycle ICS
@@ -81,8 +77,6 @@ class NmpcGen(DynGen):
                     #     f.close()
 
             #: Solve
-            # ref.pprint(filename="ref.txt")
-            # dum.pprint(filename="dum.txt")
             self.solve_d(dum, o_tee=False)
             #: Patch
             self.load_d_d(dum, self.olnmpc, finite_elem)
@@ -92,10 +86,6 @@ class NmpcGen(DynGen):
                 cv_dum = getattr(u, dum)
                 # works only for fe_t index
                 cv[finite_elem].set_value(value(cv_dum[1]))
-
-
-            # self.olnmpc.per_opening2[finite_elem].set_value(value(dum.per_opening2[1]))
-            # self.olnmpc.per_opening1[finite_elem].set_value(value(dum.per_opening1[1]))
         self.journalizer("I", self._c_it, "initialize_olnmpc", "Attempting to initialize olnmpc Done")
 
     def load_reference_state(self, ref, state_weight=1e-14, control_weight=1e+01):

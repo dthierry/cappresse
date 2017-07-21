@@ -8,7 +8,7 @@ from pyomo.core.base import ConcreteModel, Set, Constraint, Var,\
 from nmpc_mhe.aux.cpoinsc import collptsgen
 from nmpc_mhe.aux.lagrange_f import lgr, lgry, lgrdot, lgrydot
 from dist_col_mod import *
-from six import itervalues, iterkeys
+from six import itervalues, iterkeys, iteritems
 from pyomo.opt import ProblemFormat, SolverFactory
 import re, os
 

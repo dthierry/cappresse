@@ -41,3 +41,7 @@ for i in range(1, 5 + 1):
 
 e.set_covariance_meas(m_cov)
 e.set_covariance_disturb(q_cov)
+e.init_lsmhe_prep(e.d1)
+e.shift_mhe()
+dum = e.d_mod(1, e.ncp_t, _t=e.hi_t)
+e.init_step_mhe(dum, e.nfe_t)
