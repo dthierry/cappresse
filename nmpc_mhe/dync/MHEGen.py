@@ -18,7 +18,7 @@ __author__ = "David M Thierry @dthierry"
 
 class MheGen(NmpcGen):
     def __init__(self, **kwargs):
-        DynGen.__init__(self, **kwargs)
+        NmpcGen.__init__(self, **kwargs)
 
         # Need a list of relevant measurements y
 
@@ -44,14 +44,14 @@ class MheGen(NmpcGen):
 
         #: Create list of noisy-states vars
         self.xkN_l = []
-        self.xkN_exl = []
+        self.xkN_nexcl = []
         self.xkN_key = {}
         k = 0
         for x in self.x_noisy:
             n_s = getattr(self.lsmhe, x)  #: Noisy-state
             for jth in self.x_vars[x]:  #: the jth variable
                 self.xkN_l.append(n_s[(1, 0) + jth])
-                self.xkN_exl.append(0)  #: exclusion list for active bounds
+                self.xkN_nexcl.append(1)  #: non-exclusion list for active bounds
                 self.xkN_key[(x, jth)] = k
                 k += 1
 
@@ -150,12 +150,13 @@ class MheGen(NmpcGen):
         self._PI = {}  #: Container of the KKT matrix
         self.xreal_W = {}
 
+        self.s_estimate = dict.fromkeys(self.x_noisy)
+
     def initialize_xreal(self, ref):
+        """Wanted to keep the states in a horizon-like window, this should be done in the main dyngen class"""
         dum = self.d_mod(1, self.ncp_t, _t=self.hi_t)
         dum.name = "Dummy [xreal]"
         self.load_d_d(ref, dum, 1)
-        # ref.display(filename="somefile1.txt")
-        # dum.display(filename="somefile2.txt")
         for fe in range(1, self._window_keep):
             for i in self.states:
                 pn = i + "_ic"
@@ -175,7 +176,7 @@ class MheGen(NmpcGen):
 
     def init_lsmhe_prep(self, ref):
         """Initializes the lsmhe in preparation phase
-        Args
+        Args:
             ref (pyomo.core.base.PyomoModel.ConcreteModel): The reference model"""
         self.journalizer("I", self._c_it, "initialize_lsmhe", "Attempting to initialize lsmhe")
         dum = self.d_mod(1, self.ncp_t, _t=self.hi_t)
@@ -198,6 +199,7 @@ class MheGen(NmpcGen):
                     vs = getattr(dum, i)  #: Source
                     for ks in p.iterkeys():
                         p[ks].value = value(vs[(1, self.ncp_t) + (ks,)])
+            self.extract_meas_(finite_elem)
             #: Solve
             self.solve_d(dum, o_tee=False)
             #: Patch
@@ -363,10 +365,10 @@ class MheGen(NmpcGen):
         # Degree of freedom variable
         self.lsmhe.dof_v = Suffix(direction=Suffix.EXPORT)
         self.lsmhe.rh_name = Suffix(direction=Suffix.IMPORT)
-        self.lsmhe.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
-        self.lsmhe.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
-        self.lsmhe.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
-        self.lsmhe.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+        # self.lsmhe.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+        # self.lsmhe.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+        # self.lsmhe.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+        # self.lsmhe.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
 
         for key in self.x_noisy:
             var = getattr(self.lsmhe, key)
@@ -375,19 +377,19 @@ class MheGen(NmpcGen):
 
     def check_active_bound_noisy(self):
         """Checks if the dof_(super-basic) have active bounds, if so, add them to the exclusion list"""
-        self.xkN_exl = []
+        self.xkN_nexcl = []
         k = 0
-        for key in self.x_noisy:
-            v = getattr(self.lsmhe, key)
-            for j in self.x_noisy[key]:
+        for x in self.x_noisy:
+            v = getattr(self.lsmhe, x)
+            for j in self.x_vars[x]:
                 if v[(2, 0) + j].value - v[(2, 0) + j].lb < 1e-08 or v[(2, 0) + j].ub - v[(2, 0) + j].value < 1e-08:
-                    print("Active bound {:s}, {:d}, value {:f}".format(key, j[0], v[(2, 0) + j].value))
+                    print("Active bound {:s}, {:d}, value {:f}".format(x, j[0], v[(2, 0) + j].value))
                     v[(2, 0) + j].set_suffix_value(self.lsmhe.dof_v, 0)
-                    self.xkN_exl.append(0)
+                    self.xkN_nexcl.append(0)
                     k += 1
                 else:
                     v[(2, 0) + j].set_suffix_value(self.lsmhe.dof_v, 1)
-                    self.xkN_exl.append(1)
+                    self.xkN_nexcl.append(1)  #: Not active, add it to the non-exclusion list.
         if k > 0:
             print("I[[check_active_bound_noisy]] {:d} Active bounds.".format(k))
 
@@ -395,7 +397,7 @@ class MheGen(NmpcGen):
         """Deactivates the icc constraints in the mhe problem"""
         if self.deact_ics:
             for i in self.states:
-                icccon = getattr(i + "_icc")
+                icccon = getattr(self.lsmhe, i + "_icc")
                 icccon.deactivate()
         #: Maybe only for a subset of the states
         else:
@@ -411,25 +413,27 @@ class MheGen(NmpcGen):
         self.lsmhe.Arrival_e_mhe.set_value(0.5 * sum((self.xkN_l[j] - self.lsmhe.x_0_mhe[j]) *
                                                      sum(self.lsmhe.PikN_mhe[j, k] *
                                                          (self.xkN_l[k] - self.lsmhe.x_0_mhe[k]) for k in
-                                                         self.lsmhe.xkNk_mhe if self.xkN_exl[k])
-                                                     for j in self.lsmhe.xkNk_mhe if self.xkN_exl[j]))
+                                                         self.lsmhe.xkNk_mhe if self.xkN_nexcl[k])
+                                                     for j in self.lsmhe.xkNk_mhe if self.xkN_nexcl[j]))
         self.lsmhe.obfun_mhe.set_value(self.lsmhe.Arrival_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.R_e_mhe)
+        if self.lsmhe.obfun_dum_mhe.active:
+            self.lsmhe.obfun_dum_mhe.deactivate()
         if not self.lsmhe.obfun_mhe.active:
             self.lsmhe.obfun_mhe.activate()
 
     def load_covariance_prior(self):
-        """Reads the result_hessian.txt file that contains the covariance information"""
-        self.k_aug.solve(self.lsmhe, tee=True)
-
+        """Computes the reduced-hessian (inverse of the prior-covariance)
+        Reads the result_hessian.txt file that contains the covariance information"""
         self.k_aug.options["eig_rh"] = ""
+        self.k_aug.solve(self.lsmhe, tee=True)
         self._PI.clear()
         with open("inv_.txt", "r") as rh:
             ll = []
             l = rh.readlines()
-            row = 1
+            row = 0
             for i in l:
                 ll = i.split()
-                col = 1
+                col = 0
                 for j in ll:
                     self._PI[row, col] = float(j)
                     col += 1
@@ -464,7 +468,13 @@ class MheGen(NmpcGen):
                             continue
                         row = vj[(2, 0) + j].get_suffix_value(self.lsmhe.rh_name)
                         col = vk[(2, 0) + k].get_suffix_value(self.lsmhe.rh_name)
+                        #: Ampl does not give you back 0's
+                        if not row:
+                            row = 0
+                        if not col:
+                            col = 0
 
+                        # print((row, col), (key_j, j), (key_k, k))
                         q0j = self.xkN_key[key_j, j]
                         q0k = self.xkN_key[key_k, k]
                         pi = self._PI[row, col]
@@ -476,11 +486,11 @@ class MheGen(NmpcGen):
                             pikn[q0j, q0k] = 0.0
 
     def set_prior_state_from_prior_mhe(self):
-        """Mechanism to assign a value to z0 (prior-state) from the previous mhe
+        """Mechanism to assign a value to x0 (prior-state) from the previous mhe
         Args:
             None
         Returns:
-            None:
+            None
         """
         for x in self.x_noisy:
             var = getattr(self.lsmhe, x)
@@ -488,3 +498,45 @@ class MheGen(NmpcGen):
                 z0dest = getattr(self.lsmhe, "x_0_mhe")
                 z0 = self.xkN_key[x, j]
                 z0dest[z0] = value(var[(2, 0,) + j])
+
+    def introduce_noise_meas(self, mod, cov_dict):
+        self.journalizer("I", self._c_it, "introduce_noise_meas", "Noise introduction")
+        # f = open("m0.txt", "w")
+        # f1 = open("m1.txt", "w")
+        for y in self.y:
+            vy = getattr(mod,  y)
+            # vy.display(ostream=f)
+            for j in self.y_vars[y]:
+                vv = value(vy[(1, self.ncp_t) + j])
+                sigma = cov_dict[(y, j), (y, j), 1]
+                noise = np.random.normal(0, sigma)
+                vv += noise
+                vy[(1, self.ncp_t) + j].set_value(vv)
+            # vy.display(ostream=f1)
+        # f.close()
+        # f1.close()
+
+    def print_r_mhe(self):
+        self.journalizer("I", self._c_it, "print_r_mhe", "res")
+        for x in self.x_noisy:
+            self.s_estimate[x] = []
+
+
+        self.ccl.append(value(self.d1.c_capture[1, self.ncp_t]))
+        self.sp.append(value(self.ss2.c_capture[1, 1]))
+        self.iput.append([value(self.d1.per_opening2[1]), value(self.d1.per_opening1[1])])
+        with open("results_mhe.txt", "w") as f:
+            for i in range(0, len(self.ccl)):
+                c = []
+                o = str(self.ccl[i])
+                f.write(o)
+                for j in range(0, len(self.iput[i])):
+                    c.append(str(self.iput[i][j]))
+                    f.write("\t" + c[j])
+                f.write("\t" + str(self.sp[i]))
+                f.write("\t" + str(self._ipt_list[i]))
+                for j in range(0, len(self._kt_list[i])):
+                    f.write("\t" + self._kt_list[i][j])
+                f.write("\t" + self._dt_list[i])
+                f.write("\n")
+            f.close()

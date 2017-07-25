@@ -169,6 +169,9 @@ class DynGen(object):
             ma57_small_pivot_flag = kwargs["ma57_small_pivot_flag"]
         if kwargs.get("o_tee"):
             o_tee = kwargs["o_tee"]
+
+        skip_mult_update = kwargs.pop("skip_update", True)
+
         name = mod.name
 
         self.journalizer("I", self._c_it, "Solving with IPOPT", name)
@@ -193,6 +196,9 @@ class DynGen(object):
             self._stall_iter = 0
             if want_stime and rep_timing:
                 self.ip_time = self.ipopt._solver_time_x
+            if not skip_mult_update:
+                mod.ipopt_zL_in.update(mod.ipopt_zL_out)
+                mod.ipopt_zU_in.update(mod.ipopt_zU_out)
 
             return 0
         else:

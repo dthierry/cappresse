@@ -11,8 +11,8 @@ x_noisy = ["x", "M"]
 ntrays = 42
 y_vars = {"T": [(i,) for i in range(1, ntrays + 1)],
           "Mv": [(i,) for i in range(2, ntrays)],
-          "Mv1":[((),)],
-          "Mvn":[((),)]}
+          "Mv1": [((),)],
+          "Mvn": [((),)]}
 
 x_vars = {"x": [(i,) for i in range(1, ntrays + 1)],
           "M": [(i,) for i in range(1, ntrays + 1)]}
@@ -44,4 +44,33 @@ e.set_covariance_disturb(q_cov)
 e.init_lsmhe_prep(e.d1)
 e.shift_mhe()
 dum = e.d_mod(1, e.ncp_t, _t=e.hi_t)
+
 e.init_step_mhe(dum, e.nfe_t)
+e.solve_d(e.lsmhe, skip_update=False)
+
+e.create_rh_sfx()
+
+e.check_active_bound_noisy()
+e.load_covariance_prior()
+e.set_state_covariance()
+
+e.regen_objective_fun()
+e.deact_icc_mhe()
+
+e.set_prior_state_from_prior_mhe()
+
+
+e.solve_d(e.d1)
+e.introduce_noise_meas(e.d1, m_cov)
+e.extract_meas_(e.nfe_t, src=e.d1)
+
+e.init_step_mhe(dum, e.nfe_t)
+e.solve_d(e.lsmhe, skip_update=False)
+e.check_active_bound_noisy()
+e.load_covariance_prior()
+e.set_state_covariance()
+e.regen_objective_fun()
+e.set_prior_state_from_prior_mhe()
+
+
+

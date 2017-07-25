@@ -169,7 +169,6 @@ class NmpcGen(DynGen):
         self.olnmpc.c_w = control_weight
         self.olnmpc.s_w = state_weight
 
-
     def create_suffixes(self):
         """Creates the requiered suffixes for the olnmpc problem"""
         if hasattr(self.olnmpc, "npdp"):
@@ -196,7 +195,6 @@ class NmpcGen(DynGen):
             if self.olnmpc.per_opening2[key].stale:
                 continue
             self.olnmpc.per_opening2[key].set_suffix_value(self.olnmpc.dof_v, 1)
-
 
     def solve_dot_dri(self):
         for i in self.states:
@@ -232,7 +230,6 @@ class NmpcGen(DynGen):
         ftimings.close()
         self._k_timing = s.split()
 
-
     def plant_input_olnmpc(self, nsteps=5):
         self.journalizer("I", self._c_it, "plant_input", "Continuation")
         olnmpc = self.olnmpc
@@ -251,8 +248,6 @@ class NmpcGen(DynGen):
             d1.per_opening2[1].value = current[0]
             d1.per_opening1[1].value = current[1]
             self.solve_d(d1, o_tee=False)
-
-
 
     def stall_strategy(self, strategy, cmv=1e-04, **kwargs):
         """Suggested three strategies: Change weights, change matrices, change linear algebra"""
