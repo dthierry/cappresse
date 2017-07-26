@@ -1,9 +1,12 @@
+from __future__ import print_function
 from pyomo.environ import *
 from nmpc_mhe.dync.MHEGen import MheGen
 from nmpc_mhe.mods.distl.dist_col import DistDiehlNegrete
+import sys
 
 y = ["T", "Mv", "Mv1", "Mvn"]
 u = ["u1", "u2"]
+ref_state = {("T", (29,)): 343.15, ("T", (14,)): 361.15}
 
 states = ["x", "M"]
 x_noisy = ["x", "M"]
@@ -17,7 +20,14 @@ y_vars = {"T": [(i,) for i in range(1, ntrays + 1)],
 x_vars = {"x": [(i,) for i in range(1, ntrays + 1)],
           "M": [(i,) for i in range(1, ntrays + 1)]}
 
-e = MheGen(d_mod=DistDiehlNegrete, y=y, x_noisy=x_noisy, y_vars=y_vars, x_vars=x_vars, states=states, u=u)
+e = MheGen(d_mod=DistDiehlNegrete,
+           y=y,
+           x_noisy=x_noisy,
+           y_vars=y_vars,
+           x_vars=x_vars,
+           states=states,
+           u=u,
+           ref_state=ref_state)
 
 e.solve_ss()
 e.load_d_s(e.d1)
@@ -58,19 +68,45 @@ e.regen_objective_fun()
 e.deact_icc_mhe()
 
 e.set_prior_state_from_prior_mhe()
+e.find_target_ss()
 
 
-e.solve_d(e.d1)
-e.introduce_noise_meas(e.d1, m_cov)
-e.extract_meas_(e.nfe_t, src=e.d1)
+for i in range(1, 50):
+    print(str(i) + "--"*20, file=sys.stderr)
+    print(i)
+    print("*"*100)
+    f0 = open("somefile0.txt", "w")
+    f1 = open("somefile1.txt", "w")
 
-e.init_step_mhe(dum, e.nfe_t)
-e.solve_d(e.lsmhe, skip_update=False)
-e.check_active_bound_noisy()
-e.load_covariance_prior()
-e.set_state_covariance()
-e.regen_objective_fun()
-e.set_prior_state_from_prior_mhe()
+    if i == 10:
+        e.plant_input_gen(e.ss2, 1)
+        # e.lsmhe.pprint(filename="somefile.txt")
 
+
+    e.solve_d(e.d1)
+    e.update_noise_meas(e.d1, m_cov)
+
+    e.patch_meas_mhe(e.nfe_t, src=e.d1, noisy=True)
+    e.load_inputsmhe(e.d1, e.nfe_t)
+
+    e.init_step_mhe(dum, e.nfe_t)
+    e.solve_d(e.lsmhe, skip_update=False)
+    e.check_active_bound_noisy()
+    e.load_covariance_prior()
+    e.set_state_covariance()
+    e.regen_objective_fun()
+
+    e.set_prior_state_from_prior_mhe()
+
+    e.print_r_mhe()
+    e.shift_mhe()
+    # e.lsmhe.u1.display(ostream=f0)
+    # e.lsmhe.u2.display(ostream=f0)
+    e.shift_measurement()
+    # e.lsmhe.u1.display(ostream=f1)
+    # e.lsmhe.u2.display(ostream=f1)
+
+    f0.close()
+    f1.close()
 
 

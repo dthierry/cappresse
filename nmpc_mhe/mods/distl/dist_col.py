@@ -430,9 +430,15 @@ class DistDiehlNegrete(ConcreteModel):
             solver = SolverFactory('ipopt')
             someresults = solver.solve(self, tee=True)
 
-    def equalize_u(self):
+    def equalize_u(self, direction="u_to_r"):
         """set current controls to the values of their respective dummies"""
-        for i in iterkeys(self.Rec):
-            self.Rec[i].set_value(value(self.u1[i]))
-        for i in iterkeys(self.Rec):
-            self.Qr[i].set_value(value(self.u2[i]))
+        if direction == "u_to_r":
+            for i in iterkeys(self.Rec):
+                self.Rec[i].set_value(value(self.u1[i]))
+            for i in iterkeys(self.Rec):
+                self.Qr[i].set_value(value(self.u2[i]))
+        elif direction == "r_to_u":
+            for i in iterkeys(self.u1):
+                self.u1[i].value = value(self.Rec[i])
+            for i in iterkeys(self.u2):
+                self.u2[i].value = value(self.Qr[i])

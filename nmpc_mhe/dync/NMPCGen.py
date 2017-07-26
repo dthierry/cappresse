@@ -17,7 +17,9 @@ __author__ = "David M Thierry @dthierry"
 class NmpcGen(DynGen):
     def __init__(self, **kwargs):
         DynGen.__init__(self, **kwargs)
-        # We need a list of the relevant controls smth like u = [u1, u2, ..., un]
+
+        self.ref_state = kwargs.pop("ref_state", [])
+
         # We need a list of tuples that contain the bounds of u
         self.olnmpc = object
         print("-" * 120)
@@ -283,10 +285,10 @@ class NmpcGen(DynGen):
                 sys.exit()
             self.stall_strategy("increase_weights")
 
-    def find_target_ss(self, target):
+    def find_target_ss(self):
         """Attempt to find a second steady state
         Args:
-            target (float): The desired carbon capture
+            None
         Returns
             None"""
         print("-" * 120)
@@ -295,25 +297,33 @@ class NmpcGen(DynGen):
         del self.ss2
         self.ss2 = self.d_mod(1, 1, steady=True)
         self.ss2.name = "ss2 (reference)"
+        for u in self.u:
+            cv = getattr(self.ss2, u)  #: Get the param
+            c_val = [value(cv[i]) for i in cv.iterkeys()]  #: Current value
+            self.ss2.del_component(cv)  #: Delete the param
+            self.ss2.add_component(u, Var(self.ss2.fe_t, initialize=lambda m, i: c_val[i-1]))
+            cc = getattr(self.ss2, u + "_c")  #: Get the constraint
+            ce = getattr(self.ss2, u + "_e")  #: Get the expression
+            cv = getattr(self.ss2, u)  #: Get the new variable
+            cc.clear()
+            cc.rule = lambda m, i: cv[i] == ce[i]
+            cc.reconstruct()
 
-        self.ss2.del_component(self.ss2.per_opening1)
-        self.ss2.del_component(self.ss2.per_opening2)
-
-        self.ss2.per_opening1 = Var(self.ss2.fe_t, initialize=85., bounds=(0, 95))
-        self.ss2.per_opening2 = Var(self.ss2.fe_t, initialize=50., bounds=(0, 95))
-        # self.ss2.per_opening3 = Var(self.ss2.fe_t, initialize=50., bounds=(0, 100))
-        self.ss2.v1.reconstruct()
-        # self.ss2.v3.reconstruct()
-        self.ss2.v4.reconstruct()
         self.ss2.create_bounds()
+        self.ss2.equalize_u(direction="r_to_u")
 
-        for vt in self.ss2.component_objects(Var, active=True):
-            vs = getattr(self.ss, vt.getname())
+        for vs in self.ss.component_objects(Var, active=True):  #: Load_guess
+            vt = getattr(self.ss2, vs.getname())
             for ks in vs.iterkeys():
                 vt[ks].set_value(value(vs[ks]))
-        self.ss2.create_bounds()
-        self.ss2.ob = Objective(expr=1e+02 * (target - self.ss2.c_capture[1, 1]) ** 2, sense=minimize)
-        self.solve_d(self.ss2, iter_max=500)
+        ofexp = 0
+        for i in self.ref_state.keys():
+            v = getattr(self.ss2, i[0])
+            vkey = i[1]
+            ofexp += (v[(1, 1) + vkey] - self.ref_state[i])**2
+        self.ss2.obfun_ss2 = Objective(expr=ofexp, sense=minimize)
+
+        self.solve_d(self.ss2, iter_max=500, stop_if_nopt=True)
 
         print("-" * 120)
         print("I[[find_target_ss]] Target: solve done")

@@ -140,7 +140,7 @@ class DynGen(object):
         ma57_automatic_scaling = "no"
         ma57_small_pivot_flag = 0
 
-        o_tee = True
+        # o_tee = True
         stop_if_nopt = False
         want_stime = False  #: Updates internal time variable
         rep_timing = False
@@ -167,9 +167,8 @@ class DynGen(object):
             ma57_automatic_scaling = kwargs["ma57_automatic_scaling"]
         if kwargs.get("ma57_small_pivot_flag"):
             ma57_small_pivot_flag = kwargs["ma57_small_pivot_flag"]
-        if kwargs.get("o_tee"):
-            o_tee = kwargs["o_tee"]
 
+        o_tee = kwargs.pop("o_tee", True)
         skip_mult_update = kwargs.pop("skip_update", True)
 
         name = mod.name
@@ -287,7 +286,10 @@ class DynGen(object):
             None"""
         iter = str(iter)
         print("-" * 120)
-        print(flag + iter + "[[" + phase + "]]" + message + ".")
+        if flag == 'W':
+            print(flag + iter + "[[" + phase + "]]" + message + ".", file=sys.stderr)
+        else:
+            print(flag + iter + "[[" + phase + "]]" + message + "." + "-" * 20)
         print("-" * 120)
 
     @staticmethod
@@ -406,3 +408,37 @@ class DynGen(object):
         self.solve_d(self.d2)
         self.journalizer("I", self._c_it, "predictor_step", "Predictor step - Success")
 
+    def plant_input_gen(self, src, src_fe, nsteps=5):
+        """Attempt to solve the dynamic model with some source model input
+        Args:
+            src (pyomo.core.base.PyomoModel.ConcreteModel): Source model
+            src_fe (int): Finite element from the source model
+            nsteps (int): The number of continuation steps (default=5)"""
+
+        self.journalizer("I", self._c_it, "plant_input", "Continuation_plant")
+        d1 = self.d1
+        #: Inputs
+        target = {}
+        current = {}
+        ncont_steps = nsteps
+
+        for u in self.u:
+            src_var = getattr(src, u)
+            tgt_var = getattr(d1, u)
+
+            target[u] = value(src_var[src_fe])
+            current[u] = value(tgt_var[1])
+            self.journalizer("I", self._c_it,
+                             "plant_input",
+                             "Target {:f}, Current {:f}, n_steps {:d}".format(target[u], current[u], ncont_steps))
+
+        # print("Target {:f}, Current {:f}, n_steps {:d}".format(target[0], current[0], ncont_steps))
+        for i in range(0, ncont_steps):
+            for u in self.u:
+                tgt_var = getattr(d1, u)
+                tgt_var[1].value += (target[u]-current[u])/ncont_steps
+                print("Continuation :Current {:s}\t{:f}".format(u, value(tgt_var[1])))
+            if i == ncont_steps:
+                self.solve_d(d1, o_tee=False, stop_if_nopt=True)
+            else:
+                self.solve_d(d1, o_tee=False, stop_if_nopt=False)

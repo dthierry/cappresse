@@ -128,11 +128,11 @@ class MheGen(NmpcGen):
         self.lsmhe.R_e_mhe = Expression(
             expr=0.5 * sum(
                 sum(
-                    self.lsmhe.R_mhe[i, k] * self.lsmhe.nuk_mhe[i, k]**2 for k in self.lsmhe.xkNk_mhe)
+                    self.lsmhe.R_mhe[i, k] * self.lsmhe.nuk_mhe[i, k]**2 for k in self.lsmhe.ykk_mhe)
                 for i in self.lsmhe.fe_t)) if self.diag_Q_R else Expression(
             expr=sum(sum(self.lsmhe.nuk_mhe[i, j] *
-                         sum(self.lsmhe.R_mhe[i, j, k] * self.lsmhe.nuk_mhe[i, k] for k in self.lsmhe.xkNk_mhe)
-                         for j in self.lsmhe.xkNk_mhe) for i in self.lsmhe.fe_t))
+                         sum(self.lsmhe.R_mhe[i, j, k] * self.lsmhe.nuk_mhe[i, k] for k in self.lsmhe.ykk_mhe)
+                         for j in self.lsmhe.ykk_mhe) for i in self.lsmhe.fe_t))
 
         self.lsmhe.Arrival_e_mhe = Expression(
             expr=0.5 * sum((self.xkN_l[j] - self.lsmhe.x_0_mhe[j]) *
@@ -149,8 +149,26 @@ class MheGen(NmpcGen):
 
         self._PI = {}  #: Container of the KKT matrix
         self.xreal_W = {}
+        self.curr_m_noise = {}   #: Current measurement noise
+        for y in self.y:
+            for j in self.y_vars[y]:
+                self.curr_m_noise[(y, j)] = 0.0
 
-        self.s_estimate = dict.fromkeys(self.x_noisy)
+        self.s_estimate = {}
+        self.s_real = {}
+        for x in self.x_noisy:
+            self.s_estimate[x] = []
+            self.s_real[x] = []
+
+        self.y_estimate = {}
+        self.y_real = {}
+        self.y_noise_jrnl = {}
+        self.yk0_jrnl = {}
+        for y in self.y:
+            self.y_estimate[y] = []
+            self.y_real[y] = []
+            self.y_noise_jrnl[y] = []
+            self.yk0_jrnl[y] = []
 
     def initialize_xreal(self, ref):
         """Wanted to keep the states in a horizon-like window, this should be done in the main dyngen class"""
@@ -199,7 +217,7 @@ class MheGen(NmpcGen):
                     vs = getattr(dum, i)  #: Source
                     for ks in p.iterkeys():
                         p[ks].value = value(vs[(1, self.ncp_t) + (ks,)])
-            self.extract_meas_(finite_elem)
+            self.patch_meas_mhe(finite_elem)
             #: Solve
             self.solve_d(dum, o_tee=False)
             #: Patch
@@ -207,7 +225,7 @@ class MheGen(NmpcGen):
             self.load_inputsmhe(dum, finite_elem)
         self.journalizer("I", self._c_it, "initialize_lsmhe", "Attempting to initialize lsmhe Done")
 
-    def extract_meas_(self, t, **kwargs):
+    def patch_meas_mhe(self, t, **kwargs):
         """Mechanism to assign a value of y0 to the current mhe from the dynamic model
         Args:
             t (int): int The current collocation point
@@ -216,6 +234,7 @@ class MheGen(NmpcGen):
         """
         src = kwargs.pop("src", self.d1)
         skip_update = kwargs.pop("skip_update", False)
+        noisy = kwargs.pop("noisy", True)
 
         meas_dic = dict.fromkeys(self.y)
         l = []
@@ -229,11 +248,11 @@ class MheGen(NmpcGen):
 
         if not skip_update:  #: Update the mhe model
             y0dest = getattr(self.lsmhe, "yk0_mhe")
-
+            # print("there is an update", file=sys.stderr)
             for i in self.y:
                 for j in self.y_vars[i]:
                     k = self.yk_key[(i, j)]
-                    y0dest[t, k] = l[k]
+                    y0dest[t, k].value = l[k] + self.curr_m_noise[(i, j)] if noisy else l[k]
         return meas_dic
 
     def adjust_nu0_mhe(self):
@@ -304,6 +323,16 @@ class MheGen(NmpcGen):
                         except ValueError:
                             continue
 
+    def shift_measurement(self):
+        y0 = getattr(self.lsmhe, "yk0_mhe")
+        for i in range(2, self.nfe_t + 1):
+            for j in self.lsmhe.yk0_mhe.keys():
+                y0[i-1, j[1:]].value = value(y0[i, j[1:]])
+            for u in self.u:
+                umhe = getattr(self.lsmhe, u)
+                umhe[i-1] = value(umhe[i])
+
+
     def load_inputsmhe(self, src, fe=1):
         """Loads inputs into the mhe model"""
         for u in self.u:
@@ -354,6 +383,8 @@ class MheGen(NmpcGen):
             vs = getattr(self.lsmhe, x)
             for ks in p.iterkeys():
                 p[ks].value = value(vs[(i, self.ncp_t) + (ks,)])
+        self.solve_d(tgt, o_tee=False, stop_if_nopt=True)
+        self.load_d_d(tgt, self.lsmhe, self.nfe_t)
 
     def create_rh_sfx(self):
         """Creates relevant suffixes for K_Matrix (prior at fe=2)
@@ -383,7 +414,7 @@ class MheGen(NmpcGen):
             v = getattr(self.lsmhe, x)
             for j in self.x_vars[x]:
                 if v[(2, 0) + j].value - v[(2, 0) + j].lb < 1e-08 or v[(2, 0) + j].ub - v[(2, 0) + j].value < 1e-08:
-                    print("Active bound {:s}, {:d}, value {:f}".format(x, j[0], v[(2, 0) + j].value))
+                    print("Active bound {:s}, {:d}, value {:f}".format(x, j[0], v[(2, 0) + j].value), file=sys.stderr)
                     v[(2, 0) + j].set_suffix_value(self.lsmhe.dof_v, 0)
                     self.xkN_nexcl.append(0)
                     k += 1
@@ -499,7 +530,7 @@ class MheGen(NmpcGen):
                 z0 = self.xkN_key[x, j]
                 z0dest[z0] = value(var[(2, 0,) + j])
 
-    def introduce_noise_meas(self, mod, cov_dict):
+    def update_noise_meas(self, mod, cov_dict):
         self.journalizer("I", self._c_it, "introduce_noise_meas", "Noise introduction")
         # f = open("m0.txt", "w")
         # f1 = open("m1.txt", "w")
@@ -509,34 +540,98 @@ class MheGen(NmpcGen):
             for j in self.y_vars[y]:
                 vv = value(vy[(1, self.ncp_t) + j])
                 sigma = cov_dict[(y, j), (y, j), 1]
-                noise = np.random.normal(0, sigma)
-                vv += noise
-                vy[(1, self.ncp_t) + j].set_value(vv)
+                self.curr_m_noise[(y, j)] = np.random.normal(0, sigma)
+                # noise = np.random.normal(0, sigma)
+                # # print(noise)
+                # vv += noise
+                # vy[(1, self.ncp_t) + j].set_value(vv)
             # vy.display(ostream=f1)
         # f.close()
         # f1.close()
 
     def print_r_mhe(self):
-        self.journalizer("I", self._c_it, "print_r_mhe", "res")
+        self.journalizer("I", self._c_it, "print_r_mhe", "Results")
         for x in self.x_noisy:
-            self.s_estimate[x] = []
+            elist = []
+            rlist = []
+            xe = getattr(self.lsmhe, x)
+            xr = getattr(self.d1, x)
+            for j in self.x_vars[x]:
+                elist.append(value(xe[(self.nfe_t, self.ncp_t) + j]))
+                rlist.append(value(xr[(1, self.ncp_t) + j]))
+            self.s_estimate[x].append(elist)
+            self.s_real[x].append(rlist)
 
-
-        self.ccl.append(value(self.d1.c_capture[1, self.ncp_t]))
-        self.sp.append(value(self.ss2.c_capture[1, 1]))
-        self.iput.append([value(self.d1.per_opening2[1]), value(self.d1.per_opening1[1])])
-        with open("results_mhe.txt", "w") as f:
-            for i in range(0, len(self.ccl)):
-                c = []
-                o = str(self.ccl[i])
-                f.write(o)
-                for j in range(0, len(self.iput[i])):
-                    c.append(str(self.iput[i][j]))
-                    f.write("\t" + c[j])
-                f.write("\t" + str(self.sp[i]))
-                f.write("\t" + str(self._ipt_list[i]))
-                for j in range(0, len(self._kt_list[i])):
-                    f.write("\t" + self._kt_list[i][j])
-                f.write("\t" + self._dt_list[i])
-                f.write("\n")
+        with open("res_mhe_ee.txt", "w") as f:
+            for x in self.x_noisy:
+                for j in range(0, len(self.s_estimate[x][0])):
+                    for i in range(0, len(self.s_estimate[x])):
+                        xvs = str(self.s_estimate[x][i][j])
+                        f.write(xvs)
+                        f.write('\t')
+                    f.write('\n')
             f.close()
+        with open("res_mhe_ereal.txt", "w") as f:
+            for x in self.x_noisy:
+                for j in range(0, len(self.s_real[x][0])):
+                    for i in range(0, len(self.s_real[x])):
+                        xvs = str(self.s_real[x][i][j])
+                        f.write(xvs)
+                        f.write('\t')
+                    f.write('\n')
+            f.close()
+
+        for y in self.y:
+            elist = []
+            rlist = []
+            nlist = []
+            yklst = []
+            ye = getattr(self.lsmhe, y)
+            yr = getattr(self.d1, y)
+            for j in self.y_vars[y]:
+                elist.append(value(ye[(self.nfe_t, self.ncp_t) + j]))
+                rlist.append(value(yr[(1, self.ncp_t) + j]))
+                nlist.append(self.curr_m_noise[(y, j)])
+                yklst.append(value(self.lsmhe.yk0_mhe[self.nfe_t, self.yk_key[(y, j)]]))
+            self.y_estimate[y].append(elist)
+            self.y_real[y].append(rlist)
+            self.y_noise_jrnl[y].append(nlist)
+            self.yk0_jrnl[y].append(yklst)
+
+        with open("res_mhe_ey.txt", "w") as f:
+            for y in self.y:
+                for j in range(0, len(self.y_estimate[y][0])):
+                    for i in range(0, len(self.y_estimate[y])):
+                        yvs = str(self.y_estimate[y][i][j])
+                        f.write(yvs)
+                        f.write('\t')
+                    f.write('\n')
+            f.close()
+        with open("res_mhe_yreal.txt", "w") as f:
+            for y in self.y:
+                for j in range(0, len(self.y_real[y][0])):
+                    for i in range(0, len(self.y_real[y])):
+                        yvs = str(self.y_real[y][i][j])
+                        f.write(yvs)
+                        f.write('\t')
+                    f.write('\n')
+            f.close()
+        with open("res_mhe_ynoise.txt", "w") as f:
+            for y in self.y:
+                for j in range(0, len(self.y_noise_jrnl[y][0])):
+                    for i in range(0, len(self.y_noise_jrnl[y])):
+                        yvs = str(self.y_noise_jrnl[y][i][j])
+                        f.write(yvs)
+                        f.write('\t')
+                    f.write('\n')
+            f.close()
+        with open("res_mhe_yk0.txt", "w") as f:
+            for y in self.y:
+                for j in range(0, len(self.yk0_jrnl[y][0])):
+                    for i in range(0, len(self.yk0_jrnl[y])):
+                        yvs = str(self.yk0_jrnl[y][i][j])
+                        f.write(yvs)
+                        f.write('\t')
+                    f.write('\n')
+            f.close()
+
