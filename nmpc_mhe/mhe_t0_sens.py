@@ -53,6 +53,8 @@ e.set_covariance_meas(m_cov)
 e.set_covariance_disturb(q_cov)
 e.init_lsmhe_prep(e.d1)
 e.shift_mhe()
+e.update_u(mod=e.d1)
+
 dum = e.d_mod(1, e.ncp_t, _t=e.hi_t)
 
 e.init_step_mhe(dum, e.nfe_t)
@@ -73,49 +75,34 @@ e.find_target_ss()
 
 
 
-for i in range(1, 2):
+for i in range(1, 15):
     print(str(i) + "--"*20, file=sys.stderr)
     print(i)
     print("*"*100)
 
+    e.shift_mhe()
+    e.shift_measurement()
+    e.load_inputsmhe(src_kind="self.dict")
+    e.init_step_mhe(dum, e.nfe_t, patch_y=True)
+    e.solve_d(e.lsmhe, skip_update=False)
+    e.create_sens_suffix()
+    e.sens_k_aug_mhe()
 
     if i == 10:
         e.plant_input_gen(e.ss2, 1)
         # e.lsmhe.pprint(filename="somefile.txt")
 
-
     e.solve_d(e.d1)
-    e.update_noise_meas(e.d1, m_cov)
-
-    e.patch_meas_mhe(e.nfe_t, src=e.d1, noisy=True)
-    e.load_inputsmhe(src=e.d1, fe=e.nfe_t)
-
     e.compute_y_offset()
-
-    e.create_sens_suffix()
-    print("testing \n\n\n" * 4)
-
-    e.sens_k_aug_mhe()
     e.sens_dot_mhe()
 
-
-    e.init_step_mhe(dum, e.nfe_t, patch_y=True)
-    e.solve_d(e.lsmhe, skip_update=False)
     e.check_active_bound_noisy()
     e.load_covariance_prior()
     e.set_state_covariance()
     e.regen_objective_fun()
-
     e.set_prior_state_from_prior_mhe()
 
+    e.update_noise_meas(e.d1, m_cov)
+    e.patch_meas_mhe(e.nfe_t, src=e.d1, noisy=True)
+
     e.print_r_mhe()
-    e.shift_mhe()
-    # e.lsmhe.u1.display(ostream=f0)
-    # e.lsmhe.u2.display(ostream=f0)
-    e.shift_measurement()
-    # e.lsmhe.u1.display(ostream=f1)
-    # e.lsmhe.u2.display(ostream=f1)
-
-
-
-

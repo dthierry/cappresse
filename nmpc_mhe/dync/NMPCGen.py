@@ -21,10 +21,15 @@ class NmpcGen(DynGen):
         self.ref_state = kwargs.pop("ref_state", [])
 
         # We need a list of tuples that contain the bounds of u
-        self.olnmpc = object
-        print("-" * 120)
-        print("I[[create_olnmpc]] olnmpc (full) model created.")
-        print("-" * 120)
+        self.olnmpc = object()
+
+        self.curr_state_offset = {}  #: Current offset of measurement
+        self.curr_state_noise = {}  #: Current noise of the state
+        for x in self.states:
+            for j in self.state_vars[x]:
+                self.curr_state_offset[(x, j)] = 0.0
+                self.curr_state_noise[(x, j)] = 0.0
+
 
     def create_nmpc(self):
         self.olnmpc = self.d_mod(self.nfe_t, self.ncp_t, _t=self._t)
@@ -35,16 +40,41 @@ class NmpcGen(DynGen):
             cv = getattr(self.olnmpc, u)  #: Get the param
             c_val = [value(cv[i]) for i in cv.iterkeys()]  #: Current value
             self.olnmpc.del_component(cv)  #: Delete the param
-            self.olnmpc.add_component(u + "_", Var(self.olnmpc.fe_t, initialize=lambda m, i: c_val[i-1]))
+            self.olnmpc.add_component(u, Var(self.olnmpc.fe_t, initialize=lambda m, i: c_val[i-1]))
             cc = getattr(self.olnmpc, u + "_c")  #: Get the constraint
             ce = getattr(self.olnmpc, u + "_e")  #: Get the expression
-            cv = getattr(self.olnmpc, u + "_")  #: Get the new variable
+            cv = getattr(self.olnmpc, u)  #: Get the new variable
             cc.clear()
             cc.rule = lambda m, i: cv[i] == ce[i]
             cc.reconstruct()
 
+        self.xmpc_l = []
+        self.xmpc_key = {}
+        k = 0
+        for x in self.states:
+            n_s = getattr(self.olnmpc, x)  #: Noisy-state
+            for j in self.state_vars[x]:
+                self.xmpc_l.append(n_s[(1, 0) + j])
+                self.xmpc_key[(x, j)] = k
+                k += 1
+
+        self.olnmpc.xmpcS_nmpc = Set(initialize=[i for i in range(0, len(self.xmpc_l))])  #: Create set of noisy_states
+        self.olnmpc.xmpc_ref_nmpc = Param(self.olnmpc.xmpcS_nmpc, initialize=0.0, mutable=True)
+        self.olnmpc.Q_nmpc = Param(self.olnmpc.xmpcS_nmpc, initialize=1, mutable=True)  #: Control-weight
+
+        self.umpc_l = []
+        for u in self.u:
+            uvar = getattr(self.olnmpc, u)
+            for k in uvar.keys():
+                self.umpc_l.append(uvar[k])
+
+        self.olnmpc.umpcS_nmpc = Set(initialize=[i for i in range(0, len(self.umpc_l))])
+        self.olnmpc.umpc_ref_nmpc = Param(self.olnmpc.umpcS_nmpc, initialize=0.0, mutable=True)
+        self.olnmpc.R_nmpc = Param(self.olnmpc.umpcS_nmpc, initialize=1, mutable=True)  #: Control-weight
+
+
     def initialize_olnmpc(self, ref):
-        """Initializes the olnmpc
+        """Initializes the olnmpc from a reference state
         Args
             ref (pyomo.core.base.PyomoModel.ConcreteModel): The reference model"""
         self.journalizer("I", self._c_it, "initialize_olnmpc", "Attempting to initialize olnmpc")
@@ -121,6 +151,12 @@ class NmpcGen(DynGen):
             self.olnmpc.del_component(self.olnmpc.c_w)
         except AttributeError:
             pass
+
+        # Set of states for control
+        # weights for the states (objective)
+        # set of controls for control
+        # weights for the control (objective)
+
         self.olnmpc.xk = Set(initialize=[i for i in range(0, len(self.l_state))])
         self.olnmpc.Qk = Param(self.olnmpc.xk, initialize=1., mutable=True)
 
@@ -128,16 +164,8 @@ class NmpcGen(DynGen):
         self.olnmpc.c_w = Param(initialize=control_weight, mutable=True)
 
         self.olnmpc.nfe_tm1 = Set(initialize=[i for i in range(1, self.nfe_t)])
-        # self.olnmpc.xk_res = Var(self.olnmpc.nfe_tm1, self.olnmpc.xk,
-        #                       initialize=lambda m, i, x: self._xk_irule(m, i, x, self.l_state, self.l_vals, self.ncp_t))
-        # self.olnmpc.xk_ref = Constraint(self.olnmpc.nfe_tm1, self.olnmpc.xk,
-        #                              rule=lambda m, i, x: self._xk_r_con(m, i, x, self.l_state, self.l_vals, self.ncp_t))
+
         self.load_qk()
-        # self.olnmpc.O_F = Objective(sense=minimize,
-        #                          expr=sum(
-        #                              sum(self.olnmpc.Qk[s] * self.olnmpc.xk_res[i, s]**2 for s in self.olnmpc.xk) +
-        #                              (self.olnmpc.per_opening2[i] - value(ref.per_opening2[1]))**2
-        #                              for i in self.olnmpc.nfe_tm1))
 
         self.olnmpc.O_F = Objective(sense=minimize,
                                  expr=sum(
@@ -147,13 +175,7 @@ class NmpcGen(DynGen):
                                      self.olnmpc.c_w * (self.olnmpc.per_opening2[i] - value(ref.per_opening2[1])) ** 2 +
                                      self.olnmpc.c_w * (self.olnmpc.per_opening1[i] - value(ref.per_opening1[1])) ** 2
                                      for i in self.olnmpc.nfe_tm1))
-        with open("xkof.txt", "w") as f:
-            self.olnmpc.xk.pprint(ostream=f)
-            # self.olnmpc.xk_res.pprint(ostream=f)
-            # self.olnmpc.xk_ref.pprint(ostream=f)
-            self.olnmpc.Qk.display(ostream=f)
-            self.olnmpc.O_F.pprint(ostream=f)
-            f.close()
+
 
     def load_qk(self, max_qval=1e+04, min_qval=1e-06):
         """Loads values to the weight matrix Qk with the last fe as a reference"""
@@ -172,7 +194,7 @@ class NmpcGen(DynGen):
         self.olnmpc.s_w = state_weight
 
     def create_suffixes(self):
-        """Creates the requiered suffixes for the olnmpc problem"""
+        """Creates the required suffixes for the olnmpc problem"""
         if hasattr(self.olnmpc, "npdp"):
             pass
         else:
@@ -181,22 +203,11 @@ class NmpcGen(DynGen):
             pass
         else:
             self.olnmpc.dof_v = Suffix(direction=Suffix.EXPORT)
-        # for i in self.states:
-        #     con_name = "ic_" + i.lower()
-        #     con_ = getattr(self.olnmpc, con_name)
-        #     print(self.w_)
-        #     for ks in con_.iterkeys():
-        #         con_[ks].set_suffix_value(self.olnmpc.npdp, self.w_[i, ks])
-        #: Control 1
-        for key in self.olnmpc.per_opening1.iterkeys():
-            if self.olnmpc.per_opening1[key].stale:
-                continue
-            self.olnmpc.per_opening1[key].set_suffix_value(self.olnmpc.dof_v, 1)
-        #: Control 2
-        for key in self.olnmpc.per_opening2.iterkeys():
-            if self.olnmpc.per_opening2[key].stale:
-                continue
-            self.olnmpc.per_opening2[key].set_suffix_value(self.olnmpc.dof_v, 1)
+
+        for u in self.u:
+            uv = getattr(self.olnmpc, u)
+            uv[1].set_suffix_value(self.olnmpc.dof_v, 1)
+
 
     def solve_dot_dri(self):
         for i in self.states:

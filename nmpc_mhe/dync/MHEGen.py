@@ -150,9 +150,11 @@ class MheGen(NmpcGen):
         self._PI = {}  #: Container of the KKT matrix
         self.xreal_W = {}
         self.curr_m_noise = {}   #: Current measurement noise
+        self.curr_y_offset = {}  #: Current offset of measurement
         for y in self.y:
             for j in self.y_vars[y]:
                 self.curr_m_noise[(y, j)] = 0.0
+                self.curr_y_offset[(y, j)] = 0.0
 
         self.s_estimate = {}
         self.s_real = {}
@@ -169,6 +171,7 @@ class MheGen(NmpcGen):
             self.y_real[y] = []
             self.y_noise_jrnl[y] = []
             self.yk0_jrnl[y] = []
+
 
     def initialize_xreal(self, ref):
         """Wanted to keep the states in a horizon-like window, this should be done in the main dyngen class"""
@@ -222,7 +225,7 @@ class MheGen(NmpcGen):
             self.solve_d(dum, o_tee=False)
             #: Patch
             self.load_d_d(dum, self.lsmhe, finite_elem)
-            self.load_inputsmhe(dum, finite_elem)
+            self.load_inputsmhe(src=dum, fe=finite_elem)
         self.journalizer("I", self._c_it, "initialize_lsmhe", "Attempting to initialize lsmhe Done")
 
     def patch_meas_mhe(self, t, **kwargs):
@@ -333,18 +336,28 @@ class MheGen(NmpcGen):
                 umhe[i-1] = value(umhe[i])
 
 
-    def load_inputsmhe(self, src, fe=1):
+    def load_inputsmhe(self, **kwargs):
         """Loads inputs into the mhe model"""
-        for u in self.u:
-            usrc = getattr(src, u)
-            utrg = getattr(self.lsmhe, u)
-            utrg[fe] = (value(usrc[1]))
+        src = kwargs.pop("src", self.d1)
+        fe = kwargs.pop("fe", 1)
+        src_kind = kwargs.pop("src_kind", "mod")
+        if src_kind == "mod":
+            for u in self.u:
+                usrc = getattr(src, u)
+                utrg = getattr(self.lsmhe, u)
+                utrg[fe].value = value(usrc[1])
+        elif src_kind == "self.dict":
+            for u in self.u:
+                utrg = getattr(self.lsmhe, u)
+                utrg[fe].value = value(self.curr_u[u])
 
-    def init_step_mhe(self, tgt, i):
+    def init_step_mhe(self, tgt, i, patch_y=False):
         """Takes the last state-estimate from the mhe to perform an open-loop simulation
         that initializes the last slice of the mhe horizon
         Args:
-            tgt (pyomo.core.base.PyomoModel.ConcreteModel): The target"""
+            tgt (pyomo.core.base.PyomoModel.ConcreteModel): The target model
+            i (int): finite element of lsmhe
+            patch_y (bool): If true, patch the measurements as well"""
         src = self.lsmhe
         for vs in src.component_objects(Var, active=True):
             if vs.getname()[-4:] == "_mhe":
@@ -385,26 +398,49 @@ class MheGen(NmpcGen):
                 p[ks].value = value(vs[(i, self.ncp_t) + (ks,)])
         self.solve_d(tgt, o_tee=False, stop_if_nopt=True)
         self.load_d_d(tgt, self.lsmhe, self.nfe_t)
+        if patch_y:
+            self.patch_meas_mhe(self.nfe_t, src=tgt, noisy=True)
 
-    def create_rh_sfx(self):
-        """Creates relevant suffixes for K_Matrix (prior at fe=2)
+    def create_rh_sfx(self, set_suffix=True):
+        """Creates relevant suffixes for k_aug (prior at fe=2) (Reduced_Hess)
         Args:
-            None
+            set_suffix (bool): True if update must be done
         Returns:
             None
         """
-        # Degree of freedom variable
-        self.lsmhe.dof_v = Suffix(direction=Suffix.EXPORT)
-        self.lsmhe.rh_name = Suffix(direction=Suffix.IMPORT)
-        # self.lsmhe.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
-        # self.lsmhe.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
-        # self.lsmhe.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
-        # self.lsmhe.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+        if hasattr(self.lsmhe, "dof_v"):
+            self.lsmhe.dof_v.clear()
+        else:
+            self.lsmhe.dof_v = Suffix(direction=Suffix.EXPORT)  #: dof_v
+        if hasattr(self.lsmhe, "rh_name"):
+            self.lsmhe.rh_name.clear()
+        else:
+            self.lsmhe.rh_name = Suffix(direction=Suffix.IMPORT)  #: Red_hess_name
+        if set_suffix:
+            for key in self.x_noisy:
+                var = getattr(self.lsmhe, key)
+                for j in self.x_vars[key]:
+                    var[(2, 0) + j].set_suffix_value(self.lsmhe.dof_v, 1)
 
-        for key in self.x_noisy:
-            var = getattr(self.lsmhe, key)
-            for j in self.x_vars[key]:
-                var[(2, 0) + j].set_suffix_value(self.lsmhe.dof_v, 1)
+    def create_sens_suffix(self, set_suffix=True):
+        """Creates relevant suffixes for k_aug (Sensitivity)
+        Args:
+            set_suffix (bool): True if update must be done
+        Returns:
+            None"""
+        if hasattr(self.lsmhe, "dof_v"):
+            self.lsmhe.dof_v.clear()
+        else:
+            self.lsmhe.dof_v = Suffix(direction=Suffix.EXPORT)  #: dof_v
+        if hasattr(self.lsmhe, "rh_name"):
+            self.lsmhe.rh_name.clear()
+        else:
+            self.lsmhe.rh_name = Suffix(direction=Suffix.IMPORT)  #: Red_hess_name
+        if set_suffix:
+            for key in self.x_noisy:
+                var = getattr(self.lsmhe, key)
+                for j in self.x_vars[key]:
+                    var[(self.nfe_t, self.ncp_t) + j].set_suffix_value(self.lsmhe.dof_v, 1)
 
     def check_active_bound_noisy(self):
         """Checks if the dof_(super-basic) have active bounds, if so, add them to the exclusion list"""
@@ -635,3 +671,61 @@ class MheGen(NmpcGen):
                     f.write('\n')
             f.close()
 
+    def compute_y_offset(self, noisy=True):
+        mhe_y = getattr(self.lsmhe, "yk0_mhe")
+        for y in self.y:
+            plant_y = getattr(self.d1, y)
+            for j in self.y_vars[y]:
+                k = self.yk_key[(y, j)]
+                mhe_yval = value(mhe_y[self.nfe_t, k])
+                plant_yval = value(plant_y[(1, self.ncp_t) + j])
+                y_noise = self.curr_m_noise[(y, j)] if noisy else 0.0
+                self.curr_y_offset[(y, j)] = mhe_yval - plant_yval - y_noise
+
+    def sens_dot_mhe(self):
+        """Updates suffixes, solves using the dot_driver"""
+        if hasattr(self.lsmhe, "npdp"):
+            self.lsmhe.npdp.clear()
+        else:
+            self.lsmhe.npdp = Suffix(direction=Suffix.EXPORT)
+
+        for y in self.y:
+            for j in self.y_vars[y]:
+                k = self.yk_key[(y, j)]
+                self.lsmhe.hyk_c_mhe[self.nfe_t, k].set_suffix_value(self.lsmhe.npdp, self.curr_y_offset[(y, j)])
+
+        self.journalizer("I", self._c_it, "sens_dot_mhe", "Set-up")
+
+        with open("somefile0.txt", "w") as f:
+            self.lsmhe.x.display(ostream=f)
+            self.lsmhe.M.display(ostream=f)
+            f.close()
+
+        results = self.dot_driver.solve(self.lsmhe, tee=True, symbolic_solver_labels=True)
+        self.lsmhe.solutions.load_from(results)
+
+        with open("somefile1.txt", "w") as f:
+            self.lsmhe.x.display(ostream=f)
+            self.lsmhe.M.display(ostream=f)
+            f.close()
+
+        ftiming = open("timings_dot_driver.txt", "r")
+        s = ftiming.readline()
+        ftiming.close()
+        k = s.split()
+        self._dot_timing = k[0]
+
+    def sens_k_aug_mhe(self):
+        self.lsmhe.ipopt_zL_in.update(self.lsmhe.ipopt_zL_out)
+        self.lsmhe.ipopt_zU_in.update(self.lsmhe.ipopt_zU_out)
+        self.journalizer("I", self._c_it, "sens_k_aug_mhe", self.lsmhe.name)
+
+        if hasattr(self.k_aug.options, "eig_rh"):
+            delattr(self.k_aug.options, "eig_rh")
+        print(self.k_aug.options)
+        results = self.k_aug.solve(self.lsmhe, tee=True, symbolic_solver_labels=True)
+        self.lsmhe.solutions.load_from(results)
+        ftimings = open("timings_k_aug.txt", "r")
+        s = ftimings.readline()
+        ftimings.close()
+        self._k_timing = s.split()

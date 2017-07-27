@@ -70,6 +70,11 @@ class DynGen(object):
             u = getattr(self.d1, i)
             for t in range(0, self._window_keep):
                 self._u_plant[(i, t)] = value(u[1])
+        self.curr_u = {}
+        for u in self.u:
+            self.curr_u[u] = []
+        self.state_vars = {}
+
 
     def load_iguess_ss(self):
         """"Call the method for loading initial guess from steady-state"""
@@ -88,6 +93,14 @@ class DynGen(object):
             f.close()
         results = self.ipopt.solve(self.ss, tee=True, symbolic_solver_labels=True, report_timing=True)
         self.ss.solutions.load_from(results)
+        for x in self.states:
+            self.state_vars[x] = []
+            xv = getattr(self.ss, x)
+            for j in xv.keys():
+                if xv[j].stale:
+                    continue
+                self.state_vars[x].append(j[2:])
+
         # self.ss.write(filename="ss.nl",format=ProblemFormat.nl, io_options={"symbolic_solver_labels":True})
 
     def load_d_s(self, dmod):
@@ -292,36 +305,6 @@ class DynGen(object):
             print(flag + iter + "[[" + phase + "]]" + message + "." + "-" * 20)
         print("-" * 120)
 
-    @staticmethod
-    def _xk_r_con(m, i, s, sl, vl, cp):
-        """Rule for the residual constraint
-        Args:
-            m (pyomo.core.base.PyomoModel.ConcreteModel): The parent model
-            i (int): The current finite element
-            s (int): The current state number
-            sl (list): The list of state names tuple
-            vl (list): The list of values of state
-            cp (int): The desired collocation point"""
-        v = getattr(m, sl[s][0])  #: State
-        return v[(i, cp) + sl[s][1]] == vl[s] + m.xk_res[i, s]
-
-    @staticmethod
-    def _xk_r_lsq(m, i, s, sl, vl, cp):
-        """Rule for the residual constraint
-        Args:
-            m (pyomo.core.base.PyomoModel.ConcreteModel): The parent model
-            i (int): The current finite element
-            s (int): The current state number
-            sl (list): The list of state names tuple
-            vl (list): The list of values of state
-            cp (int): The desired collocation point"""
-        v = getattr(m, sl[s][0])  #: State
-        return (v[(i, cp) + sl[s][1]] - vl[s])**2
-
-    @staticmethod
-    def _xk_irule(m, i, s, sl, vl, cp):
-        v = getattr(m, sl[s][0])
-        return (abs(value(v[(i, cp) + sl[s][1]]) - vl[s])**0.5)/vl[s]
 
     def print_cc(self):
         """print a state/measurement of interest"""
@@ -442,3 +425,18 @@ class DynGen(object):
                 self.solve_d(d1, o_tee=False, stop_if_nopt=True)
             else:
                 self.solve_d(d1, o_tee=False, stop_if_nopt=False)
+
+    def update_u(self, **kwargs):
+        """Update the current input vector
+        Args:
+            **kwargs: Arbitrary keyword arguments.
+        Returns:
+            None
+        Keyword Args:
+            mod (pyomo.core.base.PyomoModel.ConcreteModel): The reference model (default d1)
+            fe (int): The required finite element """
+        mod = kwargs.pop("mod", self.d1)
+        fe = kwargs.pop("fe", 1)
+        for u in self.u:
+            uvar = getattr(mod, u)
+            self.curr_u[u] = value(uvar[fe])
