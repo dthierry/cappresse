@@ -73,7 +73,7 @@ class MheGen(NmpcGen):
             m_v = getattr(self.lsmhe, y)  #: Measured "state"
             for jth in self.y_vars[y]:  #: the jth variable
                 self.yk_l[1].append(m_v[(1, self.ncp_t) + jth])
-                self.yk_key[(y, jth)] = k
+                self.yk_key[(y, jth)] = k  #: The key needs to be created only once, that is why the loop was split
                 k += 1
 
         for t in range(2, self.nfe_t + 1):
@@ -729,3 +729,9 @@ class MheGen(NmpcGen):
         s = ftimings.readline()
         ftimings.close()
         self._k_timing = s.split()
+
+    def update_state_mhe(self):
+        for x in self.states:
+            xvar = getattr(self.lsmhe, x)
+            for j in self.state_vars[x]:
+                self.curr_estate[(x, j)] = value(xvar[self.nfe_t, self.ncp_t, j])

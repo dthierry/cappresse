@@ -73,7 +73,17 @@ class DynGen(object):
         self.curr_u = {}
         for u in self.u:
             self.curr_u[u] = []
+
         self.state_vars = {}
+        self.curr_estate = {}  #: Current estimated state (for the olnmpc)
+        self.curr_rstate = {}  #: Current real state (for the olnmpc)
+
+
+        self.curr_state_offset = {}  #: Current offset of measurement
+        self.curr_state_noise = {}  #: Current noise of the state
+
+        self.curr_state_target = {}  #: Current target state
+        self.curr_u_target = {}  #: Current control state
 
 
     def load_iguess_ss(self):
@@ -100,6 +110,21 @@ class DynGen(object):
                 if xv[j].stale:
                     continue
                 self.state_vars[x].append(j[2:])
+
+        for x in self.states:
+            xvar = getattr(self.ss, x)
+            for j in self.state_vars[x]:
+                self.curr_state_offset[(x, j)] = 0.0
+                self.curr_state_noise[(x, j)] = 0.0
+                self.curr_estate[(x, j)] = value(xvar[1, 1, j])
+                self.curr_rstate[(x, j)] = value(xvar[1, 1, j])
+                self.curr_state_target[(x, j)] = value(xvar[1, 1, j])
+        for u in self.u:
+            uvar = getattr(self.ss, u)
+            self.curr_u_target[u] = value(uvar[1])
+            self.curr_u[u] = value(uvar[1])
+
+
 
         # self.ss.write(filename="ss.nl",format=ProblemFormat.nl, io_options={"symbolic_solver_labels":True})
 
@@ -440,3 +465,9 @@ class DynGen(object):
         for u in self.u:
             uvar = getattr(mod, u)
             self.curr_u[u] = value(uvar[fe])
+
+    def update_state_real(self):
+        for x in self.states:
+            xvar = getattr(self.d1, x)
+            for j in self.state_vars[x]:
+                self.curr_rstate[(x, j)] = value(xvar[1, self.ncp_t, j])
