@@ -96,20 +96,24 @@ class NmpcGen(DynGen):
             for fe in range(1, self.nfe_t + 1)))
         self.olnmpc.objfun_nmpc = Objective(expr=self.olnmpc.xQ_expr_nmpc + self.olnmpc.xR_expr_nmpc)
 
-    def initialize_olnmpc(self, ref, fe=1):
-        # change this!
+    def initialize_olnmpc(self, ref, fe=1, predicted=False):
         # The reference is always a model
         # The source of the state might be different
-
+        # The source might be a predicted-state from forward simulation
         """Initializes the olnmpc from a reference state, loads the state into the olnmpc
         Args
-            ref (pyomo.core.base.PyomoModel.ConcreteModel): The reference model"""
+            ref (pyomo.core.base.PyomoModel.ConcreteModel): The reference model
+        Returns:
+            """
         self.journalizer("I", self._c_it, "initialize_olnmpc", "Attempting to initialize olnmpc")
-        self.load_init_state_nmpc(src_kind="mod", ref=self.d1, fe=1, cp=self.ncp_t)
+        self.load_init_state_nmpc(src_kind="mod", ref=ref, fe=1, cp=self.ncp_t)
+        if predicted:
+            self.load_init_state_nmpc(src_kind="dict", state_dict="predicted")
+
         dum = self.d_mod(1, self.ncp_t, _t=self.hi_t)
         dum.name = "Dummy I"
         #: Load current solution
-        self.load_d_d(ref, dum, fe)
+        self.load_d_d(ref, dum, fe, fe_src="s")  #: This is supossed to work
         for u in self.u:  #: Initialize controls dummy model
             cv_dum = getattr(dum, u)
             cv_ref = getattr(ref, u)
@@ -117,19 +121,18 @@ class NmpcGen(DynGen):
                 cv_dum[i].value = value(cv_ref[fe])
         #: Patching of finite elements
         for finite_elem in range(1, self.nfe_t + 1):
-            for i in self.states:  #: Cycle ICs for dum
-                xdum_ic = getattr(dum, i + "_ic")
-                xdum = getattr(dum, i)
-                for ks in xdum_ic.keys():
-                    xdum_ic[ks].value = value(xdum[(1, self.ncp_t) + (ks,)])
-                    xdum[(1, 0) + (ks,)].set_value(value(xdum[(1, self.ncp_t) + (ks,)]))
-            # if finite_elem == 1:
-            #     for i in self.states:  #: Load init state to olnmpc
-            #         xnmpc_ic = getattr(self.olnmpc, i + "_ic")
-            #         xdum = getattr(dum, i)
-            #         for ks in xnmpc_ic.keys():
-            #             xnmpc_ic[ks].value = value(xdum[(1, self.ncp_t) + (ks,)])
-            #: Solve
+            if predicted and finite_elem==1:
+                self.load_init_state_gen(dum, src_kind="dict", state_dict="predicted")
+            elif finite_elem == 1:
+                self.load_init_state_gen(dum, src_kind="mod", ref=ref, fe=1)
+            else:
+                self.load_init_state_gen(dum, src_kind="mod", ref=dum, fe=1)
+            # for i in self.states:  #: Cycle ICs for dum
+            #     xdum_ic = getattr(dum, i + "_ic")
+            #     xdum = getattr(dum, i)
+            #     for ks in xdum_ic.keys():
+            #         xdum_ic[ks].value = value(xdum[(1, self.ncp_t) + (ks,)])
+            #         xdum[(1, 0) + (ks,)].set_value(value(xdum[(1, self.ncp_t) + (ks,)]))
             self.solve_d(dum, o_tee=False)
             #: Patch
             self.load_d_d(dum, self.olnmpc, finite_elem)
@@ -171,7 +174,7 @@ class NmpcGen(DynGen):
                     xic[j].value = value(xsrc[(fe, cp) + j])
                     xvar[(1, 0) + j].set_value(value(xsrc[(fe, cp) + j]))
         else:
-            state_dict = kwargs.pop("state_dict", "real")
+            state_dict = kwargs.pop("state_dict", None)
             if state_dict == "real":  #: Load from the real state dict
                 for x in self.states:
                     xic = getattr(self.olnmpc, x + "_ic")
@@ -186,28 +189,27 @@ class NmpcGen(DynGen):
                     for j in self.state_vars[x]:
                         xic[j].value = self.curr_estate[(x, j)]
                         xvar[(1, 0) + j].set_value(self.curr_estate[(x, j)])
+            elif state_dict == "predicted":  #: Load from the estimated state dict
+                for x in self.states:
+                    xic = getattr(self.olnmpc, x + "_ic")
+                    xvar = getattr(self.olnmpc, x)
+                    for j in self.state_vars[x]:
+                        xic[j].value = self.curr_pstate[(x, j)]
+                        xvar[(1, 0) + j].set_value(self.curr_pstate[(x, j)])
             else:
                 self.journalizer("W", self._c_it, "load_init_state_nmpc", "No dict w/state was specified")
                 self.journalizer("W", self._c_it, "load_init_state_nmpc", "No update on state performed")
                 return
 
-    def load_qk(self, max_qval=1e+04, min_qval=1e-06):
-        """Loads values to the weight matrix Qk with the last fe as a reference"""
-        for i in self.olnmpc.xk:
-            vl = self._xk_irule(self.olnmpc, self.nfe_t, i, self.l_state, self.l_vals, self.ncp_t)
-            # if vl < 1e-08:
-            #     vl = 1e-06
-            if vl > max_qval:
-                vl = max_qval
-            if vl < min_qval:
-                vl = min_qval
-            self.olnmpc.Qk[i].value = vl**2
-
-    def compute_QR_nmpc(self, src="mhe", n=1):
+    def compute_QR_nmpc(self, src="mhe", n=-1, **kwargs):
         """Using the current state & control targets, computes the Qk and Rk matrices (diagonal)
         Args:
             src (str): The source of the update (default mhe) (mhe or plant)
             n (int): The exponent of the weight"""
+        check_values = kwargs.pop("check_values", False)
+        if check_values:
+            max_w_value = kwargs.pop("max_w_value", 1e+06)
+            min_w_value = kwargs.pop("min_w_value", 0.0)
         self.update_targets_nmpc()
         if src == "mhe":
             for x in self.states:
@@ -226,6 +228,19 @@ class NmpcGen(DynGen):
             self.olnmpc.R_nmpc[k].value = abs(self.curr_u[u] - self.curr_u_target[u])**n
             self.olnmpc.umpc_ref_nmpc[k].value = self.curr_u_target[u]
             k += 1
+        if check_values:
+            for k in self.olnmpc.xmpcS_nmpc:
+                if value(self.olnmpc.Q_nmpc[k]) < min_w_value:
+                    self.olnmpc.Q_nmpc[k].value = min_w_value
+                if value(self.olnmpc.Q_nmpc[k]) > max_w_value:
+                    self.olnmpc.Q_nmpc[k].value = max_w_value
+            k = 0
+            for u in self.u:
+                if value(self.olnmpc.R_nmpc[k]) < min_w_value:
+                    self.olnmpc.R_nmpc[k].value = min_w_value
+                if value(self.olnmpc.R_nmpc[k]) > max_w_value:
+                    self.olnmpc.R_nmpc[k].value = max_w_value
+                k += 1
 
     def new_weights_olnmpc(self, state_weight, control_weight):
         if type(state_weight) == float:
@@ -241,8 +256,6 @@ class NmpcGen(DynGen):
         elif type(control_weight) == dict:
             for fe in self.olnmpc.fe_t:
                 self.olnmpc.R_w_nmpc[fe].value = control_weight[fe]
-
-
 
     def create_suffixes(self):
         """Creates the required suffixes for the olnmpc problem"""
@@ -260,11 +273,13 @@ class NmpcGen(DynGen):
             uv[1].set_suffix_value(self.olnmpc.dof_v, 1)
 
     def solve_dot_dri(self):
-        for i in self.states:
-            con_name = "ic_" + i.lower()
+        for x in self.states:
+            con_name = x + "_icc"
             con_ = getattr(self.olnmpc, con_name)
-            for ks in con_.keys():
-                con_[ks].set_suffix_value(self.olnmpc.npdp, self.w_[i, ks])
+            for j in self.state_vars[x]:
+                con_[j].set_suffix_value(self.olnmpc.npdp, self.curr_state_offset[(x, j)])
+            # for ks in con_.keys():
+
         self.journalizer("I", self._c_it, "solve_dot_driver", self.olnmpc.name)
         # with open("r1.txt", "w") as r1:
         #     self.olnmpc.per_opening1.pprint(ostream=r1)
@@ -403,4 +418,12 @@ class NmpcGen(DynGen):
         self.ss2.obfun_ss2.set_value(ofexp)
         self.solve_d(self.ss2, iter_max=500, stop_if_nopt=True)
 
-
+    def compute_offset_state(self, src_kind="estimated"):
+        if src_kind == "estimated":
+            for x in self.states:
+                for j in self.state_vars[x]:
+                    self.curr_state_offset[(x, j)] = self.curr_pstate[(x, j)] - self.curr_estate[(x, j)]
+        elif src_kind == "real":
+            for x in self.states:
+                for j in self.state_vars[x]:
+                    self.curr_state_offset[(x, j)] = self.curr_pstate[(x, j)] - self.curr_rstate[(x, j)]

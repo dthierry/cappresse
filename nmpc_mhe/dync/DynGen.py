@@ -80,6 +80,7 @@ class DynGen(object):
 
 
         self.curr_state_offset = {}  #: Current offset of measurement
+        self.curr_pstate = {}  #: Current offset of measurement
         self.curr_state_noise = {}  #: Current noise of the state
 
         self.curr_state_target = {}  #: Current target state
@@ -263,42 +264,64 @@ class DynGen(object):
                 x_ic[ks].value = value(v_tgt[(1, self.ncp_t) + ks])
                 v_tgt[(1, self.ncp_t) + ks].set_value(value(v_tgt[(1, self.ncp_t) + ks]))
 
-
-    def load_d_d(self, src, tgt, i):
-        """Loads the solution of the src state model into the tgt
+    def load_d_d(self, src, d_mod, fe, fe_src='d'):
+        """Loads the solution of the src state model into the d_mod, i.e. src-->d_mod
         Args:
-            src (pyomo.core.base.PyomoModel.ConcreteModel):
-            trg (pyomo.core.base.PyomoModel.ConcreteModel):
-            i (int): The target's finite element
+            src (pyomo.core.base.PyomoModel.ConcreteModel): Model with source values
+            d_mod (pyomo.core.base.PyomoModel.ConcreteModel): Model whose values are to be assigned
+            fe (int): The d_mod's finite element
+            fe_src (str):
         Return:
             None"""
         for vs in src.component_objects(Var, active=True):
-            vd = getattr(tgt, vs.getname())
+            vd = getattr(d_mod, vs.getname())
             # there are two cases: 1 key 1 elem, several keys 1 element
-            vskeys = vs.keys()
+            vskeys = vs.keys()  #: keys of the source model
             if len(vskeys) == 1:
                 #: One key
-                # print(vd, vs)
                 for ks in vskeys:
                     for v in vd.keys():
                         vd[v].set_value(value(vs[ks]))
             else:
                 k = 0
                 for ks in vskeys:
-                    if k == 0:
+                    if k == 0:  #: Do this only once per variable
                         if type(ks) != tuple:
                             #: Several keys of 1 element each!!
-                            for ks1 in vskeys:
-                                vd[ks1].set_value(value(vs[ks1]))  #: This has got to be true
-                            break
+                            if fe_src == "d":
+                                for ks1 in vskeys:
+                                    vd[ks1].set_value(value(vs[ks1]))  #: This has got to be true
+                                break
+                            elif fe_src == "s":
+                                for ks1 in vd.keys():
+                                    try:
+                                        vd[ks1].set_value(value(vs[fe]))  #: This has got to be true
+                                    except AttributeError:
+                                        vd[ks1].value = value(vs[fe])  #: This has got to be true
+                                break
                         k += 1
+                    ki = ks[:2]
                     kj = ks[2:]
-                    if vs.getname() in self.states:  #: States start at 0
-                        for j in range(0, self.ncp_t + 1):
-                            vd[(i, j) + kj].set_value(value(vs[ks]))
-                    else:
-                        for j in range(1, self.ncp_t + 1):
-                            vd[(i, j) + kj].set_value(value(vs[ks]))
+                    if fe_src == 'd':
+                        if vs.getname() in self.states:  #: States start at 0
+                            for j in range(0, self.ncp_t + 1):
+                                vd[(fe, j) + kj].set_value(value(vs[ks]))
+                        else:
+                            for j in range(1, self.ncp_t + 1):
+                                vd[(fe, j) + kj].set_value(value(vs[ks]))
+                    elif fe_src == 's':
+                        if vs.getname() in self.states:  #: States start at 0
+                            for j in range(0, self.ncp_t + 1):
+                                if ki == (fe, j):
+                                    vd[(1, j) + kj].set_value(value(vs[ks]))
+                                else:
+                                    continue
+                        else:
+                            for j in range(1, self.ncp_t + 1):
+                                if ki == (fe, j):
+                                    vd[(1, j) + kj].set_value(value(vs[ks]))
+                                else:
+                                    continue
 
     def create_dyn(self, initialize=True):
         print("-" * 120)
@@ -314,7 +337,6 @@ class DynGen(object):
                 self.cycle_ics()
                 self.load_d_d(self.d1, self.dyn, i)
             print("I[[create_dyn]] Dynamic (full) model initialized.")
-
 
     @staticmethod
     def journalizer(flag, iter, phase, message):
@@ -343,8 +365,8 @@ class DynGen(object):
                          "print_cc",
                          "i = {:d} Current cco2 {:f}".format(self._c_it, value(self.d1.c_capture[1, self.ncp_t])))
 
-        self.ccl.append(value(self.d1.c_capture[1, self.ncp_t]))
-        self.sp.append(value(self.ss2.c_capture[1, 1]))
+        # self.ccl.append(value(self.d1.c_capture[1, self.ncp_t]))
+        # self.sp.append(value(self.ss2.c_capture[1, 1]))
         self.iput.append([value(self.d1.per_opening2[1]), value(self.d1.per_opening1[1])])
         self._ipt_list.append(self.ip_time)
         self._dt_list.append(self._dot_timing)
@@ -401,35 +423,35 @@ class DynGen(object):
 
     def create_predictor(self):
         self.d2 = self.d_mod(1, self.ncp_t, _t=self.hi_t)
-        self.d2.name = "Dynamic Predictor_2"
+        self.d2.name = "Dynamic Predictor"
 
-    def predictor_step(self, ref):
-        """Step for the nominal model.
+    def predictor_step(self, ref, **kwargs):
+        """Predicted-state computation by forward simulation.
         Args:
-            ref (pyomo.core.base.PyomoModel.ConcreteModel): """
+            ref (pyomo.core.base.PyomoModel.ConcreteModel): Reference model (mostly for initialization)"""
+        fe = kwargs.pop("fe", 1)
+        if fe > 1:
+            fe_src = "s"
+        else:
+            fe_src = "d"
         self.journalizer("I", self._c_it, "predictor_step", "Predictor step")
-        self.load_d_d(ref, self.d2, 1)
-        self.d2.per_opening2[1].value = value(ref.per_opening2[1])
-        self.d2.per_opening1[1].value = value(ref.per_opening1[1])
-        for i in self.states:
-            pn = i + "_ic"
-            p = getattr(self.d2, pn)
-            vs = getattr(self.d2, i)
-            for ks in p.iterkeys():
-                p[ks].value = value(vs[(1, self.ncp_t) + ks])
+        self.load_d_d(ref, self.d2, fe, fe_src=fe_src)  #: Load the initial guess
+        self.load_init_state_gen(self.d2, src_kind="dict", state_dict="estimated")  #: Load the initial state
+        self.plant_input_gen(self.d2, src_kind="dict")  #: Load the current control
         self.solve_d(self.d2)
         self.journalizer("I", self._c_it, "predictor_step", "Predictor step - Success")
 
-    def plant_input_gen(self, src_kind="dict", nsteps=5, **kwargs):
+    def plant_input_gen(self, d_mod, src_kind="dict", nsteps=5, **kwargs):
         """Attempt to solve the dynamic model with some source model input
         Args:
+            d_mod (pyomo.core.base.PyomoModel.ConcreteModel): Model to be updated
+            src_kind (str): Kind of update (default=dict)
+            nsteps (int): The number of continuation steps (default=5)
+        Keyword Args:
             src (pyomo.core.base.PyomoModel.ConcreteModel): Source model
-            src_fe (int): Finite element from the source model
-            nsteps (int): The number of continuation steps (default=5)"""
+            src_fe (int): Finite element from the source model"""
 
-
-        self.journalizer("I", self._c_it, "plant_input", "Continuation_plant")
-        d1 = self.d1
+        self.journalizer("I", self._c_it, "plant_input", "Continuation_plant, src_kind=" + src_kind)
         #: Inputs
         target = {}
         current = {}
@@ -440,7 +462,7 @@ class DynGen(object):
                 src_fe = kwargs.pop("src_fe", 1)
                 for u in self.u:
                     src_var = getattr(src, u)
-                    plant_var = getattr(d1, u)
+                    plant_var = getattr(d_mod, u)
                     target[u] = value(src_var[src_fe])
                     current[u] = value(plant_var[1])
                     self.journalizer("I", self._c_it,
@@ -451,7 +473,7 @@ class DynGen(object):
                 pass  #error
         else:
             for u in self.u:
-                plant_var = getattr(d1, u)
+                plant_var = getattr(d_mod, u)
                 target[u] = self.curr_u[u]
                 current[u] = value(plant_var[1])
                 self.journalizer("I", self._c_it,
@@ -460,16 +482,16 @@ class DynGen(object):
                                                                                   ncont_steps))
         for i in range(0, ncont_steps):
             for u in self.u:
-                plant_var = getattr(d1, u)
+                plant_var = getattr(d_mod, u)
                 plant_var[1].value += (target[u]-current[u])/ncont_steps
                 print("Continuation :Current {:s}\t{:f}".format(u, value(plant_var[1])))
             if i == ncont_steps:
-                self.solve_d(d1, o_tee=False, stop_if_nopt=True)
+                self.solve_d(d_mod, o_tee=False, stop_if_nopt=True)
             else:
-                self.solve_d(d1, o_tee=False, stop_if_nopt=False)
+                self.solve_d(d_mod, o_tee=False, stop_if_nopt=False)
 
-    def update_u(self, **kwargs):
-        """Update the current input vector
+    def update_u(self, src, **kwargs):
+        """Update the current control(input) vector
         Args:
             **kwargs: Arbitrary keyword arguments.
         Returns:
@@ -477,7 +499,6 @@ class DynGen(object):
         Keyword Args:
             mod (pyomo.core.base.PyomoModel.ConcreteModel): The reference model (default d1)
             fe (int): The required finite element """
-        src = kwargs.pop("src", self.d1)
         fe = kwargs.pop("fe", 1)
         for u in self.u:
             uvar = getattr(src, u)
@@ -488,3 +509,66 @@ class DynGen(object):
             xvar = getattr(self.d1, x)
             for j in self.state_vars[x]:
                 self.curr_rstate[(x, j)] = value(xvar[1, self.ncp_t, j])
+
+    def update_state_predicted(self):
+        for x in self.states:
+            xvar = getattr(self.d2, x)
+            for j in self.state_vars[x]:
+                self.curr_pstate[(x, j)] = value(xvar[1, self.ncp_t, j])
+
+    def load_init_state_gen(self, dmod, src_kind="mod", **kwargs):
+        """Loads ref state for a forward simulation.
+        Args:
+            **kwargs: Arbitrary keyword arguments.
+        Returns:
+            None
+        Keyword Args:
+            src_kind (str) : if == mod use reference model, otw use the internal dictionary
+            ref (pyomo.core.base.PyomoModel.ConcreteModel): The reference model (default d1)
+            fe (int): The required finite element
+            cp (int): The required collocation point
+        """
+        # src_kind = kwargs.pop("src_kind", "mod")
+        self.journalizer("I", self._c_it, "load_init_state_gen", "Load State to nmpc src_kind=" + src_kind)
+        ref = kwargs.pop("ref", None)
+        fe = kwargs.pop("fe", self.nfe_t)
+        cp = kwargs.pop("cp", self.ncp_t)
+        if src_kind == "mod":
+            if not ref:
+                self.journalizer("W", self._c_it, "load_init_state_gen", "No model was given")
+                self.journalizer("W", self._c_it, "load_init_state_gen", "No update on state performed")
+                return
+            for x in self.states:
+                xic = getattr(dmod, x + "_ic")
+                xvar = getattr(dmod, x)
+                xsrc = getattr(ref, x)
+                for j in self.state_vars[x]:
+                    xic[j].value = value(xsrc[(fe, cp) + j])
+                    xvar[(1, 0) + j].set_value(value(xsrc[(fe, cp) + j]))
+        else:
+            state_dict = kwargs.pop("state_dict", None)
+            if state_dict == "real":  #: Load from the real state dict
+                for x in self.states:
+                    xic = getattr(dmod, x + "_ic")
+                    xvar = getattr(dmod, x)
+                    for j in self.state_vars[x]:
+                        xic[j].value = self.curr_rstate[(x, j)]
+                        xvar[(1, 0) + j].set_value(self.curr_rstate[(x, j)])
+            elif state_dict == "estimated":  #: Load from the estimated state dict
+                for x in self.states:
+                    xic = getattr(dmod, x + "_ic")
+                    xvar = getattr(dmod, x)
+                    for j in self.state_vars[x]:
+                        xic[j].value = self.curr_estate[(x, j)]
+                        xvar[(1, 0) + j].set_value(self.curr_estate[(x, j)])
+            elif state_dict == "predicted":  #: Load from the estimated state dict
+                for x in self.states:
+                    xic = getattr(dmod, x + "_ic")
+                    xvar = getattr(dmod, x)
+                    for j in self.state_vars[x]:
+                        xic[j].value = self.curr_pstate[(x, j)]
+                        xvar[(1, 0) + j].set_value(self.curr_pstate[(x, j)])
+            else:
+                self.journalizer("W", self._c_it, "load_init_state_gen", "No dict w/state was specified")
+                self.journalizer("W", self._c_it, "load_init_state_gen", "No update on state performed")
+                return

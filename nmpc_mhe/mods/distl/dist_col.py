@@ -396,7 +396,7 @@ class DistDiehlNegrete(ConcreteModel):
             kk = re.split('(?:let)|[:=\s\[\]]', line)
             try:
                 var = kk[2]
-                print(var)
+                # print(var)
                 key = kk[3]
                 key = re.split(',', key)
                 actual_key = []
