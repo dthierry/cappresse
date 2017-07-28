@@ -140,7 +140,7 @@ class DynGen(object):
             vd = getattr(d, vs.getname())
             if vs.is_indexed():
                 if len(vs.keys()) > 1:
-                    print(vs.getname())
+                    # print(vs.getname())
                     for ks in vs.iterkeys():
                         kj = ks[2:]
                         # for i in range(1, self.nfe_t + 1):
@@ -254,12 +254,15 @@ class DynGen(object):
         print("-" * 120)
         print("I[[cycle_ics]] Cycling initial state.")
         print("-" * 120)
-        for i in self.states:
-            pn = i + "_ic"
-            p = getattr(self.d1, pn)
-            vs = getattr(self.d1, i)
-            for ks in p.iterkeys():
-                p[ks].value = value(vs[(1, self.ncp_t) + ks])
+        for x in self.states:
+            x_ic = getattr(self.d1, x + "_ic")
+            v_tgt = getattr(self.d1, x)
+            for ks in x_ic.keys():
+                if type(ks) != tuple:
+                    ks = (ks,)
+                x_ic[ks].value = value(v_tgt[(1, self.ncp_t) + ks])
+                v_tgt[(1, self.ncp_t) + ks].set_value(value(v_tgt[(1, self.ncp_t) + ks]))
+
 
     def load_d_d(self, src, tgt, i):
         """Loads the solution of the src state model into the tgt
@@ -275,9 +278,10 @@ class DynGen(object):
             vskeys = vs.keys()
             if len(vskeys) == 1:
                 #: One key
+                # print(vd, vs)
                 for ks in vskeys:
-                    for v in vd.itervalues():
-                        v.set_value(value(vs[ks]))
+                    for v in vd.keys():
+                        vd[v].set_value(value(vs[ks]))
             else:
                 k = 0
                 for ks in vskeys:
@@ -416,12 +420,13 @@ class DynGen(object):
         self.solve_d(self.d2)
         self.journalizer("I", self._c_it, "predictor_step", "Predictor step - Success")
 
-    def plant_input_gen(self, src, src_fe, nsteps=5):
+    def plant_input_gen(self, src_kind="dict", nsteps=5, **kwargs):
         """Attempt to solve the dynamic model with some source model input
         Args:
             src (pyomo.core.base.PyomoModel.ConcreteModel): Source model
             src_fe (int): Finite element from the source model
             nsteps (int): The number of continuation steps (default=5)"""
+
 
         self.journalizer("I", self._c_it, "plant_input", "Continuation_plant")
         d1 = self.d1
@@ -429,23 +434,35 @@ class DynGen(object):
         target = {}
         current = {}
         ncont_steps = nsteps
-
-        for u in self.u:
-            src_var = getattr(src, u)
-            tgt_var = getattr(d1, u)
-
-            target[u] = value(src_var[src_fe])
-            current[u] = value(tgt_var[1])
-            self.journalizer("I", self._c_it,
-                             "plant_input",
-                             "Target {:f}, Current {:f}, n_steps {:d}".format(target[u], current[u], ncont_steps))
-
-        # print("Target {:f}, Current {:f}, n_steps {:d}".format(target[0], current[0], ncont_steps))
+        if src_kind == "mod":
+            src = kwargs.pop("src", None)
+            if src:
+                src_fe = kwargs.pop("src_fe", 1)
+                for u in self.u:
+                    src_var = getattr(src, u)
+                    plant_var = getattr(d1, u)
+                    target[u] = value(src_var[src_fe])
+                    current[u] = value(plant_var[1])
+                    self.journalizer("I", self._c_it,
+                                     "plant_input",
+                                     "Target {:f}, Current {:f}, n_steps {:d}".format(target[u], current[u],
+                                                                                      ncont_steps))
+            else:
+                pass  #error
+        else:
+            for u in self.u:
+                plant_var = getattr(d1, u)
+                target[u] = self.curr_u[u]
+                current[u] = value(plant_var[1])
+                self.journalizer("I", self._c_it,
+                                 "plant_input",
+                                 "Target {:f}, Current {:f}, n_steps {:d}".format(target[u], current[u],
+                                                                                  ncont_steps))
         for i in range(0, ncont_steps):
             for u in self.u:
-                tgt_var = getattr(d1, u)
-                tgt_var[1].value += (target[u]-current[u])/ncont_steps
-                print("Continuation :Current {:s}\t{:f}".format(u, value(tgt_var[1])))
+                plant_var = getattr(d1, u)
+                plant_var[1].value += (target[u]-current[u])/ncont_steps
+                print("Continuation :Current {:s}\t{:f}".format(u, value(plant_var[1])))
             if i == ncont_steps:
                 self.solve_d(d1, o_tee=False, stop_if_nopt=True)
             else:
@@ -460,10 +477,10 @@ class DynGen(object):
         Keyword Args:
             mod (pyomo.core.base.PyomoModel.ConcreteModel): The reference model (default d1)
             fe (int): The required finite element """
-        mod = kwargs.pop("mod", self.d1)
+        src = kwargs.pop("src", self.d1)
         fe = kwargs.pop("fe", 1)
         for u in self.u:
-            uvar = getattr(mod, u)
+            uvar = getattr(src, u)
             self.curr_u[u] = value(uvar[fe])
 
     def update_state_real(self):

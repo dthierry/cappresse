@@ -19,6 +19,7 @@ class NmpcGen(DynGen):
         DynGen.__init__(self, **kwargs)
 
         self.ref_state = kwargs.pop("ref_state", None)
+        self.u_bounds = kwargs.pop("u_bounds", None)
 
         # We need a list of tuples that contain the bounds of u
         self.olnmpc = object()
@@ -33,9 +34,13 @@ class NmpcGen(DynGen):
             c_val = [value(cv[i]) for i in cv.keys()]  #: Current value
             self.olnmpc.del_component(cv)  #: Delete the param
             self.olnmpc.add_component(u, Var(self.olnmpc.fe_t, initialize=lambda m, i: c_val[i-1]))
+            self.olnmpc.equalize_u(direction="r_to_u")
             cc = getattr(self.olnmpc, u + "_c")  #: Get the constraint
             ce = getattr(self.olnmpc, u + "_e")  #: Get the expression
             cv = getattr(self.olnmpc, u)  #: Get the new variable
+            for k in cv.keys():
+                cv[k].setlb(self.u_bounds[u][0])
+                cv[k].setub(self.u_bounds[u][1])
             cc.clear()
             cc.rule = lambda m, i: cv[i] == ce[i]
             cc.reconstruct()
@@ -66,8 +71,12 @@ class NmpcGen(DynGen):
         self.olnmpc.xmpc_ref_nmpc = Param(self.olnmpc.xmpcS_nmpc, initialize=0.0, mutable=True)
         self.olnmpc.Q_nmpc = Param(self.olnmpc.xmpcS_nmpc, initialize=1, mutable=True)  #: Control-weight
         # (diagonal Matrix)
+        self.olnmpc.Q_w_nmpc = Param(self.olnmpc.fe_t, initialize=1e-4, mutable=True)
+        self.olnmpc.R_w_nmpc = Param(self.olnmpc.fe_t, initialize=1e2, mutable=True)
+
         self.olnmpc.xQ_expr_nmpc = Expression(expr=sum(
-            sum(self.olnmpc.Q_nmpc[k] * (self.xmpc_l[fe][k] - self.olnmpc.xmpc_ref_nmpc[k])**2 for k in self.olnmpc.xmpcS_nmpc)
+            sum(self.olnmpc.Q_w_nmpc[fe] *
+                self.olnmpc.Q_nmpc[k] * (self.xmpc_l[fe][k] - self.olnmpc.xmpc_ref_nmpc[k])**2 for k in self.olnmpc.xmpcS_nmpc)
                 for fe in range(1, self.nfe_t+1)))
 
         self.umpc_l = {}
@@ -81,56 +90,56 @@ class NmpcGen(DynGen):
         self.olnmpc.umpc_ref_nmpc = Param(self.olnmpc.umpcS_nmpc, initialize=0.0, mutable=True)
         self.olnmpc.R_nmpc = Param(self.olnmpc.umpcS_nmpc, initialize=1, mutable=True)  #: Control-weight
         self.olnmpc.xR_expr_nmpc = Expression(expr=sum(
-            sum(self.olnmpc.R_nmpc[k] * (self.umpc_l[fe][k] - self.olnmpc.umpc_ref_nmpc[k]) ** 2 for k in
+            sum(self.olnmpc.R_w_nmpc[fe] *
+                self.olnmpc.R_nmpc[k] * (self.umpc_l[fe][k] - self.olnmpc.umpc_ref_nmpc[k]) ** 2 for k in
                 self.olnmpc.umpcS_nmpc)
             for fe in range(1, self.nfe_t + 1)))
         self.olnmpc.objfun_nmpc = Objective(expr=self.olnmpc.xQ_expr_nmpc + self.olnmpc.xR_expr_nmpc)
 
     def initialize_olnmpc(self, ref, fe=1):
-        """Initializes the olnmpc from a reference state
+        # change this!
+        # The reference is always a model
+        # The source of the state might be different
+
+        """Initializes the olnmpc from a reference state, loads the state into the olnmpc
         Args
             ref (pyomo.core.base.PyomoModel.ConcreteModel): The reference model"""
         self.journalizer("I", self._c_it, "initialize_olnmpc", "Attempting to initialize olnmpc")
+        self.load_init_state_nmpc(src_kind="mod", ref=self.d1, fe=1, cp=self.ncp_t)
         dum = self.d_mod(1, self.ncp_t, _t=self.hi_t)
         dum.name = "Dummy I"
         #: Load current solution
         self.load_d_d(ref, dum, fe)
         for u in self.u:  #: Initialize controls dummy model
-            cv = getattr(dum, u)
+            cv_dum = getattr(dum, u)
             cv_ref = getattr(ref, u)
-            for i in cv.keys():
-                cv[i].value = value(cv_ref[fe])
+            for i in cv_dum.keys():
+                cv_dum[i].value = value(cv_ref[fe])
         #: Patching of finite elements
         for finite_elem in range(1, self.nfe_t + 1):
-            #: Cycle ICS
-            for i in self.states:
-                pn = i + "_ic"
-                p = getattr(dum, pn)
-                vs = getattr(dum, i)
-                for ks in p.keys():
-                    p[ks].value = value(vs[(1, self.ncp_t) + (ks,)])
-            if finite_elem == 1:
-                for i in self.states:
-                    pn = i + "_ic"
-                    p = getattr(self.olnmpc, pn)  #: Target
-                    vs = getattr(dum, i)  #: Source
-                    for ks in p.keys():
-                        p[ks].value = value(vs[(1, self.ncp_t) + (ks,)])
-                    # with open("ic.txt", "a") as f:
-                    #     p.display(ostream=f)
-                    #     f.close()
-
+            for i in self.states:  #: Cycle ICs for dum
+                xdum_ic = getattr(dum, i + "_ic")
+                xdum = getattr(dum, i)
+                for ks in xdum_ic.keys():
+                    xdum_ic[ks].value = value(xdum[(1, self.ncp_t) + (ks,)])
+                    xdum[(1, 0) + (ks,)].set_value(value(xdum[(1, self.ncp_t) + (ks,)]))
+            # if finite_elem == 1:
+            #     for i in self.states:  #: Load init state to olnmpc
+            #         xnmpc_ic = getattr(self.olnmpc, i + "_ic")
+            #         xdum = getattr(dum, i)
+            #         for ks in xnmpc_ic.keys():
+            #             xnmpc_ic[ks].value = value(xdum[(1, self.ncp_t) + (ks,)])
             #: Solve
             self.solve_d(dum, o_tee=False)
             #: Patch
             self.load_d_d(dum, self.olnmpc, finite_elem)
 
             for u in self.u:
-                cv = getattr(self.olnmpc, u)  #: set controls for open-loop nmpc
+                cv_nmpc = getattr(self.olnmpc, u)  #: set controls for open-loop nmpc
                 cv_dum = getattr(dum, u)
                 # works only for fe_t index
-                cv[finite_elem].set_value(value(cv_dum[1]))
-        self.journalizer("I", self._c_it, "initialize_olnmpc", "Attempting to initialize olnmpc Done")
+                cv_nmpc[finite_elem].set_value(value(cv_dum[1]))
+        self.journalizer("I", self._c_it, "initialize_olnmpc", "Done")
 
     def load_init_state_nmpc(self, **kwargs):
         """Loads ref state for set-point
@@ -151,7 +160,8 @@ class NmpcGen(DynGen):
         cp = kwargs.pop("cp", self.ncp_t)
         if src_kind == "mod":
             if not ref:
-                self.journalizer("I", self._c_it, "load_init_state_nmpc", "No model was given")
+                self.journalizer("W", self._c_it, "load_init_state_nmpc", "No model was given")
+                self.journalizer("W", self._c_it, "load_init_state_nmpc", "No update on state performed")
                 return
             for x in self.states:
                 xic = getattr(self.olnmpc, x + "_ic")
@@ -160,6 +170,26 @@ class NmpcGen(DynGen):
                 for j in self.state_vars[x]:
                     xic[j].value = value(xsrc[(fe, cp) + j])
                     xvar[(1, 0) + j].set_value(value(xsrc[(fe, cp) + j]))
+        else:
+            state_dict = kwargs.pop("state_dict", "real")
+            if state_dict == "real":  #: Load from the real state dict
+                for x in self.states:
+                    xic = getattr(self.olnmpc, x + "_ic")
+                    xvar = getattr(self.olnmpc, x)
+                    for j in self.state_vars[x]:
+                        xic[j].value = self.curr_rstate[(x, j)]
+                        xvar[(1, 0) + j].set_value(self.curr_rstate[(x, j)])
+            elif state_dict == "estimated":  #: Load from the estimated state dict
+                for x in self.states:
+                    xic = getattr(self.olnmpc, x + "_ic")
+                    xvar = getattr(self.olnmpc, x)
+                    for j in self.state_vars[x]:
+                        xic[j].value = self.curr_estate[(x, j)]
+                        xvar[(1, 0) + j].set_value(self.curr_estate[(x, j)])
+            else:
+                self.journalizer("W", self._c_it, "load_init_state_nmpc", "No dict w/state was specified")
+                self.journalizer("W", self._c_it, "load_init_state_nmpc", "No update on state performed")
+                return
 
     def load_qk(self, max_qval=1e+04, min_qval=1e-06):
         """Loads values to the weight matrix Qk with the last fe as a reference"""
@@ -193,13 +223,26 @@ class NmpcGen(DynGen):
                     self.olnmpc.xmpc_ref_nmpc[k].value = self.curr_state_target[(x, j)]
         k = 0
         for u in self.u:
-            self.olnmpc.R_nmpc[k].value = abs(self.curr_u[k] - self.curr_u_target[k])**n
-            self.olnmpc.umpc_ref_nmpc[k].value = self.curr_u_target[k]
+            self.olnmpc.R_nmpc[k].value = abs(self.curr_u[u] - self.curr_u_target[u])**n
+            self.olnmpc.umpc_ref_nmpc[k].value = self.curr_u_target[u]
             k += 1
 
     def new_weights_olnmpc(self, state_weight, control_weight):
-        self.olnmpc.c_w = control_weight
-        self.olnmpc.s_w = state_weight
+        if type(state_weight) == float:
+            for fe in self.olnmpc.fe_t:
+                self.olnmpc.Q_w_nmpc[fe].value = state_weight
+        elif type(state_weight) == dict:
+            for fe in self.olnmpc.fe_t:
+                self.olnmpc.Q_w_nmpc[fe].value = state_weight[fe]
+
+        if type(control_weight) == float:
+            for fe in self.olnmpc.fe_t:
+                self.olnmpc.R_w_nmpc[fe].value = control_weight
+        elif type(control_weight) == dict:
+            for fe in self.olnmpc.fe_t:
+                self.olnmpc.R_w_nmpc[fe].value = control_weight[fe]
+
+
 
     def create_suffixes(self):
         """Creates the required suffixes for the olnmpc problem"""
@@ -220,19 +263,19 @@ class NmpcGen(DynGen):
         for i in self.states:
             con_name = "ic_" + i.lower()
             con_ = getattr(self.olnmpc, con_name)
-            for ks in con_.iterkeys():
+            for ks in con_.keys():
                 con_[ks].set_suffix_value(self.olnmpc.npdp, self.w_[i, ks])
         self.journalizer("I", self._c_it, "solve_dot_driver", self.olnmpc.name)
-        with open("r1.txt", "w") as r1:
-            self.olnmpc.per_opening1.pprint(ostream=r1)
-            self.olnmpc.per_opening2.pprint(ostream=r1)
-            r1.close()
+        # with open("r1.txt", "w") as r1:
+        #     self.olnmpc.per_opening1.pprint(ostream=r1)
+        #     self.olnmpc.per_opening2.pprint(ostream=r1)
+        #     r1.close()
         results = self.dot_driver.solve(self.olnmpc, tee=True, symbolic_solver_labels=True)
         self.olnmpc.solutions.load_from(results)
-        with open("r2.txt", "w") as r2:
-            self.olnmpc.per_opening1.pprint(ostream=r2)
-            self.olnmpc.per_opening2.pprint(ostream=r2)
-            r2.close()
+        # with open("r2.txt", "w") as r2:
+        #     self.olnmpc.per_opening1.pprint(ostream=r2)
+        #     self.olnmpc.per_opening2.pprint(ostream=r2)
+        #     r2.close()
         ftiming = open("timings_dot_driver.txt", "r")
         s = ftiming.readline()
         ftiming.close()
@@ -249,25 +292,6 @@ class NmpcGen(DynGen):
         s = ftimings.readline()
         ftimings.close()
         self._k_timing = s.split()
-
-    def plant_input_olnmpc(self, nsteps=5):
-        self.journalizer("I", self._c_it, "plant_input", "Continuation")
-        olnmpc = self.olnmpc
-        d1 = self.d1
-        #: Inputs
-        target = [value(olnmpc.per_opening2[1]), value(olnmpc.per_opening1[1])]
-        current = [value(d1.per_opening2[1]), value(d1.per_opening1[1])]
-        ncont_steps = nsteps
-        self.journalizer("I", self._c_it,
-                         "plant_input","Target {:f}, Current {:f}, n_steps {:d}".format(target[0], current[0], ncont_steps))
-        print("Target {:f}, Current {:f}, n_steps {:d}".format(target[0], current[0], ncont_steps))
-        for i in range(0, ncont_steps):
-            for pi in range(0, len(current)):
-                current[pi] += (target[pi]-current[pi])/ncont_steps
-                print("Continuation :Current {:d}\t{:f}".format(pi, current[pi]))
-            d1.per_opening2[1].value = current[0]
-            d1.per_opening1[1].value = current[1]
-            self.solve_d(d1, o_tee=False)
 
     def stall_strategy(self, strategy, cmv=1e-04, **kwargs):
         """Suggested three strategies: Change weights, change matrices, change linear algebra"""
@@ -326,9 +350,13 @@ class NmpcGen(DynGen):
             c_val = [value(cv[i]) for i in cv.keys()]  #: Current value
             self.ss2.del_component(cv)  #: Delete the param
             self.ss2.add_component(u, Var(self.ss2.fe_t, initialize=lambda m, i: c_val[i-1]))
+            self.ss2.equalize_u(direction="r_to_u")
             cc = getattr(self.ss2, u + "_c")  #: Get the constraint
             ce = getattr(self.ss2, u + "_e")  #: Get the expression
             cv = getattr(self.ss2, u)  #: Get the new variable
+            for k in cv.keys():
+                cv[k].setlb(self.u_bounds[u][0])
+                cv[k].setub(self.u_bounds[u][1])
             cc.clear()
             cc.rule = lambda m, i: cv[i] == ce[i]
             cc.reconstruct()
@@ -351,6 +379,7 @@ class NmpcGen(DynGen):
         self.journalizer("I", self._c_it, "find_target_ss", "Target: solve done")
 
     def update_targets_nmpc(self):
+        """Use the reference model to update  the current state and control targets"""
         for x in self.states:
             xvar = getattr(self.ss2, x)
             for j in self.state_vars[x]:
@@ -360,6 +389,7 @@ class NmpcGen(DynGen):
             self.curr_u_target[u] = value(uvar[1])
 
     def change_setpoint(self, ref_state):
+        """Change the update the ref_state dictionary, and attempt to find a new reference state"""
         if not ref_state:
             self.journalizer("W", self._c_it, "change_setpoint", "No reference state was given")
             return
@@ -369,7 +399,7 @@ class NmpcGen(DynGen):
             v = getattr(self.ss2, i[0])
             vkey = i[1]
             ofexp += (v[(1, 1) + vkey] - self.ref_state[i])**2
-        self.ss2.obfun_ss2.clear()
+
         self.ss2.obfun_ss2.set_value(ofexp)
         self.solve_d(self.ss2, iter_max=500, stop_if_nopt=True)
 
