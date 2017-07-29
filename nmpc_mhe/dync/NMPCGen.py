@@ -24,6 +24,10 @@ class NmpcGen(DynGen):
         # We need a list of tuples that contain the bounds of u
         self.olnmpc = object()
 
+        self.curr_soi = {}  #: Values that we would like to keep track
+        for k in self.ref_state.keys():
+            self.curr_soi[k] = 0.0
+
     def create_nmpc(self):
         self.olnmpc = self.d_mod(self.nfe_t, self.ncp_t, _t=self._t)
         self.olnmpc.name = "olnmpc (Open-Loop NMPC)"
@@ -308,7 +312,7 @@ class NmpcGen(DynGen):
         ftimings.close()
         self._k_timing = s.split()
 
-    def stall_strategy(self, strategy, cmv=1e-04, **kwargs):
+    def stall_strategy(self, strategy, cmv=1e-04, **kwargs):  # Fix the damn stall strategy
         """Suggested three strategies: Change weights, change matrices, change linear algebra"""
         self._stall_iter += 1
         self.journalizer("I", self._c_it, "stall_strategy", "Solver Stalled. " + str(self._stall_iter) + " Times")
@@ -427,3 +431,62 @@ class NmpcGen(DynGen):
             for x in self.states:
                 for j in self.state_vars[x]:
                     self.curr_state_offset[(x, j)] = self.curr_pstate[(x, j)] - self.curr_rstate[(x, j)]
+
+    def print_r_nmpc(self):
+        self.journalizer("I", self._c_it, "print_r_nmpc", "Results")
+        for x in self.states:
+            elist = []
+            rlist = []
+            xe = getattr(self.lsmhe, x)
+            xr = getattr(self.d1, x)
+            for j in self.x_vars[x]:
+                elist.append(value(xe[(self.nfe_t, self.ncp_t) + j]))
+                rlist.append(value(xr[(1, self.ncp_t) + j]))
+            self.s_estimate[x].append(elist)
+            self.s_real[x].append(rlist)
+
+        with open("res_nmpc_sp.txt", "w") as f:
+            for x in self.x_noisy:
+                for j in range(0, len(self.s_estimate[x][0])):
+                    for i in range(0, len(self.s_estimate[x])):
+                        xvs = str(self.s_estimate[x][i][j])
+                        f.write(xvs)
+                        f.write('\t')
+                    f.write('\n')
+            f.close()
+        with open("res_nmpc_input.txt", "w") as f:
+            for x in self.x_noisy:
+                for j in range(0, len(self.s_real[x][0])):
+                    for i in range(0, len(self.s_real[x])):
+                        xvs = str(self.s_real[x][i][j])
+                        f.write(xvs)
+                        f.write('\t')
+                    f.write('\n')
+            f.close()
+
+        for y in self.y:
+            elist = []
+            rlist = []
+            nlist = []
+            yklst = []
+            ye = getattr(self.lsmhe, y)
+            yr = getattr(self.d1, y)
+            for j in self.y_vars[y]:
+                elist.append(value(ye[(self.nfe_t, self.ncp_t) + j]))
+                rlist.append(value(yr[(1, self.ncp_t) + j]))
+                nlist.append(self.curr_m_noise[(y, j)])
+                yklst.append(value(self.lsmhe.yk0_mhe[self.nfe_t, self.yk_key[(y, j)]]))
+            self.y_estimate[y].append(elist)
+            self.y_real[y].append(rlist)
+            self.y_noise_jrnl[y].append(nlist)
+            self.yk0_jrnl[y].append(yklst)
+
+
+    def update_soi_val(self):
+        """States-of-interest"""
+        for k in self.ref_state.keys():
+            vname = k[0]
+            vkey = k[1]
+            var = getattr(self.d1, vname)
+            #: Assuming the variable is indexed by time
+            self.curr_soi[k] = value(var[(1,self.ncp_t) + vkey])

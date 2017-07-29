@@ -86,7 +86,6 @@ class DynGen(object):
         self.curr_state_target = {}  #: Current target state
         self.curr_u_target = {}  #: Current control state
 
-
     def load_iguess_ss(self):
         """"Call the method for loading initial guess from steady-state"""
         self.ss.init_steady_ref()
@@ -142,13 +141,13 @@ class DynGen(object):
             if vs.is_indexed():
                 if len(vs.keys()) > 1:
                     # print(vs.getname())
-                    for ks in vs.iterkeys():
+                    for ks in vs.keys():
                         kj = ks[2:]
                         # for i in range(1, self.nfe_t + 1):
                         for j in range(1, self.ncp_t + 1):
                             vd[(1, j) + kj].set_value(value(vs[ks]))
                 else:
-                    for ks in vs.iterkeys():
+                    for ks in vs.keys():
                         for kd in vd.keys():
                             vd[kd].set_value(value(vs[ks]))
         for x in self.states:
@@ -160,7 +159,7 @@ class DynGen(object):
             p = getattr(d, pn)
             vs = getattr(s, i)
             vd0 = getattr(d, i)
-            for ks in p.iterkeys():
+            for ks in p.keys():
                 p[ks].value = value(vs[(1, 1)+(ks,)])
                 vd0[(1, 0)+(ks,)].set_value(value(vs[(1, 1)+(ks,)]))
 
@@ -356,37 +355,6 @@ class DynGen(object):
             print(flag + iter + "[[" + phase + "]]" + message + "." + "-" * 20)
         print("-" * 120)
 
-
-    def print_cc(self):
-        """print a state/measurement of interest"""
-
-        self.journalizer("I",
-                         self._c_it,
-                         "print_cc",
-                         "i = {:d} Current cco2 {:f}".format(self._c_it, value(self.d1.c_capture[1, self.ncp_t])))
-
-        # self.ccl.append(value(self.d1.c_capture[1, self.ncp_t]))
-        # self.sp.append(value(self.ss2.c_capture[1, 1]))
-        self.iput.append([value(self.d1.per_opening2[1]), value(self.d1.per_opening1[1])])
-        self._ipt_list.append(self.ip_time)
-        self._dt_list.append(self._dot_timing)
-        self._kt_list.append(self._k_timing)
-        with open("results_dot_driver.txt", "w") as f:
-            for i in range(0, len(self.ccl)):
-                c = []
-                o = str(self.ccl[i])
-                f.write(o)
-                for j in range(0, len(self.iput[i])):
-                    c.append(str(self.iput[i][j]))
-                    f.write("\t" + c[j])
-                f.write("\t" + str(self.sp[i]))
-                f.write("\t" + str(self._ipt_list[i]))
-                for j in range(0, len(self._kt_list[i])):
-                    f.write("\t" + self._kt_list[i][j])
-                f.write("\t" + self._dt_list[i])
-                f.write("\n")
-            f.close()
-
     # NMPC or just dyn?
     def cycle_ics_noisy(self, sigma_bar=0.01):
         """Patches the initial conditions with the last result from the simulation with noise.
@@ -404,12 +372,12 @@ class DynGen(object):
                     pn = i + "_ic"
                     p = getattr(self.d1, pn)
                     vs = getattr(self.d1, i)
-                    for ks in p.iterkeys():
+                    for ks in p.keys():
                         if vs[(1, self.ncp_t) + ks].stale:
                             continue
                         p[ks].value = value(vs[(1, self.ncp_t) + ks])
                     p.display(ostream=nom)
-                    for ks in p.iterkeys():
+                    for ks in p.keys():
                         if vs[(1, self.ncp_t) + ks].stale:
                             continue
                         sigma = value(vs[(1, self.ncp_t) + ks]) * sigma_bar
