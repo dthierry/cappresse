@@ -155,11 +155,12 @@ class DistDiehlNegrete(ConcreteModel):
                            initialize=lambda m, t: 0.62 if t <= 21 else 0.35)
 
         # --------------------------------------------------------------------------------------------------------------
-        # States (differential) section
+        #: First define differential state variables (state: x, ic-Param: x_ic, derivative-Var:dx_dt
+        #: States (differential) section
         zero_tray = dict.fromkeys(self.tray)
         zero3 = dict.fromkeys(self.fe_t * self.cp_t * self.tray)
 
-        for key in zero3.iterkeys():
+        for key in zero3.keys():
             zero3[key] = 0.0
 
         def __m_init(m, i, j, t):
@@ -170,20 +171,19 @@ class DistDiehlNegrete(ConcreteModel):
             elif t == m.Ntray:
                 return 5000.
 
-        # Liquid hold-up
+        #: Liquid hold-up
         self.M = Var(self.fe_t, self.cp_t, self.tray,
                      initialize=__m_init)
-        # Mole-fraction
+        #: Mole-fraction
         self.x = Var(self.fe_t, self.cp_t, self.tray, initialize=lambda m, i, j, t: 0.999 * t / m.Ntray)
 
+        #: Initial state-Param
         self.M_ic = zero_tray if steady else Param(self.tray, initialize=0.0, mutable=True)
         self.x_ic = zero_tray if steady else Param(self.tray, initialize=0.0, mutable=True)
 
+        #:  Derivative-var
         self.dM_dt = zero3 if steady else Var(self.fe_t, self.cp_t, self.tray, initialize=0.0)
         self.dx_dt = zero3 if steady else Var(self.fe_t, self.cp_t, self.tray, initialize=0.0)
-
-        self.w_M = object
-        self.w_x = object
 
         # --------------------------------------------------------------------------------------------------------------
         # States (algebraic) section
@@ -243,15 +243,10 @@ class DistDiehlNegrete(ConcreteModel):
 
         self.Rec = Var(self.fe_t, initialize=7.72700925775773761472464684629813E-01)
         self.Qr = Var(self.fe_t, initialize=1.78604740940007800236344337463379E+06)
+
         # --------------------------------------------------------------------------------------------------------------
-        # Constraint section (differential equations)
-        #: Control constraint
-        self.u1_e = Expression(self.fe_t, rule=lambda m, i: self.Rec[i])
-        self.u2_e = Expression(self.fe_t, rule=lambda m, i: self.Qr[i])
-
-        self.u1_c = Constraint(self.fe_t, rule=lambda m, i: self.u1[i] == self.u1_e[i])
-        self.u2_c = Constraint(self.fe_t, rule=lambda m, i: self.u2[i] == self.u2_e[i])
-
+        #: Constraints for the differential states
+        #: Then the ode-Con:de_x, collocation-Con:dvar_t_x, noisy-Expr: noisy_x, cp-Constraint: cp_x, initial-Con: x_icc
         #: Differential equations
         self.de_M = Constraint(self.fe_t, self.cp_ta, self.tray, rule=m_ode)
         self.de_x = Constraint(self.fe_t, self.cp_ta, self.tray, rule=x_ode)
@@ -262,9 +257,11 @@ class DistDiehlNegrete(ConcreteModel):
 
         #: Continuation equations (redundancy here)
         if self.nfe_t > 1:
+            #: Noisy expressions
             self.noisy_M = None if steady else Expression(self.fe_t, self.tray, rule=M_CONT)
             self.noisy_x = None if steady else Expression(self.fe_t, self.tray, rule=x_cont)
 
+            #: Continuation equations
             self.cp_M = None if steady else \
                 Constraint(self.fe_t, self.tray,
                            rule=lambda m, i, t: self.noisy_M[i, t] == 0.0 if i < self.nfe_t else Constraint.Skip)
@@ -272,11 +269,12 @@ class DistDiehlNegrete(ConcreteModel):
                 Constraint(self.fe_t, self.tray,
                            rule=lambda m, i, t: self.noisy_x[i, t] == 0.0 if i < self.nfe_t else Constraint.Skip)
 
+        #: Initial condition-Constraints
         self.M_icc = None if steady else Constraint(self.tray, rule=acm)
         self.x_icc = None if steady else Constraint(self.tray, rule=acx)
 
         # --------------------------------------------------------------------------------------------------------------
-        # Constraint section (algebraic equations)
+        #: Constraint section (algebraic equations)
 
         self.hrc = Constraint(self.fe_t, self.cp_ta, rule=hrc)
         self.gh = Constraint(self.fe_t, self.cp_ta, self.tray, rule=gh)
@@ -298,7 +296,15 @@ class DistDiehlNegrete(ConcreteModel):
         self.hydN = Constraint(self.fe_t, self.cp_ta, rule=hydN)
         self.dvself = Constraint(self.fe_t, self.cp_ta, self.tray, rule=dvm)
 
-        # Suffixes
+        # --------------------------------------------------------------------------------------------------------------
+        #: Control constraint
+        self.u1_e = Expression(self.fe_t, rule=lambda m, i: self.Rec[i])
+        self.u2_e = Expression(self.fe_t, rule=lambda m, i: self.Qr[i])
+
+        self.u1_c = Constraint(self.fe_t, rule=lambda m, i: self.u1[i] == self.u1_e[i])
+        self.u2_c = Constraint(self.fe_t, rule=lambda m, i: self.u2[i] == self.u2_e[i])
+        # --------------------------------------------------------------------------------------------------------------
+        #: Suffixes
         self.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
         self.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
         self.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)

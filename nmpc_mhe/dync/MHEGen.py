@@ -11,7 +11,7 @@ from nmpc_mhe.dync.NMPCGen import NmpcGen
 import numpy as np
 from itertools import product
 import sys
-
+import time
 __author__ = "David M Thierry @dthierry"
 """Not yet. Our people, they don't understand."""
 
@@ -32,6 +32,7 @@ class MheGen(NmpcGen):
         self.deact_ics = kwargs.pop('del_ics', True)
         self.diag_Q_R = kwargs.pop('diag_QR', True)  #: By default use diagonal matrices for Q and R matrices
         self.u = kwargs.pop('u', [])
+        self.res_file_mhe = "res_mhe_" + str(int(time.time())) + ".txt"
 
         print("-" * 120)
         print("I[[create_lsmhe]] lsmhe (full) model created.")
@@ -172,7 +173,6 @@ class MheGen(NmpcGen):
             self.y_noise_jrnl[y] = []
             self.yk0_jrnl[y] = []
 
-
     def initialize_xreal(self, ref):
         """Wanted to keep the states in a horizon-like window, this should be done in the main dyngen class"""
         dum = self.d_mod(1, self.ncp_t, _t=self.hi_t)
@@ -292,9 +292,9 @@ class MheGen(NmpcGen):
             #     print("Key error, {:} {:} {:}".format(vni, vnj, _t))
 
     def set_covariance_disturb(self, cov_dict):
-        """Sets covariance(inverse) for the measurements.
+        """Sets covariance(inverse) for the states.
         Args:
-            cov_dict (dict): a dictionary with the following key structure [(meas_name, j), (meas_name, k), time]
+            cov_dict (dict): a dictionary with the following key structure [(state_name, j), (state_name, k), time]
         Returns:
             None
         """
@@ -607,6 +607,21 @@ class MheGen(NmpcGen):
                         f.write('\t')
                     f.write('\n')
             f.close()
+
+        with open(self.res_file_mhe, "a") as f:
+            for x in self.x_noisy:
+                for j in self.s_estimate[x][-1]:
+                    xvs = str(j)
+                    f.write(xvs)
+                    f.write('\t')
+            f.write('\t;\t')
+            for x in self.x_noisy:
+                for j in range(0, len(self.s_real[x][-1])):
+                    xvs = str(j)
+                    f.write(xvs)
+                    f.write('\t')
+            f.close()
+
         with open("res_mhe_ereal.txt", "w") as f:
             for x in self.x_noisy:
                 for j in range(0, len(self.s_real[x][0])):
@@ -735,3 +750,6 @@ class MheGen(NmpcGen):
             xvar = getattr(self.lsmhe, x)
             for j in self.state_vars[x]:
                 self.curr_estate[(x, j)] = value(xvar[self.nfe_t, self.ncp_t, j])
+
+    def method_for_mhe_simulation_step(self):
+        pass

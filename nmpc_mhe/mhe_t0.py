@@ -7,6 +7,7 @@ import sys
 y = ["T", "Mv", "Mv1", "Mvn"]
 u = ["u1", "u2"]
 ref_state = {("T", (29,)): 343.15, ("T", (14,)): 361.15}
+u_bounds = {"u1":(0.0001, 9.9999e-1), "u2":(0, 1e+08)}
 
 states = ["x", "M"]
 x_noisy = ["x", "M"]
@@ -27,7 +28,8 @@ e = MheGen(d_mod=DistDiehlNegrete,
            x_vars=x_vars,
            states=states,
            u=u,
-           ref_state=ref_state)
+           ref_state=ref_state,
+           u_bounds=u_bounds)
 
 e.solve_ss()
 e.load_d_s(e.d1)

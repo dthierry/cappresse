@@ -7,7 +7,7 @@ from pyomo.core.base import Var, Objective, minimize, value, Set, Constraint, Ex
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
 from nmpc_mhe.dync.DynGen import DynGen
 import numpy as np
-import sys
+import sys, os, time
 from six import iterkeys
 __author__ = "David M Thierry @dthierry"
 
@@ -25,12 +25,15 @@ class NmpcGen(DynGen):
         self.olnmpc = object()
 
         self.curr_soi = {}  #: Values that we would like to keep track
+        self.curr_sp = {}  #: Values that we would like to keep track
         for k in self.ref_state.keys():
             self.curr_soi[k] = 0.0
+            self.curr_sp[k] = 0.0
 
-        self.soi_dict = {}
-        self.sp_dict = {}
-        self.u_dict = dict.fromkeys(self.u)
+        self.soi_dict = {}  #: State-of-interest
+        self.sp_dict = {}  #: Set-point
+        self.u_dict = dict.fromkeys(self.u, [])
+        self.res_file_name = "res_nmpc_" + str(int(time.time())) + ".txt"
 
     def create_nmpc(self):
         self.olnmpc = self.d_mod(self.nfe_t, self.ncp_t, _t=self._t)
@@ -437,38 +440,54 @@ class NmpcGen(DynGen):
                     self.curr_state_offset[(x, j)] = self.curr_pstate[(x, j)] - self.curr_rstate[(x, j)]
 
     def print_r_nmpc(self):
-        self.journalizer("I", self._c_it, "print_r_nmpc", "Results")
+        self.journalizer("I", self._c_it, "print_r_nmpc", "Results at" + os.getcwd())
         for k in self.ref_state.keys():
             self.soi_dict[k].append(self.curr_soi[k])
-            self.sp_dict[k].append(self.curr_soi[k])
+            self.sp_dict[k].append(self.curr_sp[k])
 
         for u in self.u:
             self.u_dict[u].append(self.curr_u[u])
 
-        with open("res_nmpc_sp.txt", "w") as f:
-            for x in self.x_noisy:
-                for j in range(0, len(self.s_estimate[x][0])):
-                    for i in range(0, len(self.s_estimate[x])):
-                        xvs = str(self.s_estimate[x][i][j])
-                        f.write(xvs)
-                        f.write('\t')
-                    f.write('\n')
-            f.close()
-        with open("res_nmpc_input.txt", "w") as f:
-            for x in self.x_noisy:
-                for j in range(0, len(self.s_real[x][0])):
-                    for i in range(0, len(self.s_real[x])):
-                        xvs = str(self.s_real[x][i][j])
-                        f.write(xvs)
-                        f.write('\t')
-                    f.write('\n')
+        with open(self.res_file_name, "a") as f:
+            for k in self.ref_state.keys():
+                i = self.soi_dict[k]
+                iv = str(i[-1])
+                f.write(iv)
+                f.write('\t')
+            for k in self.ref_state.keys():
+                i = self.soi_dict[k]
+                iv = str(i[-1])
+                f.write(iv)
+                f.write('\t')
+            for u in self.u:
+                i = self.u_dict[u]
+                iv = str(i[-1])
+                f.write(iv)
+                f.write('\t')
+            f.write('\n')
             f.close()
 
-    def update_soi_val(self):
-        """States-of-interest"""
-        if not bool(self.soi_dict):
+        with open("res_nmpc_input.txt", "w") as f:
+            for u in self.u:
+                for i in range(0, len(self.u_dict[u])):
+                    iv = str(i)
+                    f.write(iv)
+                    f.write('\t')
+                f.write('\n')
+            f.close()
+
+    def update_soi_sp_nmpc(self):
+        """States-of-interest and set-point update"""
+        if bool(self.soi_dict):
+            pass
+        else:
             for k in self.ref_state.keys():
                 self.soi_dict[k] = []
+
+        if bool(self.sp_dict):
+            pass
+        else:
+            for k in self.ref_state.keys():
                 self.sp_dict[k] = []
 
         for k in self.ref_state.keys():
@@ -476,10 +495,13 @@ class NmpcGen(DynGen):
             vkey = k[1]
             var = getattr(self.d1, vname)
             #: Assuming the variable is indexed by time
-            self.curr_soi[k] = value(var[(1,self.ncp_t) + vkey])
+            self.curr_soi[k] = value(var[(1, self.ncp_t) + vkey])
         for k in self.ref_state.keys():
             vname = k[0]
             vkey = k[1]
             var = getattr(self.ss2, vname)
             #: Assuming the variable is indexed by time
-            self.sp_dict[k] = value(var[(1, 1) + vkey])
+            self.curr_sp[k] = value(var[(1, 1) + vkey])
+
+    def method_for_nmpc_simulation(self):
+        pass
