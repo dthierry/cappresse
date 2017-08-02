@@ -75,14 +75,14 @@ e.find_target_ss()
 
 
 
-for i in range(1, 2):
+for i in range(1, 15):
     print(str(i) + "--"*20, file=sys.stderr)
     print(i)
     print("*"*100)
 
 
     if i == 10:
-        e.plant_input_gen(e.ss2, 1)
+        e.plant_input_gen(e.ss2)
         # e.lsmhe.pprint(filename="somefile.txt")
 
 

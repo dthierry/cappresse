@@ -35,6 +35,8 @@ class DynGen(object):
         self.ipopt = SolverFactory("ipopt")
         self.k_aug = SolverFactory("k_aug",
                                    executable="/home/dav0/k2/KKT_matrix/src/kmatrix/k_aug")
+        self.k_aug_sens = SolverFactory("k_aug",
+                                        executable="/home/dav0/k2/KKT_matrix/src/kmatrix/k_aug")
         self.dot_driver = SolverFactory("dot_driver",
                                         executable="/home/dav0/k2/KKT_matrix/src/kmatrix/dot_driver/dot_driver")
 

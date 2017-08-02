@@ -308,11 +308,11 @@ class NmpcGen(DynGen):
         k = s.split()
         self._dot_timing = k[0]
 
-    def solve_k_aug(self):
+    def solve_k_aug_nmpc(self):
         self.olnmpc.ipopt_zL_in.update(self.olnmpc.ipopt_zL_out)
         self.olnmpc.ipopt_zU_in.update(self.olnmpc.ipopt_zU_out)
         self.journalizer("I", self._c_it, "solve_k_aug", self.olnmpc.name)
-        results = self.k_aug.solve(self.olnmpc, tee=True, symbolic_solver_labels=True)
+        results = self.k_aug_sens.solve(self.olnmpc, tee=True, symbolic_solver_labels=True)
         self.olnmpc.solutions.load_from(results)
         ftimings = open("timings_k_aug.txt", "r")
         s = ftimings.readline()
@@ -353,18 +353,41 @@ class NmpcGen(DynGen):
                 sys.exit()
             self.stall_strategy("increase_weights")
 
-    def find_target_ss(self, ref_state=None):
+    def find_target_ss(self, ref_state=None, **kwargs):
         """Attempt to find a second steady state
         Args:
-            None
+            ref_state (dict): Contains the reference state with value key "state", (j,): value
+            kwargs (dict): Optional arguments
         Returns
             None"""
+
         if ref_state:
             self.ref_state = ref_state
         else:
+            if not ref_state:
+                self.journalizer("W", self._c_it, "find_target_ss", "No reference state was given, using default")
             if not self.ref_state:
-                self.journalizer("W", self._c_it, "find_target_ss", "No reference state was given")
+                self.journalizer("W", self._c_it, "find_target_ss", "No default reference state was given, exit")
                 sys.exit()
+
+        weights = dict.fromkeys(self.ref_state.keys())
+        for i in self.ref_state.keys():
+            v = getattr(self.ss, i[0])
+            vkey = i[1]
+            vss0 = value(v[(1, 1) + vkey])
+            val = abs(self.ref_state[i] - vss0)
+            if val < 1e-09:
+                val = 1e+06
+            else:
+                val = 1/val
+            weights[i] = val
+
+        if bool(kwargs):
+            pass
+        else:
+            self.journalizer("W", self._c_it, "find_target_ss", "Default-weights are being used")
+
+        weights = kwargs.pop("weights", weights)
 
         self.journalizer("I", self._c_it, "find_target_ss", "Attempting to find steady state")
 
@@ -398,11 +421,17 @@ class NmpcGen(DynGen):
         for i in self.ref_state.keys():
             v = getattr(self.ss2, i[0])
             vkey = i[1]
-            ofexp += (v[(1, 1) + vkey] - self.ref_state[i])**2
+            ofexp += weights[i] * (v[(1, 1) + vkey] - self.ref_state[i])**2
         self.ss2.obfun_ss2 = Objective(expr=ofexp, sense=minimize)
 
         self.solve_d(self.ss2, iter_max=500, stop_if_nopt=True)
         self.journalizer("I", self._c_it, "find_target_ss", "Target: solve done")
+        for i in self.ref_state.keys():
+            v = getattr(self.ss2, i[0])
+            vkey = i[1]
+            val = value(v[(1, 1) + vkey])
+            print("target {:}".format(i[0]), "key {:}".format(i[1]), "weight {:f}".format(weights[i]),
+                  "value {:f}".format(val))
 
     def update_targets_nmpc(self):
         """Use the reference model to update  the current state and control targets"""
@@ -414,20 +443,51 @@ class NmpcGen(DynGen):
             uvar = getattr(self.ss2, u)
             self.curr_u_target[u] = value(uvar[1])
 
-    def change_setpoint(self, ref_state):
+    def change_setpoint(self, ref_state, **kwargs):
         """Change the update the ref_state dictionary, and attempt to find a new reference state"""
-        if not ref_state:
-            self.journalizer("W", self._c_it, "change_setpoint", "No reference state was given")
-            return
-        self.ref_state = ref_state
+        if ref_state:
+            self.ref_state = ref_state
+        else:
+            if not ref_state:
+                self.journalizer("W", self._c_it, "change_setpoint", "No reference state was given, using default")
+            if not self.ref_state:
+                self.journalizer("W", self._c_it, "change_setpoint", "No default reference state was given, exit")
+                sys.exit()
+
+        weights = dict.fromkeys(self.ref_state.keys())
+        for i in self.ref_state.keys():
+            v = getattr(self.ss, i[0])
+            vkey = i[1]
+            vss0 = value(v[(1, 1) + vkey])
+            val = abs(self.ref_state[i] - vss0)
+            if val < 1e-09:
+                val = 1e+06
+            else:
+                val = 1/val
+            weights[i] = val
+
+        if bool(kwargs):
+            pass
+        else:
+            self.journalizer("W", self._c_it, "find_target_ss", "Default-weights are being used")
+
+        weights = kwargs.pop("weights", weights)
+
         ofexp = 0.0
         for i in self.ref_state.keys():
             v = getattr(self.ss2, i[0])
             vkey = i[1]
-            ofexp += (v[(1, 1) + vkey] - self.ref_state[i])**2
+            ofexp += weights[i] * (v[(1, 1) + vkey] - self.ref_state[i]) ** 2
 
         self.ss2.obfun_ss2.set_value(ofexp)
         self.solve_d(self.ss2, iter_max=500, stop_if_nopt=True)
+
+        for i in self.ref_state.keys():
+            v = getattr(self.ss2, i[0])
+            vkey = i[1]
+            val = value(v[(1, 1) + vkey])
+            print("target {:}".format(i[0]), "key {:}".format(i[1]), "weight {:f}".format(weights[i]),
+                  "value {:f}".format(val))
 
     def compute_offset_state(self, src_kind="estimated"):
         if src_kind == "estimated":

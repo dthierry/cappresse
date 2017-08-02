@@ -72,9 +72,6 @@ e.deact_icc_mhe()
 e.set_prior_state_from_prior_mhe()
 e.find_target_ss()
 
-
-
-
 for i in range(1, 15):
     print(str(i) + "--"*20, file=sys.stderr)
     print(i)
@@ -89,7 +86,7 @@ for i in range(1, 15):
     e.sens_k_aug_mhe()
 
     if i == 10:
-        e.plant_input_gen(e.ss2, 1)
+        e.plant_input_gen(e.ss2)
         # e.lsmhe.pprint(filename="somefile.txt")
 
     e.solve_d(e.d1)
@@ -106,3 +103,4 @@ for i in range(1, 15):
     e.patch_meas_mhe(e.nfe_t, src=e.d1, noisy=True)
 
     e.print_r_mhe()
+    # compute_y_offset

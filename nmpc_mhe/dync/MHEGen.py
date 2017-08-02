@@ -32,7 +32,7 @@ class MheGen(NmpcGen):
         self.deact_ics = kwargs.pop('del_ics', True)
         self.diag_Q_R = kwargs.pop('diag_QR', True)  #: By default use diagonal matrices for Q and R matrices
         self.u = kwargs.pop('u', [])
-        self.res_file_mhe = "res_mhe_" + str(int(time.time())) + ".txt"
+        self.res_file_mhe_suf = str(int(time.time()))
 
         print("-" * 120)
         print("I[[create_lsmhe]] lsmhe (full) model created.")
@@ -416,6 +416,12 @@ class MheGen(NmpcGen):
             self.lsmhe.rh_name.clear()
         else:
             self.lsmhe.rh_name = Suffix(direction=Suffix.IMPORT)  #: Red_hess_name
+
+        if hasattr(self.lsmhe, "f_timestamp"):
+            self.lsmhe.f_timestamp.clear()
+        else:
+            self.lsmhe.f_timestamp = Suffix(direction=Suffix.IMPORT)  #: Red_hess_name
+
         if set_suffix:
             for key in self.x_noisy:
                 var = getattr(self.lsmhe, key)
@@ -444,12 +450,28 @@ class MheGen(NmpcGen):
 
     def check_active_bound_noisy(self):
         """Checks if the dof_(super-basic) have active bounds, if so, add them to the exclusion list"""
+        if hasattr(self.lsmhe, "dof_v"):
+            self.lsmhe.dof_v.clear()
+        else:
+            self.lsmhe.dof_v = Suffix(direction=Suffix.EXPORT)  #: dof_v
+        if hasattr(self.lsmhe, "rh_name"):
+            self.lsmhe.rh_name.clear()
+        else:
+            self.lsmhe.rh_name = Suffix(direction=Suffix.IMPORT)  #: Red_hess_name
+
         self.xkN_nexcl = []
         k = 0
         for x in self.x_noisy:
             v = getattr(self.lsmhe, x)
             for j in self.x_vars[x]:
-                if v[(2, 0) + j].value - v[(2, 0) + j].lb < 1e-08 or v[(2, 0) + j].ub - v[(2, 0) + j].value < 1e-08:
+                active_bound = False
+                if v[(2, 0) + j].lb:
+                    if v[(2, 0) + j].value - v[(2, 0) + j].lb < 1e-08:
+                        active_bound = True
+                if v[(2, 0) + j].ub:
+                    if v[(2, 0) + j].ub - v[(2, 0) + j].value < 1e-08:
+                        active_bound = True
+                if active_bound:
                     print("Active bound {:s}, {:d}, value {:f}".format(x, j[0], v[(2, 0) + j].value), file=sys.stderr)
                     v[(2, 0) + j].set_suffix_value(self.lsmhe.dof_v, 0)
                     self.xkN_nexcl.append(0)
@@ -491,8 +513,11 @@ class MheGen(NmpcGen):
     def load_covariance_prior(self):
         """Computes the reduced-hessian (inverse of the prior-covariance)
         Reads the result_hessian.txt file that contains the covariance information"""
+        self.journalizer("I", self._c_it, "load_covariance_prior", "K_AUG w red_hess")
         self.k_aug.options["eig_rh"] = ""
+
         self.k_aug.solve(self.lsmhe, tee=True)
+
         self._PI.clear()
         with open("inv_.txt", "r") as rh:
             ll = []
@@ -586,7 +611,7 @@ class MheGen(NmpcGen):
         # f1.close()
 
     def print_r_mhe(self):
-        self.journalizer("I", self._c_it, "print_r_mhe", "Results")
+        self.journalizer("I", self._c_it, "print_r_mhe", "Results suffix " + self.res_file_mhe_suf)
         for x in self.x_noisy:
             elist = []
             rlist = []
@@ -598,39 +623,42 @@ class MheGen(NmpcGen):
             self.s_estimate[x].append(elist)
             self.s_real[x].append(rlist)
 
-        with open("res_mhe_ee.txt", "w") as f:
-            for x in self.x_noisy:
-                for j in range(0, len(self.s_estimate[x][0])):
-                    for i in range(0, len(self.s_estimate[x])):
-                        xvs = str(self.s_estimate[x][i][j])
-                        f.write(xvs)
-                        f.write('\t')
-                    f.write('\n')
-            f.close()
+        # with open("res_mhe_ee.txt", "w") as f:
+        #     for x in self.x_noisy:
+        #         for j in range(0, len(self.s_estimate[x][0])):
+        #             for i in range(0, len(self.s_estimate[x])):
+        #                 xvs = str(self.s_estimate[x][i][j])
+        #                 f.write(xvs)
+        #                 f.write('\t')
+        #             f.write('\n')
+        #     f.close()
 
-        with open(self.res_file_mhe, "a") as f:
+        with open("res_mhe_es_" + self.res_file_mhe_suf + ".txt", "a") as f:
             for x in self.x_noisy:
                 for j in self.s_estimate[x][-1]:
                     xvs = str(j)
                     f.write(xvs)
                     f.write('\t')
-            f.write('\t;\t')
+            f.write('\n')
+            f.close()
+        with open("res_mhe_rs_" + self.res_file_mhe_suf + ".txt", "a") as f:
             for x in self.x_noisy:
-                for j in range(0, len(self.s_real[x][-1])):
+                for j in self.s_real[x][-1]:
                     xvs = str(j)
                     f.write(xvs)
                     f.write('\t')
+            f.write('\n')
             f.close()
 
-        with open("res_mhe_ereal.txt", "w") as f:
-            for x in self.x_noisy:
-                for j in range(0, len(self.s_real[x][0])):
-                    for i in range(0, len(self.s_real[x])):
-                        xvs = str(self.s_real[x][i][j])
-                        f.write(xvs)
-                        f.write('\t')
-                    f.write('\n')
-            f.close()
+        # with open("res_mhe_ereal.txt", "w") as f:
+        #     for x in self.x_noisy:
+        #         for j in range(0, len(self.s_real[x][0])):
+        #             for i in range(0, len(self.s_real[x])):
+        #                 xvs = str(self.s_real[x][i][j])
+        #                 f.write(xvs)
+        #                 f.write('\t')
+        #             f.write('\n')
+        #     f.close()
 
         for y in self.y:
             elist = []
@@ -649,41 +677,59 @@ class MheGen(NmpcGen):
             self.y_noise_jrnl[y].append(nlist)
             self.yk0_jrnl[y].append(yklst)
 
-        with open("res_mhe_ey.txt", "w") as f:
+        # with open("res_mhe_ey.txt", "w") as f:
+        #     for y in self.y:
+        #         for j in range(0, len(self.y_estimate[y][0])):
+        #             for i in range(0, len(self.y_estimate[y])):
+        #                 yvs = str(self.y_estimate[y][i][j])
+        #                 f.write(yvs)
+        #                 f.write('\t')
+        #             f.write('\n')
+        #     f.close()
+
+        with open("res_mhe_ey_" + self.res_file_mhe_suf + ".txt", "a") as f:
             for y in self.y:
-                for j in range(0, len(self.y_estimate[y][0])):
-                    for i in range(0, len(self.y_estimate[y])):
-                        yvs = str(self.y_estimate[y][i][j])
-                        f.write(yvs)
-                        f.write('\t')
-                    f.write('\n')
+                for j in self.y_estimate[y][-1]:
+                    yvs = str(j)
+                    f.write(yvs)
+                    f.write('\t')
+            f.write('\n')
             f.close()
-        with open("res_mhe_yreal.txt", "w") as f:
+
+        with open("res_mhe_yreal_" + self.res_file_mhe_suf + ".txt", "a") as f:
             for y in self.y:
-                for j in range(0, len(self.y_real[y][0])):
-                    for i in range(0, len(self.y_real[y])):
-                        yvs = str(self.y_real[y][i][j])
-                        f.write(yvs)
-                        f.write('\t')
-                    f.write('\n')
+                for j in self.y_real[y][-1]:
+                    yvs = str(j)
+                    f.write(yvs)
+                    f.write('\t')
+            f.write('\n')
             f.close()
-        with open("res_mhe_ynoise.txt", "w") as f:
+
+        with open("res_mhe_yk0_" + self.res_file_mhe_suf + ".txt", "a") as f:
             for y in self.y:
-                for j in range(0, len(self.y_noise_jrnl[y][0])):
-                    for i in range(0, len(self.y_noise_jrnl[y])):
-                        yvs = str(self.y_noise_jrnl[y][i][j])
-                        f.write(yvs)
-                        f.write('\t')
-                    f.write('\n')
+                for j in self.yk0_jrnl[y][-1]:
+                    yvs = str(j)
+                    f.write(yvs)
+                    f.write('\t')
+            f.write('\n')
             f.close()
-        with open("res_mhe_yk0.txt", "w") as f:
+
+        with open("res_mhe_ynoise_" + self.res_file_mhe_suf + ".txt", "a") as f:
             for y in self.y:
-                for j in range(0, len(self.yk0_jrnl[y][0])):
-                    for i in range(0, len(self.yk0_jrnl[y])):
-                        yvs = str(self.yk0_jrnl[y][i][j])
-                        f.write(yvs)
-                        f.write('\t')
-                    f.write('\n')
+                for j in self.y_noise_jrnl[y][-1]:
+                    yvs = str(j)
+                    f.write(yvs)
+                    f.write('\t')
+            f.write('\n')
+            f.close()
+
+        with open("res_mhe_yoffset_" + self.res_file_mhe_suf + ".txt", "a") as f:
+            for y in self.y:
+                for j in self.y_vars[y]:
+                    yvs = str(self.curr_y_offset[(y, j)])
+                    f.write(yvs)
+                    f.write('\t')
+            f.write('\n')
             f.close()
 
     def compute_y_offset(self, noisy=True):
@@ -711,18 +757,18 @@ class MheGen(NmpcGen):
 
         self.journalizer("I", self._c_it, "sens_dot_mhe", "Set-up")
 
-        with open("somefile0.txt", "w") as f:
-            self.lsmhe.x.display(ostream=f)
-            self.lsmhe.M.display(ostream=f)
-            f.close()
+        # with open("somefile0.txt", "w") as f:
+        #     self.lsmhe.x.display(ostream=f)
+        #     self.lsmhe.M.display(ostream=f)
+        #     f.close()
 
         results = self.dot_driver.solve(self.lsmhe, tee=True, symbolic_solver_labels=True)
         self.lsmhe.solutions.load_from(results)
 
-        with open("somefile1.txt", "w") as f:
-            self.lsmhe.x.display(ostream=f)
-            self.lsmhe.M.display(ostream=f)
-            f.close()
+        # with open("somefile1.txt", "w") as f:
+        #     self.lsmhe.x.display(ostream=f)
+        #     self.lsmhe.M.display(ostream=f)
+        #     f.close()
 
         ftiming = open("timings_dot_driver.txt", "r")
         s = ftiming.readline()
@@ -731,14 +777,15 @@ class MheGen(NmpcGen):
         self._dot_timing = k[0]
 
     def sens_k_aug_mhe(self):
+        self.journalizer("I", self._c_it, "sens_k_aug_mhe", "K_AUG w sensitivity")
         self.lsmhe.ipopt_zL_in.update(self.lsmhe.ipopt_zL_out)
         self.lsmhe.ipopt_zU_in.update(self.lsmhe.ipopt_zU_out)
         self.journalizer("I", self._c_it, "sens_k_aug_mhe", self.lsmhe.name)
 
-        if hasattr(self.k_aug.options, "eig_rh"):
-            delattr(self.k_aug.options, "eig_rh")
-        print(self.k_aug.options)
-        results = self.k_aug.solve(self.lsmhe, tee=True, symbolic_solver_labels=True)
+        # if hasattr(self.k_aug.options, "eig_rh")
+        #     delattr(self.k_aug.options, "eig_rh")
+        # print(self.k_aug.options)
+        results = self.k_aug_sens.solve(self.lsmhe, tee=True, symbolic_solver_labels=True)
         self.lsmhe.solutions.load_from(results)
         ftimings = open("timings_k_aug.txt", "r")
         s = ftimings.readline()

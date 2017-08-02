@@ -9,9 +9,9 @@ states = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", 
 x_noisy = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"]
 u = ["u1", "u2"]
 u_bounds = {"u1":(0.0001, 99.9999), "u2":(0.0001, 99.99)}
-ref_state = {("c_capture", ((),)): 0.45}
+ref_state = {("c_capture", ((),)): 0.50}
 
-# Let's roll with the Temperature of the gas-emulsion and pressure
+# Let's roll with the Temperature of the gas-emulsion, pressure and gas_velocity
 
 y = ["Tge", "P", "vg"]
 nfet = 5
@@ -38,6 +38,9 @@ x_vars = {"Ngb": [i for i in itertools.product(lfe, lcp, lc)],
           "Hse": [i for i in itertools.product(lfe, lcp)],
           "Ws": [i for i in itertools.product(lfe, lcp)]}
 
+# States -- (5 * 3 + 6) * fe_x * cp_x.
+# For fe_x = 5 and cp_x = 3 we will have 315 differential-states.
+
 e = MheGen(d_mod=bfb_dae,
            y=y,
            x_noisy=x_noisy,
@@ -51,7 +54,6 @@ e.load_iguess_ss()
 e.solve_ss()
 e.load_d_s(e.d1)
 e.solve_d(e.d1)
-
 
 q_cov = {}
 for i in tfe:
@@ -93,29 +95,24 @@ e.solve_d(e.lsmhe, skip_update=False)
 
 e.create_rh_sfx()
 
-# e.check_active_bound_noisy()
-# e.load_covariance_prior()
-# e.set_state_covariance()
+e.check_active_bound_noisy()
+e.load_covariance_prior()
+e.set_state_covariance()
+
+e.regen_objective_fun()
+e.deact_icc_mhe()
+
+e.set_prior_state_from_prior_mhe()
+e.find_target_ss()
 #
-# e.regen_objective_fun()
-# e.deact_icc_mhe()
-#
-# e.set_prior_state_from_prior_mhe()
-# e.find_target_ss()
-#
-#
-#
-#
-# for i in range(1, 2):
+# for i in range(1, 15):
 #     print(str(i) + "--"*20, file=sys.stderr)
 #     print(i)
 #     print("*"*100)
 #
-#
 #     if i == 10:
-#         e.plant_input_gen(e.ss2, 1)
+#         e.plant_input_gen(e.ss2)
 #         # e.lsmhe.pprint(filename="somefile.txt")
-#
 #
 #     e.solve_d(e.d1)
 #     e.update_noise_meas(e.d1, m_cov)
@@ -131,7 +128,6 @@ e.create_rh_sfx()
 #     e.sens_k_aug_mhe()
 #     e.sens_dot_mhe()
 #
-#
 #     e.init_step_mhe(dum, e.nfe_t, patch_y=True)
 #     e.solve_d(e.lsmhe, skip_update=False)
 #     e.check_active_bound_noisy()
@@ -144,7 +140,4 @@ e.create_rh_sfx()
 #     e.print_r_mhe()
 #     e.shift_mhe()
 #     e.shift_measurement()
-#
-#
-#
-#
+#     # Compute offset
