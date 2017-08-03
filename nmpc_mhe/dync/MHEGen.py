@@ -32,7 +32,8 @@ class MheGen(NmpcGen):
         self.deact_ics = kwargs.pop('del_ics', True)
         self.diag_Q_R = kwargs.pop('diag_QR', True)  #: By default use diagonal matrices for Q and R matrices
         self.u = kwargs.pop('u', [])
-        self.res_file_mhe_suf = str(int(time.time()))
+        self.int_file_mhe_suf = int(time.time())
+        self.res_file_mhe_suf = str(self.int_file_mhe_suf)
 
         print("-" * 120)
         print("I[[create_lsmhe]] lsmhe (full) model created.")
@@ -420,7 +421,8 @@ class MheGen(NmpcGen):
         if hasattr(self.lsmhe, "f_timestamp"):
             self.lsmhe.f_timestamp.clear()
         else:
-            self.lsmhe.f_timestamp = Suffix(direction=Suffix.IMPORT)  #: Red_hess_name
+            self.lsmhe.f_timestamp = Suffix(direction=Suffix.EXPORT,
+                                            datatype=Suffix.INT)
 
         if set_suffix:
             for key in self.x_noisy:
@@ -515,8 +517,14 @@ class MheGen(NmpcGen):
         Reads the result_hessian.txt file that contains the covariance information"""
         self.journalizer("I", self._c_it, "load_covariance_prior", "K_AUG w red_hess")
         self.k_aug.options["eig_rh"] = ""
+        if hasattr(self.lsmhe, "f_timestamp"):
+            self.lsmhe.f_timestamp.clear()
+        else:
+            self.lsmhe.f_timestamp = Suffix(direction=Suffix.EXPORT,
+                                            datatype=Suffix.INT)
 
         self.k_aug.solve(self.lsmhe, tee=True)
+        self.lsmhe.f_timestamp.display(ostream=sys.stderr)
 
         self._PI.clear()
         with open("inv_.txt", "r") as rh:
@@ -761,9 +769,19 @@ class MheGen(NmpcGen):
         #     self.lsmhe.x.display(ostream=f)
         #     self.lsmhe.M.display(ostream=f)
         #     f.close()
+        if hasattr(self.lsmhe, "f_timestamp"):
+            self.lsmhe.f_timestamp.clear()
+        else:
+            self.lsmhe.f_timestamp = Suffix(direction=Suffix.EXPORT,
+                                            datatype=Suffix.INT)
+        #: Looks for the file with the timestamp
+        self.lsmhe.set_suffix_value(self.lsmhe.f_timestamp, self.int_file_mhe_suf)
 
+        self.lsmhe.f_timestamp.display(ostream=sys.stderr)
+        # self.lsmhe.f_timestamp.clear()
         results = self.dot_driver.solve(self.lsmhe, tee=True, symbolic_solver_labels=True)
         self.lsmhe.solutions.load_from(results)
+        self.lsmhe.f_timestamp.display(ostream=sys.stderr)
 
         # with open("somefile1.txt", "w") as f:
         #     self.lsmhe.x.display(ostream=f)
@@ -785,8 +803,17 @@ class MheGen(NmpcGen):
         # if hasattr(self.k_aug.options, "eig_rh")
         #     delattr(self.k_aug.options, "eig_rh")
         # print(self.k_aug.options)
+        if hasattr(self.lsmhe, "f_timestamp"):
+            self.lsmhe.f_timestamp.clear()
+        else:
+            self.lsmhe.f_timestamp = Suffix(direction=Suffix.EXPORT,
+                                            datatype=Suffix.INT)
+        #: Now, the sensitivity step will have the timestamp for dot_in
+        self.lsmhe.set_suffix_value(self.lsmhe.f_timestamp, self.int_file_mhe_suf)
+        self.lsmhe.f_timestamp.display(ostream=sys.stderr)
         results = self.k_aug_sens.solve(self.lsmhe, tee=True, symbolic_solver_labels=True)
         self.lsmhe.solutions.load_from(results)
+        self.lsmhe.f_timestamp.display(ostream=sys.stderr)
         ftimings = open("timings_k_aug.txt", "r")
         s = ftimings.readline()
         ftimings.close()
