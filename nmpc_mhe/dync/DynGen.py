@@ -50,7 +50,6 @@ class DynGen(object):
         self.dyn = object()
         self.l_state = []
         self.l_vals = []
-        self.w_ = {}
         self._c_it = 0
         self.ccl = []
         self.iput = []
@@ -364,31 +363,20 @@ class DynGen(object):
             sigma_bar (float): The variance.
         Return
             None"""
-        self.w_ = {}
         print("-" * 120)
         print("I[[cycle_ics]] Cycling initial state -- NOISY.")
         print("-" * 120)
-        with open("noisy_" + str(self._c_it) + ".state", "w") as noi:
-            with open("nominal_" + str(self._c_it) + ".state", "w") as nom:
-                for i in self.states:
-                    pn = i + "_ic"
-                    p = getattr(self.d1, pn)
-                    vs = getattr(self.d1, i)
-                    for ks in p.keys():
-                        if vs[(1, self.ncp_t) + ks].stale:
-                            continue
-                        p[ks].value = value(vs[(1, self.ncp_t) + ks])
-                    p.display(ostream=nom)
-                    for ks in p.keys():
-                        if vs[(1, self.ncp_t) + ks].stale:
-                            continue
-                        sigma = value(vs[(1, self.ncp_t) + ks]) * sigma_bar
-                        s = np.random.normal(0, sigma)
-                        self.w_[i, ks] = s
-                        p[ks].value = value(vs[(1, self.ncp_t) + ks]) + s
-                    p.display(ostream=noi)
-                nom.close()
-            noi.close()
+        for x in self.states:
+            x_ic = getattr(self.d1, x + "_ic")
+            v_tgt = getattr(self.d1, x)
+            for ks in x_ic.keys():
+                if type(ks) != tuple:
+                    ks = (ks,)
+                x_ic[ks].value = value(v_tgt[(1, self.ncp_t) + ks])
+                sigma = value(v_tgt[(1, self.ncp_t) + ks]) * sigma_bar
+                s = np.random.normal(0, sigma)
+                self.curr_state_noise[(x, ks)] = s
+                x_ic[ks].value = value(v_tgt[(1, self.ncp_t) + ks]) + s
         self._c_it += 1
 
     def create_predictor(self):
@@ -411,7 +399,7 @@ class DynGen(object):
         self.solve_d(self.d2)
         self.journalizer("I", self._c_it, "predictor_step", "Predictor step - Success")
 
-    def plant_input_gen(self, d_mod, src_kind="dict", nsteps=5, **kwargs):
+    def plant_input_gen(self, d_mod, src_kind="mod", nsteps=5, **kwargs):
         """Attempt to solve the dynamic model with some source model input
         Args:
             d_mod (pyomo.core.base.PyomoModel.ConcreteModel): Model to be updated
@@ -481,6 +469,7 @@ class DynGen(object):
                 self.curr_rstate[(x, j)] = value(xvar[1, self.ncp_t, j])
 
     def update_state_predicted(self):
+        """For the olnmpc"""
         for x in self.states:
             xvar = getattr(self.d2, x)
             for j in self.state_vars[x]:

@@ -104,40 +104,44 @@ e.deact_icc_mhe()
 
 e.set_prior_state_from_prior_mhe()
 e.find_target_ss()
-#
-# for i in range(1, 15):
-#     print(str(i) + "--"*20, file=sys.stderr)
-#     print(i)
-#     print("*"*100)
-#
-#     if i == 10:
-#         e.plant_input_gen(e.ss2)
-#         # e.lsmhe.pprint(filename="somefile.txt")
-#
-#     e.solve_d(e.d1)
-#     e.update_noise_meas(e.d1, m_cov)
-#
-#     e.patch_meas_mhe(e.nfe_t, src=e.d1, noisy=True)
-#     e.load_inputsmhe(src=e.d1, fe=e.nfe_t)
-#
-#     e.compute_y_offset()
-#
-#     e.create_sens_suffix()
-#     print("testing \n\n\n" * 4)
-#
-#     e.sens_k_aug_mhe()
-#     e.sens_dot_mhe()
-#
-#     e.init_step_mhe(dum, e.nfe_t, patch_y=True)
-#     e.solve_d(e.lsmhe, skip_update=False)
-#     e.check_active_bound_noisy()
-#     e.load_covariance_prior()
-#     e.set_state_covariance()
-#     e.regen_objective_fun()
-#
-#     e.set_prior_state_from_prior_mhe()
-#
-#     e.print_r_mhe()
-#     e.shift_mhe()
-#     e.shift_measurement()
+
+for i in range(1, 15):
+    print(str(i) + "--"*20, file=sys.stderr)
+    print(i)
+    print("*"*100)
+
+    if i == 10:
+        e.plant_input_gen(e.d1, src_kind="mod", src=e.ss2)
+        # e.lsmhe.pprint(filename="somefile.txt")
+
+    e.solve_d(e.d1)
+    e.update_noise_meas(e.d1, m_cov)
+
+    e.patch_meas_mhe(e.nfe_t, src=e.d1, noisy=True)
+    e.load_input_mhe(src=e.d1, fe=e.nfe_t)
+
+    e.compute_y_offset()
+
+    e.create_sens_suffix()
+    print("testing \n\n\n" * 4)
+
+    #: The covariance calculation can remain here or not?
+    e.sens_k_aug_mhe()  #: Compute the step for dot_sens
+
+    e.sens_dot_mhe()
+    e.update_state_mhe()  #: Update estimated state dictionary
+
+    e.init_step_mhe(dum, e.nfe_t, patch_pred_y=True)  # Predict
+    e.solve_d(e.lsmhe, skip_update=False)
+    e.check_active_bound_noisy()
+    e.load_covariance_prior()
+    e.set_state_covariance()
+    e.regen_objective_fun()
+
+    e.set_prior_state_from_prior_mhe()
+
+    e.print_r_mhe()
+    e.shift_mhe()
+    e.shift_measurement()
+    e.cycle_ics()
 #     # Compute offset

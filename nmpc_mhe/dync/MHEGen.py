@@ -226,7 +226,7 @@ class MheGen(NmpcGen):
             self.solve_d(dum, o_tee=False)
             #: Patch
             self.load_d_d(dum, self.lsmhe, finite_elem)
-            self.load_inputsmhe(src=dum, fe=finite_elem)
+            self.load_input_mhe(src=dum, fe=finite_elem)
         self.journalizer("I", self._c_it, "initialize_lsmhe", "Attempting to initialize lsmhe Done")
 
     def patch_meas_mhe(self, t, **kwargs):
@@ -337,7 +337,7 @@ class MheGen(NmpcGen):
                 umhe[i-1] = value(umhe[i])
 
 
-    def load_inputsmhe(self, **kwargs):
+    def load_input_mhe(self, **kwargs):
         """Loads inputs into the mhe model"""
         src = kwargs.pop("src", self.d1)
         fe = kwargs.pop("fe", 1)
@@ -352,7 +352,7 @@ class MheGen(NmpcGen):
                 utrg = getattr(self.lsmhe, u)
                 utrg[fe].value = value(self.curr_u[u])
 
-    def init_step_mhe(self, tgt, i, patch_y=False):
+    def init_step_mhe(self, tgt, i, patch_pred_y=False):
         """Takes the last state-estimate from the mhe to perform an open-loop simulation
         that initializes the last slice of the mhe horizon
         Args:
@@ -399,7 +399,7 @@ class MheGen(NmpcGen):
                 p[ks].value = value(vs[(i, self.ncp_t) + (ks,)])
         self.solve_d(tgt, o_tee=False, stop_if_nopt=True)
         self.load_d_d(tgt, self.lsmhe, self.nfe_t)
-        if patch_y:
+        if patch_pred_y:
             self.patch_meas_mhe(self.nfe_t, src=tgt, noisy=True)
 
     def create_rh_sfx(self, set_suffix=True):
@@ -516,7 +516,7 @@ class MheGen(NmpcGen):
         """Computes the reduced-hessian (inverse of the prior-covariance)
         Reads the result_hessian.txt file that contains the covariance information"""
         self.journalizer("I", self._c_it, "load_covariance_prior", "K_AUG w red_hess")
-        self.k_aug.options["eig_rh"] = ""
+        self.k_aug.options["compute_inv"] = ""
         if hasattr(self.lsmhe, "f_timestamp"):
             self.lsmhe.f_timestamp.clear()
         else:
@@ -527,7 +527,7 @@ class MheGen(NmpcGen):
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
 
         self._PI.clear()
-        with open("inv_.txt", "r") as rh:
+        with open("inv_.in", "r") as rh:
             ll = []
             l = rh.readlines()
             row = 0

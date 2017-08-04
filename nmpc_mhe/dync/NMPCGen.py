@@ -490,6 +490,7 @@ class NmpcGen(DynGen):
                   "value {:f}".format(val))
 
     def compute_offset_state(self, src_kind="estimated"):
+        """Missing noisy"""
         if src_kind == "estimated":
             for x in self.states:
                 for j in self.state_vars[x]:
