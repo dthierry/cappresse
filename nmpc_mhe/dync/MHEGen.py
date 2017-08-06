@@ -38,6 +38,9 @@ class MheGen(NmpcGen):
         print("-" * 120)
         print("I[[create_lsmhe]] lsmhe (full) model created.")
         print("-" * 120)
+        nstates = sum(len(self.x_vars[x]) for x in self.x_noisy)
+
+        self.journalizer("I", self._c_it, "MHE with ", str(nstates) + "states")
 
         self.lsmhe = self.d_mod(self.nfe_t, self.ncp_t, _t=self._t)
         self.lsmhe.name = "lsmhe (Least-Squares MHE)"
@@ -89,10 +92,43 @@ class MheGen(NmpcGen):
         self.lsmhe.nuk_mhe = Var(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, initialize=0.0)   #: Measurement noise
         self.lsmhe.yk0_mhe = Param(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, initialize=1.0, mutable=True)
         self.lsmhe.hyk_c_mhe = Constraint(self.lsmhe.fe_t, self.lsmhe.ykk_mhe,
-                                      rule=lambda mod, t, i: mod.yk0_mhe[t, i] - self.yk_l[t][i] - mod.nuk_mhe[t, i] == 0.0)
+                                          rule=
+                                          lambda mod, t, i:
+                                          mod.yk0_mhe[t, i] - self.yk_l[t][i] - mod.nuk_mhe[t, i] == 0.0)
         self.lsmhe.R_mhe = Param(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, initialize=1.0, mutable=True) if self.diag_Q_R else \
             Param(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, self.lsmhe.ykk_mhe,
                              initialize=lambda mod, t, i, ii: 1.0 if i == ii else 0.0, mutable=True)
+        f = open("file_cv.txt", "w")
+        f.close()
+        for u in self.u:
+            cv = getattr(self.lsmhe, u)  #: Get the param
+            c_val = [value(cv[i]) for i in cv.keys()]  #: Current value
+            # self.lsmhe.del_component(cv)  #: Delete the param
+            self.lsmhe.add_component(u + "_mhe", Var(self.lsmhe.fe_t, initialize=lambda m, i: c_val[i-1]))
+            self.lsmhe.add_component("w_" + u + "_mhe", Var(self.lsmhe.fe_t, initialize=0.0))
+            self.lsmhe.add_component("w_" + u + "c_mhe", Constraint(self.lsmhe.fe_t))
+            self.lsmhe.equalize_u(direction="r_to_u")
+            cc = getattr(self.lsmhe, u + "_c")  #: Get the constraint
+            con_w = getattr(self.lsmhe, "w_" + u + "c_mhe")  #: Get the constraint-noisy
+            var_w = getattr(self.lsmhe, "w_" + u + "_mhe")  #: Get the constraint-noisy
+            ce = getattr(self.lsmhe, u + "_e")  #: Get the expression
+            cv = getattr(self.lsmhe, u + "_mhe")  #: Get the new variable
+            cp = getattr(self.lsmhe, u)  #: Get the param
+            for k in cv.keys():
+                cv[k].setlb(self.u_bounds[u][0])
+                cv[k].setub(self.u_bounds[u][1])
+            cc.clear()
+            cc.rule = lambda m, i: cv[i] == ce[i]
+            cc.reconstruct()
+
+            con_w.rule = lambda m, i: cp[i] == cv[i] + var_w[i]
+            con_w.reconstruct()
+            with open("file_cv.txt", "a") as f:
+                cc.pprint(ostream=f)
+                con_w.pprint(ostream=f)
+                f.close()
+
+        self.lsmhe.U_mhe = Param(range(1, self.nfe_t + 1), initialize=1/50, mutable=True)
 
         #: Deactivate icc constraints
         if self.deact_ics:
@@ -135,6 +171,16 @@ class MheGen(NmpcGen):
             expr=sum(sum(self.lsmhe.nuk_mhe[i, j] *
                          sum(self.lsmhe.R_mhe[i, j, k] * self.lsmhe.nuk_mhe[i, k] for k in self.lsmhe.ykk_mhe)
                          for j in self.lsmhe.ykk_mhe) for i in self.lsmhe.fe_t))
+        expr_u_obf = 0
+        for i in self.lsmhe.fe_t:
+            for u in self.u:
+                var_w = getattr(self.lsmhe, "w_" + u + "_mhe")  #: Get the constraint-noisy
+                expr_u_obf += self.lsmhe.U_mhe[i] * var_w[i] ** 2
+
+        self.lsmhe.U_e_mhe = Expression(expr=0.5 * expr_u_obf)  # how about this
+        with open("file_cv.txt", "a") as f:
+            self.lsmhe.U_e_mhe.pprint(ostream=f)
+            f.close()
 
         self.lsmhe.Arrival_e_mhe = Expression(
             expr=0.5 * sum((self.xkN_l[j] - self.lsmhe.x_0_mhe[j]) *
@@ -142,12 +188,16 @@ class MheGen(NmpcGen):
                      for j in self.lsmhe.xkNk_mhe))
 
         self.lsmhe.obfun_dum_mhe = Objective(sense=minimize,
-                                             expr=self.lsmhe.Q_e_mhe + self.lsmhe.R_e_mhe)
+                                             expr=self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.U_e_mhe)
         self.lsmhe.obfun_dum_mhe.activate()
 
         self.lsmhe.obfun_mhe = Objective(sense=minimize,
-                                         expr=self.lsmhe.Arrival_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.R_e_mhe)
+                                         expr=self.lsmhe.Arrival_e_mhe + self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.U_e_mhe)
         self.lsmhe.obfun_mhe.deactivate()
+
+        with open("file_cv.txt", "a") as f:
+            self.lsmhe.obfun_mhe.pprint(ostream=f)
+            f.close()
 
         self._PI = {}  #: Container of the KKT matrix
         self.xreal_W = {}
@@ -226,7 +276,7 @@ class MheGen(NmpcGen):
             self.solve_d(dum, o_tee=False)
             #: Patch
             self.load_d_d(dum, self.lsmhe, finite_elem)
-            self.load_input_mhe(src=dum, fe=finite_elem)
+            self.load_input_mhe("mod", src=dum, fe=finite_elem)
         self.journalizer("I", self._c_it, "initialize_lsmhe", "Attempting to initialize lsmhe Done")
 
     def patch_meas_mhe(self, t, **kwargs):
@@ -315,11 +365,11 @@ class MheGen(NmpcGen):
         """Shifts current initial guesses of variables for the mhe problem"""
         for v in self.lsmhe.component_objects(Var, active=True):
             if type(v.index_set()) == SimpleSet:  #: Don't want simple sets
-                break
+                continue
             else:
                 kl = v.keys()
                 if len(kl[0]) < 2:
-                    break
+                    continue
                 for k in kl:
                     if k[0] < self.nfe_t:
                         try:
@@ -327,7 +377,7 @@ class MheGen(NmpcGen):
                         except ValueError:
                             continue
 
-    def shift_measurement(self):
+    def shift_measurement_input_mhe(self):
         y0 = getattr(self.lsmhe, "yk0_mhe")
         for i in range(2, self.nfe_t + 1):
             for j in self.lsmhe.yk0_mhe.keys():
@@ -337,11 +387,11 @@ class MheGen(NmpcGen):
                 umhe[i-1] = value(umhe[i])
 
 
-    def load_input_mhe(self, **kwargs):
+    def load_input_mhe(self, src_kind, **kwargs):
         """Loads inputs into the mhe model"""
         src = kwargs.pop("src", self.d1)
         fe = kwargs.pop("fe", 1)
-        src_kind = kwargs.pop("src_kind", "mod")
+        # src_kind = kwargs.pop("src_kind", "mod")
         if src_kind == "mod":
             for u in self.u:
                 usrc = getattr(src, u)
@@ -387,7 +437,7 @@ class MheGen(NmpcGen):
                     else:
                         for j in range(1, self.ncp_t + 1):
                             vd[(1, j) + kj].set_value(value(vs[(i, j) + kj]))
-        for u in self.u:
+        for u in self.u:  #: This should update the inputs
             usrc = getattr(src, u)
             utgt = getattr(tgt, u)
             utgt[1] = (value(usrc[i]))
@@ -399,8 +449,10 @@ class MheGen(NmpcGen):
                 p[ks].value = value(vs[(i, self.ncp_t) + (ks,)])
         self.solve_d(tgt, o_tee=False, stop_if_nopt=True)
         self.load_d_d(tgt, self.lsmhe, self.nfe_t)
+
         if patch_pred_y:
             self.patch_meas_mhe(self.nfe_t, src=tgt, noisy=True)
+        self.adjust_nu0_mhe()
 
     def create_rh_sfx(self, set_suffix=True):
         """Creates relevant suffixes for k_aug (prior at fe=2) (Reduced_Hess)
@@ -489,7 +541,10 @@ class MheGen(NmpcGen):
         if self.deact_ics:
             for i in self.states:
                 icccon = getattr(self.lsmhe, i + "_icc")
-                icccon.deactivate()
+                # icccon.deactivate()
+                self.lsmhe.del_component(icccon)
+
+
         #: Maybe only for a subset of the states
         else:
             for i in self.states:

@@ -246,7 +246,7 @@ class DynGen(object):
             self.journalizer("W", self._c_it, "solve_d", "Not-optimal.")
             return 1
 
-    def cycle_ics(self):
+    def cycle_ics(self, plant_step=False):
         """Patches the initial conditions with the last result from the simulation
         Args:
             None
@@ -263,6 +263,8 @@ class DynGen(object):
                     ks = (ks,)
                 x_ic[ks].value = value(v_tgt[(1, self.ncp_t) + ks])
                 v_tgt[(1, self.ncp_t) + ks].set_value(value(v_tgt[(1, self.ncp_t) + ks]))
+        if plant_step:
+            self._c_it += 1
 
     def load_d_d(self, src, d_mod, fe, fe_src='d'):
         """Loads the solution of the src state model into the d_mod, i.e. src-->d_mod
@@ -399,7 +401,7 @@ class DynGen(object):
         self.solve_d(self.d2)
         self.journalizer("I", self._c_it, "predictor_step", "Predictor step - Success")
 
-    def plant_input_gen(self, d_mod, src_kind="mod", nsteps=5, **kwargs):
+    def plant_input_gen(self, d_mod, src_kind, nsteps=5, **kwargs):
         """Attempt to solve the dynamic model with some source model input
         Args:
             d_mod (pyomo.core.base.PyomoModel.ConcreteModel): Model to be updated
