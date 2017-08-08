@@ -1,12 +1,12 @@
 from __future__ import print_function
 from pyomo.environ import *
 from nmpc_mhe.dync.MHEGen import MheGen
-from nmpc_mhe.mods.bfb.bfb_abs import *
+from nmpc_mhe.mods.bfb.bfb_abs_v3 import *
 import sys
 import itertools, sys
 
-states = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"]
-x_noisy = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"]
+states = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse"]
+x_noisy = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse"]
 u = ["u1", "u2"]
 u_bounds = {"u1":(0.0001, 99.9999), "u2":(0.0001, 99.99)}
 ref_state = {("c_capture", ((),)): 0.5}
@@ -36,8 +36,7 @@ x_vars = {"Ngb": [i for i in itertools.product(lfe, lcp, lc)],
           "Nge": [i for i in itertools.product(lfe, lcp, lc)],
           "Hge": [i for i in itertools.product(lfe, lcp)],
           "Nse": [i for i in itertools.product(lfe, lcp, lc)],
-          "Hse": [i for i in itertools.product(lfe, lcp)],
-          "Ws": [i for i in itertools.product(lfe, lcp)]}
+          "Hse": [i for i in itertools.product(lfe, lcp)]}
 
 # States -- (5 * 3 + 6) * fe_x * cp_x.
 # For fe_x = 5 and cp_x = 3 we will have 315 differential-states.
@@ -86,7 +85,6 @@ for i in tfe:
             q_cov[("Hsc", j), ("Hsc", j), i] = 1.
             q_cov[("Hge", j), ("Hge", j), i] = 1.
             q_cov[("Hse", j), ("Hse", j), i] = 1.
-            q_cov[("Ws", j), ("Ws", j), i] = 1.
 
 
 m_cov = {}
@@ -114,7 +112,11 @@ e.shift_mhe()
 dum = e.d_mod(1, e.ncp_t, _t=e.hi_t)
 
 e.init_step_mhe(dum, e.nfe_t)
-e.solve_d(e.lsmhe, skip_update=False)  #: Pre-loaded mhe solve
+tst = e.solve_d(e.lsmhe, skip_update=False, iter_max=5)  #: Pre-loaded mhe solve
+if tst != 0:
+    e.create_rh_sfx()
+    e.k_aug.solve(e.lsmhe, tee=True)
+    sys.exit()
 # e.lsmhe.pprint(filename="somefile.model")
 
 e.create_rh_sfx()  #: Reduced hessian computation

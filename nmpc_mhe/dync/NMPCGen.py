@@ -432,6 +432,10 @@ class NmpcGen(DynGen):
             val = value(v[(1, 1) + vkey])
             print("target {:}".format(i[0]), "key {:}".format(i[1]), "weight {:f}".format(weights[i]),
                   "value {:f}".format(val))
+        for u in self.u:
+            v = getattr(self.ss2, u)
+            val = value(v[1])
+            print("target {:}".format(u), " value {:f}".format(val))
 
     def update_targets_nmpc(self):
         """Use the reference model to update  the current state and control targets"""

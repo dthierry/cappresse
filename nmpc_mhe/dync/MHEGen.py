@@ -128,7 +128,7 @@ class MheGen(NmpcGen):
                 con_w.pprint(ostream=f)
                 f.close()
 
-        self.lsmhe.U_mhe = Param(range(1, self.nfe_t + 1), initialize=1/50, mutable=True)
+        self.lsmhe.U_mhe = Param(range(1, self.nfe_t + 1), self.u, initialize=1, mutable=True)
 
         #: Deactivate icc constraints
         if self.deact_ics:
@@ -163,6 +163,8 @@ class MheGen(NmpcGen):
                          sum(self.lsmhe.Q_mhe[i, j, k] * self.lsmhe.wk_mhe[i, k] for k in self.lsmhe.xkNk_mhe)
                          for j in self.lsmhe.xkNk_mhe) for i in range(1, self.nfe_t)))
 
+        # self.lsmhe.Q_e_mhe = 0.0
+
         self.lsmhe.R_e_mhe = Expression(
             expr=0.5 * sum(
                 sum(
@@ -175,7 +177,7 @@ class MheGen(NmpcGen):
         for i in self.lsmhe.fe_t:
             for u in self.u:
                 var_w = getattr(self.lsmhe, "w_" + u + "_mhe")  #: Get the constraint-noisy
-                expr_u_obf += self.lsmhe.U_mhe[i] * var_w[i] ** 2
+                expr_u_obf += self.lsmhe.U_mhe[i, u] * var_w[i] ** 2
 
         self.lsmhe.U_e_mhe = Expression(expr=0.5 * expr_u_obf)  # how about this
         with open("file_cv.txt", "a") as f:
@@ -195,9 +197,9 @@ class MheGen(NmpcGen):
                                          expr=self.lsmhe.Arrival_e_mhe + self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.U_e_mhe)
         self.lsmhe.obfun_mhe.deactivate()
 
-        with open("file_cv.txt", "a") as f:
-            self.lsmhe.obfun_mhe.pprint(ostream=f)
-            f.close()
+        # with open("file_cv.txt", "a") as f:
+        #     self.lsmhe.obfun_mhe.pprint(ostream=f)
+        #     f.close()
 
         self._PI = {}  #: Container of the KKT matrix
         self.xreal_W = {}
@@ -319,6 +321,17 @@ class MheGen(NmpcGen):
                     self.lsmhe.nuk_mhe[t, k].set_value(target)
                     k += 1
 
+    def adjust_w_mhe(self):
+        for i in range(1, self.nfe_t):
+            j = 0
+            for x in self.x_noisy:
+                x_var = getattr(self.lsmhe, x)
+                for k in self.x_vars[x]:
+                    x1pvar_val = value(x_var[(i+1, 0), k])
+                    x1var_val = value(x_var[(i, self.ncp_t), k])
+                    self.lsmhe.wk_mhe[i, j].set_value(x1pvar_val - x1var_val)
+                    j += 1
+
     def set_covariance_meas(self, cov_dict):
         """Sets covariance(inverse) for the measurements.
         Args:
@@ -361,6 +374,23 @@ class MheGen(NmpcGen):
             else:
                 qtarget[_t, v_i, v_j] = cov_dict[vni, vnj, _t]
 
+    def set_covariance_u(self, cov_dict):
+        """Sets covariance(inverse) for the states.
+        Args:
+            cov_dict (dict): a dictionary with the following key structure [(state_name, j), (state_name, k), time]
+        Returns:
+            None
+        """
+        qtarget = getattr(self.lsmhe, "U_mhe")
+        for key in cov_dict:
+            vni = key[0]
+            _t = key[1]
+            qtarget[_t, vni] = 1 / cov_dict[vni, _t]
+        with open("cov_dic.txt", "w") as f:
+            qtarget.display(ostream=f)
+            f.close()
+
+
     def shift_mhe(self):
         """Shifts current initial guesses of variables for the mhe problem"""
         for v in self.lsmhe.component_objects(Var, active=True):
@@ -378,6 +408,7 @@ class MheGen(NmpcGen):
                             continue
 
     def shift_measurement_input_mhe(self):
+        """Shifts current measurements for the mhe problem"""
         y0 = getattr(self.lsmhe, "yk0_mhe")
         for i in range(2, self.nfe_t + 1):
             for j in self.lsmhe.yk0_mhe.keys():
@@ -385,6 +416,7 @@ class MheGen(NmpcGen):
             for u in self.u:
                 umhe = getattr(self.lsmhe, u)
                 umhe[i-1] = value(umhe[i])
+        self.adjust_nu0_mhe()
 
 
     def load_input_mhe(self, src_kind, **kwargs):
@@ -453,6 +485,7 @@ class MheGen(NmpcGen):
         if patch_pred_y:
             self.patch_meas_mhe(self.nfe_t, src=tgt, noisy=True)
         self.adjust_nu0_mhe()
+        self.adjust_w_mhe()
 
     def create_rh_sfx(self, set_suffix=True):
         """Creates relevant suffixes for k_aug (prior at fe=2) (Reduced_Hess)
@@ -712,7 +745,16 @@ class MheGen(NmpcGen):
                     f.write('\t')
             f.write('\n')
             f.close()
-
+        with open("res_mhe_eoff_" + self.res_file_mhe_suf + ".txt", "a") as f:
+            for x in self.x_noisy:
+                for j in range(0, len(self.s_estimate[x][-1])):
+                    e = self.s_estimate[x][-1][j]
+                    r = self.s_real[x][-1][j]
+                    xvs = str(e-r)
+                    f.write(xvs)
+                    f.write('\t')
+            f.write('\n')
+            f.close()
         # with open("res_mhe_ereal.txt", "w") as f:
         #     for x in self.x_noisy:
         #         for j in range(0, len(self.s_real[x][0])):
@@ -791,6 +833,18 @@ class MheGen(NmpcGen):
                 for j in self.y_vars[y]:
                     yvs = str(self.curr_y_offset[(y, j)])
                     f.write(yvs)
+                    f.write('\t')
+            f.write('\n')
+            f.close()
+
+        with open("res_mhe_uoffset_" + self.res_file_mhe_suf + ".txt", "a") as f:
+            for u in self.u:
+                u_mhe = getattr(self.lsmhe, u)
+                ue_mhe = getattr(self.lsmhe, u + "_mhe")
+                for i in self.lsmhe.fe_t:
+                    dv = value(u_mhe[i]) - value(ue_mhe[i])
+                    dstr = str(dv)
+                    f.write(dstr)
                     f.write('\t')
             f.write('\n')
             f.close()
