@@ -86,7 +86,7 @@ class MheGen(NmpcGen):
             for y in self.y:
                 m_v = getattr(self.lsmhe, y)  #: Measured "state"
                 for jth in self.y_vars[y]:  #: the jth variable
-                    self.yk_l[t].append(m_v[(1, self.ncp_t) + jth])
+                    self.yk_l[t].append(m_v[(t, self.ncp_t) + jth])
 
         self.lsmhe.ykk_mhe = Set(initialize=[i for i in range(0, len(self.yk_l[1]))])  #: Create set of measured_vars
         self.lsmhe.nuk_mhe = Var(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, initialize=0.0)   #: Measurement noise
@@ -386,9 +386,6 @@ class MheGen(NmpcGen):
             vni = key[0]
             _t = key[1]
             qtarget[_t, vni] = 1 / cov_dict[vni, _t]
-        with open("cov_dic.txt", "w") as f:
-            qtarget.display(ostream=f)
-            f.close()
 
 
     def shift_mhe(self):

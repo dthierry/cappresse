@@ -1075,9 +1075,7 @@ def a69_rule(m, it, jt, ix, jx):
 
 def a70_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.r1c[it, jt, ix, jx] == m.k1c[it, jt, ix, jx] * (
-            (m.P[it, jt, ix, jx] * m.yc[it, jt, ix, jx, 'h'] * 1E5) - (
-            m.nc[it, jt, ix, jx, 'h'] * m.rhos / m.Ke1c[it, jt, ix, jx]))
+        return m.r1c[it, jt, ix, jx]==m.k1c[it, jt, ix, jx]*((m.P[it, jt, ix, jx] * m.yc[it, jt, ix, jx, 'h'] * 1E5)-(m.nc[it, jt, ix, jx, 'h'] * m.rhos / m.Ke1c[it, jt, ix, jx]))
     else:
         return Constraint.Skip
 

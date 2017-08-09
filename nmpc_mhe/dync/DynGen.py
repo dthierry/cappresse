@@ -33,6 +33,7 @@ class DynGen(object):
         self.d1.name = "d1"
 
         self.ipopt = SolverFactory("ipopt")
+        self.asl_ipopt = SolverFactory("asl:ipopt")
         self.k_aug = SolverFactory("k_aug",
                                    executable="/home/dav0/k2/KKT_matrix/src/kmatrix/k_aug")
         self.k_aug_sens = SolverFactory("k_aug",
@@ -41,7 +42,7 @@ class DynGen(object):
                                         executable="/home/dav0/k2/KKT_matrix/src/kmatrix/dot_driver/dot_driver")
 
         # self.k_aug.options["eig_rh"] = ""
-        # self.ipopt.options["halt_on_ampl_error"] = "yes"
+        self.asl_ipopt.options["halt_on_ampl_error"] = "yes"
 
         self.ipopt.options["print_user_options"] = "yes"
         # self.k_aug.options["deb_kkt"] = ""
@@ -209,6 +210,7 @@ class DynGen(object):
 
         o_tee = kwargs.pop("o_tee", True)
         skip_mult_update = kwargs.pop("skip_update", True)
+        halt_on_ampl_error = kwargs.pop("halt_on_ampl_error", False)
 
         name = mod.name
 
@@ -226,7 +228,12 @@ class DynGen(object):
             # f.write("mu_init 1e-08\n")
             # f.write("halt_on_ampl_error yes")
             f.close()
-        results = self.ipopt.solve(d, tee=o_tee, symbolic_solver_labels=True, report_timing=rep_timing)
+            # self.ipopt.options["halt_on_ampl_error"] = "yes"
+            if halt_on_ampl_error:
+                solver_ip = self.asl_ipopt
+            else:
+                solver_ip = self.ipopt
+        results = solver_ip.solve(d, tee=o_tee, symbolic_solver_labels=True, report_timing=rep_timing)
         if (results.solver.status == SolverStatus.ok) and \
                 (results.solver.termination_condition == TerminationCondition.optimal):
             self.journalizer("I", self._c_it, "solve_d", " Model solved to optimality")

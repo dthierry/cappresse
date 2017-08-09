@@ -1,12 +1,14 @@
 from __future__ import print_function
 from pyomo.environ import *
+from pyomo.core.base import Suffix
+from pyomo.opt import ProblemFormat
 from nmpc_mhe.dync.MHEGen import MheGen
-from nmpc_mhe.mods.bfb.bfb_abs_v3 import *
+from nmpc_mhe.mods.bfb.bfb_abs_v2 import *
 import sys
 import itertools, sys
 
-states = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse"]
-x_noisy = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse"]
+states = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"]
+x_noisy = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"]
 u = ["u1", "u2"]
 u_bounds = {"u1":(0.0001, 99.9999), "u2":(0.0001, 99.99)}
 ref_state = {("c_capture", ((),)): 0.5}
@@ -36,7 +38,8 @@ x_vars = {"Ngb": [i for i in itertools.product(lfe, lcp, lc)],
           "Nge": [i for i in itertools.product(lfe, lcp, lc)],
           "Hge": [i for i in itertools.product(lfe, lcp)],
           "Nse": [i for i in itertools.product(lfe, lcp, lc)],
-          "Hse": [i for i in itertools.product(lfe, lcp)]}
+          "Hse": [i for i in itertools.product(lfe, lcp)],
+          "Ws": [i for i in itertools.product(lfe, lcp)]}
 
 # States -- (5 * 3 + 6) * fe_x * cp_x.
 # For fe_x = 5 and cp_x = 3 we will have 315 differential-states.
@@ -61,49 +64,52 @@ for i in tfe:
     if i < nfet:
         for j in itertools.product(lfe, lcp, lc):
             # "Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"
-            # q_cov[("Ngb", j), ("Ngb", j), i] = 1.e-05
-            # q_cov[("Ngc", j), ("Ngc", j), i] = 1.e-05
-            # q_cov[("Nsc", j), ("Nsc", j), i] = 10.0
-            # q_cov[("Nge", j), ("Nge", j), i] = 0.01
-            # q_cov[("Nse", j), ("Nse", j), i] = 10.0
-            q_cov[("Ngb", j), ("Ngb", j), i] = 1.
-            q_cov[("Ngc", j), ("Ngc", j), i] = 1.
-            q_cov[("Nsc", j), ("Nsc", j), i] = 1.
-            q_cov[("Nge", j), ("Nge", j), i] = 1.
-            q_cov[("Nse", j), ("Nse", j), i] = 1.
+            q_cov[("Ngb", j), ("Ngb", j), i] = 1.e-03
+            q_cov[("Ngc", j), ("Ngc", j), i] = 1.e-03
+            q_cov[("Nsc", j), ("Nsc", j), i] = 10.0
+            q_cov[("Nge", j), ("Nge", j), i] = 0.01
+            q_cov[("Nse", j), ("Nse", j), i] = 10.0
+            # q_cov[("Ngb", j), ("Ngb", j), i] = 100.
+            # q_cov[("Ngc", j), ("Ngc", j), i] = 1000000.
+            # q_cov[("Nsc", j), ("Nsc", j), i] = 1000000.
+            # q_cov[("Nge", j), ("Nge", j), i] = 1000000.
+            # q_cov[("Nse", j), ("Nse", j), i] = 1000000.
 for i in tfe:
     if i < nfet:
         for j in itertools.product(lfe, lcp):
-            # q_cov[("Hgb", j), ("Hgb", j), i] = 10.
-            # q_cov[("Hgc", j), ("Hgc", j), i] = 5.
-            # q_cov[("Hsc", j), ("Hsc", j), i] = 10.
-            # q_cov[("Hge", j), ("Hge", j), i] = 10.
-            # q_cov[("Hse", j), ("Hse", j), i] = 100.
-            # q_cov[("Ws", j), ("Ws", j), i] = 0.1
-            q_cov[("Hgb", j), ("Hgb", j), i] = 1.
-            q_cov[("Hgc", j), ("Hgc", j), i] = 1.
-            q_cov[("Hsc", j), ("Hsc", j), i] = 1.
-            q_cov[("Hge", j), ("Hge", j), i] = 1.
-            q_cov[("Hse", j), ("Hse", j), i] = 1.
+            q_cov[("Hgb", j), ("Hgb", j), i] = 10.
+            q_cov[("Hgc", j), ("Hgc", j), i] = 5.
+            q_cov[("Hsc", j), ("Hsc", j), i] = 10.
+            q_cov[("Hge", j), ("Hge", j), i] = 10.
+            q_cov[("Hse", j), ("Hse", j), i] = 100.
+            q_cov[("Ws", j), ("Ws", j), i] = 10.
+
+            # q_cov[("Hgb", j), ("Hgb", j), i] = 1000000.
+            # q_cov[("Hgc", j), ("Hgc", j), i] = 1000000.
+            # q_cov[("Hsc", j), ("Hsc", j), i] = 1000000.
+            # q_cov[("Hge", j), ("Hge", j), i] = 1000000.
+            # q_cov[("Hse", j), ("Hse", j), i] = 1000000.
+            # q_cov[("Ws", j), ("Ws", j), i] = 1000000.
 
 
 m_cov = {}
 for i in lfe:
     for j in itertools.product(lfe, lcp):
-        m_cov[("Tge", j), ("Tge", j), i] = 10.0
-        m_cov[("P", j), ("P", j), i] = 1e-03
+        m_cov[("Tge", j), ("Tge", j), i] = 1.
+        m_cov[("P", j), ("P", j), i] = 1e-04
         # m_cov[("vg", j), ("vg", j), i] = 1e-05
 
 
 u_cov = {}
 for i in tfe:
-    u_cov["u1", i] = 10
-    u_cov["u2", i] = 10
+    u_cov["u1", i] = 1.
+    u_cov["u2", i] = 1.
 
 
 e.set_covariance_meas(m_cov)
 e.set_covariance_disturb(q_cov)
 e.set_covariance_u(u_cov)
+e.create_rh_sfx()  #: Reduced hessian computation
 
 # Preparation phase
 e.init_lsmhe_prep(e.d1)
@@ -111,15 +117,38 @@ e.init_lsmhe_prep(e.d1)
 e.shift_mhe()
 dum = e.d_mod(1, e.ncp_t, _t=e.hi_t)
 
+
 e.init_step_mhe(dum, e.nfe_t)
-tst = e.solve_d(e.lsmhe, skip_update=False, iter_max=5)  #: Pre-loaded mhe solve
+e.lsmhe.u1_c.pprint()
+e.lsmhe.u2_c.pprint()
+# e.lsmhe.u1_mhe.display()
+# e.lsmhe.u2_mhe.display()
+# e.lsmhe.w_u1_mhe.display()
+# e.lsmhe.w_u2_mhe.display()
+e.lsmhe.w_u1c_mhe.pprint()
+e.lsmhe.w_u2c_mhe.pprint()
+# # e.lsmhe.obfun_dum_mhe.pprint()
+e.lsmhe.hyk_c_mhe.deactivate()
+
+# e.lsmhe.u1_c.pprint()
+# e.lsmhe.u2_c.pprint()
+
+# e.lsmhe.Q_e_mhe.pprint()
+tst = e.solve_d(e.lsmhe, skip_update=False, iter_max=300, max_cpu_time=60*10, halt_on_ampl_error=True)  #: Pre-loaded mhe solve
+e.lsmhe.write(filename="test.nl",
+              format=ProblemFormat.nl,
+              io_options={"symbolic_solver_labels": True})
 if tst != 0:
-    e.create_rh_sfx()
+    e.lsmhe.Tge.display()
+    e.lsmhe.nuk_mhe.display()
+    e.lsmhe.yk0_mhe.display()
+    e.lsmhe.hyk_c_mhe.pprint()
+    e.lsmhe.write_nl()
     e.k_aug.solve(e.lsmhe, tee=True)
     sys.exit()
 # e.lsmhe.pprint(filename="somefile.model")
 
-e.create_rh_sfx()  #: Reduced hessian computation
+
 
 e.check_active_bound_noisy()
 e.load_covariance_prior()
@@ -141,9 +170,10 @@ for i in range(1, 15):
     e.solve_d(e.d1)
     if i == 3:
         e.d1.display(filename="plant.txt")
+
     e.update_noise_meas(e.d1, m_cov)
     e.load_input_mhe("mod", src=e.d1, fe=e.nfe_t)  #: The inputs must coincide
-    some_val = value(e.lsmhe.u1[e.nfe_t]) - value(e.d1.u1[1])
+    some_val = value(e.lsmhe.u1_mhe[e.nfe_t]) - value(e.d1.u1[1])
     print(some_val, "Value of the offset")
     e.patch_meas_mhe(e.nfe_t, src=e.d1, noisy=True)  #: Get the measurement
     e.compute_y_offset()
@@ -159,6 +189,9 @@ for i in range(1, 15):
         e.lsmhe.u2.display(ostream=f)
         f.close()
     stat = e.solve_d(e.lsmhe, skip_update=False)
+    e.lsmhe.write(filename="bad_problem_" + str(i) + ".nl",
+                  format=ProblemFormat.nl,
+                  io_options={"symbolic_solver_labels": True})
     if stat == 1:
         stat = e.solve_d(e.lsmhe, skip_update=False, iter_max=250, stop_if_nopt=True)
 

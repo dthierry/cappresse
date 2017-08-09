@@ -64,7 +64,7 @@ for i in range(1, nfet + 1):
 u_cov = {}
 for i in tfe:
     u_cov["u1", i] = 7.72700925775773761472464684629813E-01 * 0.01
-    u_cov["u2", i] = 1.78604740940007800236344337463379E+06 * 0.01
+    u_cov["u2", i] = 1.78604740940007800236344337463379E+06 * 0.001
 
 
 e.set_covariance_meas(m_cov)
@@ -93,15 +93,15 @@ e.deact_icc_mhe()  #: Remove the initial conditions
 e.set_prior_state_from_prior_mhe()  #: Update prior-state
 e.find_target_ss()  #: Compute target-steady state (beforehand)
 # For ideal nmpc
-for i in range(1, 40):
+for i in range(1, 61):
     print(str(i) + "--"*20, file=sys.stderr)
     print("*"*100)
 
-    if i == 3:
+    if i == 30:
         e.plant_input_gen(e.d1, "mod", src=e.ss2)
 
     e.solve_d(e.d1)
-    if i == 3:
+    if i == 30:
         e.d1.display(filename="plant.txt")
     e.update_noise_meas(e.d1, m_cov)
     e.load_input_mhe("mod", src=e.d1, fe=e.nfe_t)  #: The inputs must coincide

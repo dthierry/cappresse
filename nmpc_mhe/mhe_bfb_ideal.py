@@ -67,11 +67,11 @@ for i in tfe:
             # q_cov[("Nsc", j), ("Nsc", j), i] = 10.0
             # q_cov[("Nge", j), ("Nge", j), i] = 0.01
             # q_cov[("Nse", j), ("Nse", j), i] = 10.0
-            q_cov[("Ngb", j), ("Ngb", j), i] = 1.
-            q_cov[("Ngc", j), ("Ngc", j), i] = 1.
-            q_cov[("Nsc", j), ("Nsc", j), i] = 1.
-            q_cov[("Nge", j), ("Nge", j), i] = 1.
-            q_cov[("Nse", j), ("Nse", j), i] = 1.
+            q_cov[("Ngb", j), ("Ngb", j), i] = 100000.
+            q_cov[("Ngc", j), ("Ngc", j), i] = 100000.
+            q_cov[("Nsc", j), ("Nsc", j), i] = 100000.
+            q_cov[("Nge", j), ("Nge", j), i] = 100000.
+            q_cov[("Nse", j), ("Nse", j), i] = 100000.
 for i in tfe:
     if i < nfet:
         for j in itertools.product(lfe, lcp):
@@ -81,12 +81,12 @@ for i in tfe:
             # q_cov[("Hge", j), ("Hge", j), i] = 10.
             # q_cov[("Hse", j), ("Hse", j), i] = 100.
             # q_cov[("Ws", j), ("Ws", j), i] = 0.1
-            q_cov[("Hgb", j), ("Hgb", j), i] = 1.
-            q_cov[("Hgc", j), ("Hgc", j), i] = 1.
-            q_cov[("Hsc", j), ("Hsc", j), i] = 1.
-            q_cov[("Hge", j), ("Hge", j), i] = 1.
-            q_cov[("Hse", j), ("Hse", j), i] = 1.
-            q_cov[("Ws", j), ("Ws", j), i] = 1.
+            q_cov[("Hgb", j), ("Hgb", j), i] = 100000.
+            q_cov[("Hgc", j), ("Hgc", j), i] = 100000.
+            q_cov[("Hsc", j), ("Hsc", j), i] = 100000.
+            q_cov[("Hge", j), ("Hge", j), i] = 100000.
+            q_cov[("Hse", j), ("Hse", j), i] = 100000.
+            q_cov[("Ws", j), ("Ws", j), i] = 100000.
 
 
 m_cov = {}
@@ -106,6 +106,7 @@ for i in tfe:
 e.set_covariance_meas(m_cov)
 e.set_covariance_disturb(q_cov)
 e.set_covariance_u(u_cov)
+e.create_rh_sfx()  #: Reduced hessian computation
 
 # Preparation phase
 e.init_lsmhe_prep(e.d1)
@@ -113,11 +114,16 @@ e.init_lsmhe_prep(e.d1)
 e.shift_mhe()
 dum = e.d_mod(1, e.ncp_t, _t=e.hi_t)
 
+
 e.init_step_mhe(dum, e.nfe_t)
-e.solve_d(e.lsmhe, skip_update=False)  #: Pre-loaded mhe solve
+
+tst = e.solve_d(e.lsmhe, skip_update=False, iter_max=10)  #: Pre-loaded mhe solve
+if tst != 0:
+    e.k_aug.solve(e.lsmhe, tee=True)
+    sys.exit()
 # e.lsmhe.pprint(filename="somefile.model")
 
-e.create_rh_sfx()  #: Reduced hessian computation
+
 
 e.check_active_bound_noisy()
 e.load_covariance_prior()
