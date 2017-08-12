@@ -353,6 +353,7 @@ class NmpcGen(DynGen):
                 sys.exit()
             self.stall_strategy("increase_weights")
 
+
     def find_target_ss(self, ref_state=None, **kwargs):
         """Attempt to find a second steady state
         Args:
@@ -424,7 +425,7 @@ class NmpcGen(DynGen):
             ofexp += weights[i] * (v[(1, 1) + vkey] - self.ref_state[i])**2
         self.ss2.obfun_ss2 = Objective(expr=ofexp, sense=minimize)
 
-        self.solve_d(self.ss2, iter_max=500, stop_if_nopt=True)
+        self.solve_d(self.ss2, iter_max=900, stop_if_nopt=False, halt_on_ampl_error=False)
         self.journalizer("I", self._c_it, "find_target_ss", "Target: solve done")
         for i in self.ref_state.keys():
             v = getattr(self.ss2, i[0])

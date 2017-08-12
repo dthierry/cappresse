@@ -8,7 +8,7 @@ from pyomo.core.base import Param, ConcreteModel, Var, Constraint, Set, exp, sqr
 from pyomo.opt import ProblemFormat
 from nmpc_mhe.aux.cpoinsc import collptsgen
 from nmpc_mhe.aux.lagrange_f import lgr, lgry, lgrdot, lgrydot
-from bfb_abs_cons_v3 import *
+from bfb_abs_cons_v4 import *
 from initial_s import ss
 import os
 
@@ -236,6 +236,7 @@ class bfb_dae(ConcreteModel):
         self.Hge = Var(self.fe_t, self.cp_t, self.fe_x, self.cp_x, initialize=1.)
         self.Nse = Var(self.fe_t, self.cp_t, self.fe_x, self.cp_x, self.sp, initialize=1.)
         self.Hse = Var(self.fe_t, self.cp_t, self.fe_x, self.cp_x, initialize=1.)
+        self.Ws = Var(self.fe_t, self.cp_t, self.fe_x, self.cp_x, initialize=1.)
 
         #:  Initial state-Param
         self.Ngb_ic = zero3_x if steady else Param(self.fe_x, self.cp_x, self.sp, initialize=1., mutable=True)
@@ -248,6 +249,7 @@ class bfb_dae(ConcreteModel):
         self.Hge_ic = zero2_x if steady else Param(self.fe_x, self.cp_x, initialize=1., mutable=True)
         self.Nse_ic = zero3_x if steady else Param(self.fe_x, self.cp_x, self.sp, initialize=1., mutable=True)
         self.Hse_ic = zero2_x if steady else Param(self.fe_x, self.cp_x, initialize=1., mutable=True)
+        self.Ws_ic = zero2_x if steady else Param(self.fe_x, self.cp_x, initialize=1., mutable=True)
 
         #:  Derivative-var
         self.dNgb_dt = zero5 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=0.0001)
@@ -260,6 +262,7 @@ class bfb_dae(ConcreteModel):
         self.dHge_dt = zero4 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=0.0001)
         self.dNse_dt = zero5 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=0.0001)
         self.dHse_dt = zero4 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=0.0001)
+        self.dWs_dt = zero4 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=0.0001)
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -272,7 +275,7 @@ class bfb_dae(ConcreteModel):
         # self.GasOut_F = Var(self.fe_t, self.cp_ta, initialize=1.)
         self.GasOut_T = Var(self.fe_t, self.cp_ta, initialize=1.)
         self.GasOut_z = Var(self.fe_t, self.cp_ta, self.sp, initialize=1.)
-        self.SolidIn_Fm = Param(self.fe_t, initialize=583860.584859)
+
         # self.SolidOut_Fm = Var(initialize=ic.SolidOut_Fm)
         self.SolidIn_P = Var(self.fe_t, self.cp_ta, initialize=1.)
         self.SolidOut_P = Var(self.fe_t, self.cp_ta, initialize=1.)
@@ -393,6 +396,8 @@ class bfb_dae(ConcreteModel):
         self.dccwin_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=1.)
         self.dz_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
 
+        self.z = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
+        self.z_l = Var(self.fe_t, self.cp_ta, initialize=1.)
         self.cbin_l = Var(self.fe_t, self.cp_ta, self.sp, initialize=1.)
         self.cein_l = Var(self.fe_t, self.cp_ta, self.sp, initialize=1.)
         self.ebin_l = Var(self.fe_t, self.cp_ta, initialize=1.)
@@ -415,6 +420,7 @@ class bfb_dae(ConcreteModel):
 
         self.GasIn_F = Var(self.fe_t, initialize=9937.98446662)
         self.GasOut_F = Var(self.fe_t, initialize=9286.03346463)
+        self.SolidIn_Fm = Param(self.fe_t, initialize=583860.584859)
         # self.per_opening1 = Var(self.fe_t, initialize=85.)
         # self.per_opening2 = Var(self.fe_t, initialize=50.)
 
@@ -435,7 +441,7 @@ class bfb_dae(ConcreteModel):
         self.de_hge = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_hge_rule)
         self.de_nse = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=de_nse_rule)
         self.de_hse = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_hse_rule)
-
+        self.de_ws = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_ws_rule)
 
         #: Collocation equations
         self.dvar_t_Ngb = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp,
@@ -453,6 +459,7 @@ class bfb_dae(ConcreteModel):
         self.dvar_t_Nse = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp,
                                                          rule=fdvar_t_nse)
         self.dvar_t_Hse = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_t_hse)
+        self.dvar_t_Ws = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_t_ws)
 
         #: Continuation equations (redundancy here)
         if self.nfe_t > 1:
@@ -467,8 +474,7 @@ class bfb_dae(ConcreteModel):
             self.noisy_Hge = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, rule=fcp_t_hge)
             self.noisy_Nse = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, self.sp, rule=fcp_t_nse)
             self.noisy_Hse = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, rule=fcp_t_hse)
-
-
+            self.noisy_Ws = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, rule=fcp_t_ws)
 
             self.cp_Ngb = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x, self.sp,
                                                          rule=lambda m, i, ix, jx, c:
@@ -510,7 +516,10 @@ class bfb_dae(ConcreteModel):
                                                          rule=lambda m, i, ix, jx:
                                                          m.noisy_Hse[i, ix, jx] == 0.0
                                                          if i < m.nfe_t and 0 < jx <= m.ncp_x else Constraint.Skip)
-
+            self.cp_Ws = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x,
+                                                        rule=lambda m, i, ix, jx:
+                                                        m.noisy_Ws[i, ix, jx] == 0.0
+                                                        if i < m.nfe_t and 0 < jx <= m.ncp_x else Constraint.Skip)
 
         #: Initial condition-Constraints
         self.Ngb_icc = None if steady else Constraint(self.fe_x, self.cp_x, self.sp, rule=ic_ngb_rule)
@@ -523,7 +532,7 @@ class bfb_dae(ConcreteModel):
         self.Hge_icc = None if steady else Constraint(self.fe_x, self.cp_x, rule=ic_hge_rule)
         self.Nse_icc = None if steady else Constraint(self.fe_x, self.cp_x, self.sp, rule=ic_nse_rule)
         self.Hse_icc = None if steady else Constraint(self.fe_x, self.cp_x, rule=ic_hse_rule)
-
+        self.Ws_icc = None if steady else Constraint(self.fe_x, self.cp_x, rule=ic_ws_rule)
 
         #: Algebraic definitions
         self.ae_ngb = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=ngb_rule)
@@ -536,7 +545,7 @@ class bfb_dae(ConcreteModel):
         self.ae_hge = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=hge_rule)
         self.ae_nse = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=nse_rule)
         self.ae_hse = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=hse_rule)
-
+        self.ae_ws = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=ws_rule)
 
         # --------------------------------------------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
@@ -652,14 +661,10 @@ class bfb_dae(ConcreteModel):
         self.e15 = Constraint(self.fe_t, self.cp_ta, rule=e15_rule)
         self.e16 = Constraint(self.fe_t, self.cp_ta, rule=e16_rule)
         self.e20 = Constraint(self.fe_t, self.cp_ta, rule=e20_rule)  #: BC
-
         self.e25 = Constraint(self.fe_t, self.cp_ta, self.sp, rule=e25_rule)  #: BC
         self.e26 = Constraint(self.fe_t, self.cp_ta, rule=e26_rule)
-        # self.v1 = Constraint(self.fe_t, self.cp_ta, rule=v1_rule)
         self.v2 = Constraint(self.fe_t, self.cp_ta, rule=v2_rule)
-        # self.v4 = Constraint(self.fe_t, self.cp_ta, rule=v4_rule)
         self.v5 = Constraint(self.fe_t, self.cp_ta, rule=v5_rule)
-        # self.v3 = Constraint(self.fe_t, self.cp_ta, rule=v3_rule)
 
         #: BVP equations
         self.de_x_cbin = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=fdvar_x_cbin_)
@@ -671,7 +676,7 @@ class bfb_dae(ConcreteModel):
         self.de_x_p = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_x_p_)
         self.de_x_phx = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_x_phx_)
         self.de_x_ccwin = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=fdvar_x_ccwin_)
-
+        self.de_c_z = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_z_)
 
         self.cp1_c = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.sp, rule=fcp_x_cbin)
         self.cp2_c = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.sp, rule=fcp_x_cein)
@@ -683,7 +688,7 @@ class bfb_dae(ConcreteModel):
         self.cp8_c = Constraint(self.fe_t, self.cp_ta, self.fe_x, rule=fcp_x_p)
         self.cp9_c = Constraint(self.fe_t, self.cp_ta, self.fe_x, rule=fcp_x_phx)
         self.cp10_c = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.sp, rule=fcp_x_ccwin)
-
+        self.cpz_c = Constraint(self.fe_t, self.cp_ta, self.fe_x, rule=fcp_z_)
 
         #: Last cp point equation (differential-bvp)
         self.zl_1 = Constraint(self.fe_t, self.cp_ta, self.sp, rule=fzl_1)
@@ -695,7 +700,7 @@ class bfb_dae(ConcreteModel):
         self.zl_8 = Constraint(self.fe_t, self.cp_ta, rule=fzl_8)
         self.zl_9 = Constraint(self.fe_t, self.cp_ta, rule=fzl_9)  #
         self.zl_10 = Constraint(self.fe_t, self.cp_ta, self.sp, rule=fzl_10)
-
+        self.zl_z = Constraint(self.fe_t, self.cp_ta, rule=fzl_z_)  #
 
         #: Last cp point equation (albegraic-bvp)
         self.yl_hse = Constraint(self.fe_t, self.cp_ta, rule=fyl_hse)
@@ -709,7 +714,7 @@ class bfb_dae(ConcreteModel):
         #: BC at the bottom
         self.jn_bc1 = Constraint(self.fe_t, self.cp_ta, self.sp, rule=ic_jn)
         self.jh_bc1 = Constraint(self.fe_t, self.cp_ta, rule=ic_jh)
-
+        self.jejc_bc1 = Constraint(self.fe_t, self.cp_ta, rule=ic_jejc)
 
         self.cc_def = Constraint(self.fe_t, self.cp_ta, rule=cc_rule)
 
@@ -740,10 +745,10 @@ class bfb_dae(ConcreteModel):
         for it in range(1, self.nfe_t + 1):
             for jt in range(1, self.ncp_t + 1):
                 self.GasOut_P[it, jt].setlb(0)
-                self.GasIn_F[it].setlb(0)
                 self.GasOut_F[it].setlb(0)
+                self.GasIn_F[it].setlb(0)
                 self.GasOut_T[it, jt].setlb(0)
-                # self.SolidIn_Fm[it, jt].setlb(0)
+                # self.SolidIn_Fm[it].setlb(0)
                 self.SolidIn_P[it, jt].setlb(0)
                 self.SolidOut_P[it, jt].setlb(0)
                 self.rhog_in[it, jt].setlb(0)
@@ -802,7 +807,7 @@ class bfb_dae(ConcreteModel):
                         self.ht[it, jt, ix, jx].setlb(0)
                         self.Jc[it, jt, ix, jx].setlb(0)
                         self.Je[it, jt, ix, jx].setlb(0)
-                        self.k1c[it, jt, ix, jx].setlb(1e-07)
+                        self.k1c[it, jt, ix, jx].setlb(0)
                         self.k1e[it, jt, ix, jx].setlb(0)
                         self.k2c[it, jt, ix, jx].setlb(0)
                         self.k2e[it, jt, ix, jx].setlb(0)
@@ -846,10 +851,9 @@ class bfb_dae(ConcreteModel):
                         self.Ke3e[it, jt, ix, jx].setlb(0)
                         self.kpa[it, jt, ix, jx].setlb(0)
                         self.Nup[it, jt, ix, jx].setlb(0)
-                        self.P[it, jt, ix, jx].setlb(1e-07)
+                        self.P[it, jt, ix, jx].setlb(0)
                         self.Phx[it, jt, ix, jx].setlb(0)
                         self.Red[it, jt, ix, jx].setlb(0)
-                        self.r1c[it, jt, ix, jx].setlb(1e-07)
                         self.rhog[it, jt, ix, jx].setlb(0)
                         self.tau[it, jt, ix, jx].setlb(0)
                         self.Tgb[it, jt, ix, jx].setlb(0)
@@ -878,28 +882,12 @@ class bfb_dae(ConcreteModel):
                             self.Kbc[it, jt, ix, jx, cx].setlb(0)
                             self.Kce[it, jt, ix, jx, cx].setlb(0)
 
-                            self.nc[it, jt, ix, jx, cx].setlb(1e-07)
+                            self.nc[it, jt, ix, jx, cx].setlb(0)
                             self.ne[it, jt, ix, jx, cx].setlb(0)
 
                             self.yb[it, jt, ix, jx, cx].setlb(0)
-                            self.yc[it, jt, ix, jx, cx].setlb(1e-07)
-                            self.ye[it, jt, ix, jx, cx].setlb(1e-07)
-
-        # for it in range(1, self.nfe_t + 1):
-        #     for jt in range(1, self.ncp_t + 1):
-        #         for ix in range(1, self.nfe_x + 1):
-        #             for jx in range(1, self.ncp_x + 1):
-        #                 self.Hgb[it, jt, ix, jx].setlb(0)
-        #                 self.Hgc[it, jt, ix, jx].setlb(0)
-        #                 self.Hsc[it, jt, ix, jx].setlb(0)
-        #                 self.Hge[it, jt, ix, jx].setlb(0)
-        #                 self.Hse[it, jt, ix, jx].setlb(0)
-        #                 self.Ws[it, jt, ix, jx].setlb(0)
-        #                 for cx in ['c', 'h', 'n']:
-        #                     self.Ngb[it, jt, ix, jx, cx].setlb(0)
-        #                     self.Ngc[it, jt, ix, jx, cx].setlb(0)
-        #                     self.Nge[it, jt, ix, jx, cx].setlb(0)
-        #                     self.Nse[it, jt, ix, jx, cx].setlb(0)
+                            self.yc[it, jt, ix, jx, cx].setlb(0)
+                            self.ye[it, jt, ix, jx, cx].setlb(0)
 
     def clear_bounds(self):
         """Sets bounds of variables
@@ -913,24 +901,16 @@ class bfb_dae(ConcreteModel):
 
     def init_steady_ref(self):
         """If the model is steady, we try to initialize it with an initial guess from ampl"""
-        self.create_bounds()
         for var in self.component_data_objects(Var):
             try:
                 var.set_value(ss[var.parent_component().name, var.index()])
             except KeyError:
                 pass
+
         if self.nfe_t == 1 and self.ncp_t == 1:
-            solver = SolverFactory('asl:ipopt')
-            solver.options["linear_solver"] = "ma57"
-            # solver.options["halt_on_ampl_error"] = "yes"
-            with open("ipopt.opt", "w") as f:
-                f.write("max_iter 10000\n")
-                # f.write("mu_init 1e-08\n")
-                f.write("bound_push 1e-06\n")
-                f.close()
-            solver.options["print_user_options"] = "yes"
             self.display(filename="whatevs.txt")
-            someresults = solver.solve(self, tee=True, symbolic_solver_labels=True, report_timing=True)
+            solver = SolverFactory('ipopt')
+            someresults = solver.solve(self, tee=True)
             self.solutions.load_from(someresults)
 
     def equalize_u(self, direction="u_to_r"):

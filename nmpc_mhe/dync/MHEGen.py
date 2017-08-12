@@ -93,48 +93,47 @@ class MheGen(NmpcGen):
         self.lsmhe.yk0_mhe = Param(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, initialize=1.0, mutable=True)
         self.lsmhe.hyk_c_mhe = Constraint(self.lsmhe.fe_t, self.lsmhe.ykk_mhe,
                                           rule=
-                                          lambda mod, t, i:
-                                          mod.yk0_mhe[t, i] - self.yk_l[t][i] - mod.nuk_mhe[t, i] == 0.0)
+                                          lambda mod, t, i:mod.yk0_mhe[t, i] - self.yk_l[t][i] - mod.nuk_mhe[t, i] == 0.0)
         self.lsmhe.R_mhe = Param(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, initialize=1.0, mutable=True) if self.diag_Q_R else \
             Param(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, self.lsmhe.ykk_mhe,
                              initialize=lambda mod, t, i, ii: 1.0 if i == ii else 0.0, mutable=True)
         f = open("file_cv.txt", "w")
         f.close()
         for u in self.u:
-            cv = getattr(self.lsmhe, u)  #: Get the param
-            c_val = [value(cv[i]) for i in cv.keys()]  #: Current value
+            # cv = getattr(self.lsmhe, u)  #: Get the param
+            # c_val = [value(cv[i]) for i in cv.keys()]  #: Current value
             # self.lsmhe.del_component(cv)  #: Delete the param
-            self.lsmhe.add_component(u + "_mhe", Var(self.lsmhe.fe_t, initialize=lambda m, i: c_val[i-1]))
-            self.lsmhe.add_component("w_" + u + "_mhe", Var(self.lsmhe.fe_t, initialize=0.0))
-            self.lsmhe.add_component("w_" + u + "c_mhe", Constraint(self.lsmhe.fe_t))
+            # self.lsmhe.add_component(u + "_mhe", Var(self.lsmhe.fe_t, initialize=lambda m, i: c_val[i-1]))
+            self.lsmhe.add_component("w_" + u + "_mhe", Var(self.lsmhe.fe_t, initialize=0.0))  #: Noise for input
+            # self.lsmhe.add_component("w_" + u + "c_mhe", Constraint(self.lsmhe.fe_t))
             self.lsmhe.equalize_u(direction="r_to_u")
-            cc = getattr(self.lsmhe, u + "_c")  #: Get the constraint
-            con_w = getattr(self.lsmhe, "w_" + u + "c_mhe")  #: Get the constraint-noisy
+            cc = getattr(self.lsmhe, u + "_c")  #: Get the constraint for input
+            # con_w = getattr(self.lsmhe, "w_" + u + "c_mhe")  #: Get the constraint-noisy
             var_w = getattr(self.lsmhe, "w_" + u + "_mhe")  #: Get the constraint-noisy
             ce = getattr(self.lsmhe, u + "_e")  #: Get the expression
-            cv = getattr(self.lsmhe, u + "_mhe")  #: Get the new variable
+            # cv = getattr(self.lsmhe, u + "_mhe")  #: Get the new variable
             cp = getattr(self.lsmhe, u)  #: Get the param
-            for k in cv.keys():
-                cv[k].setlb(self.u_bounds[u][0])
-                cv[k].setub(self.u_bounds[u][1])
+            # for k in cv.keys():
+            #     cv[k].setlb(self.u_bounds[u][0])
+            #     cv[k].setub(self.u_bounds[u][1])
             cc.clear()
-            cc.rule = lambda m, i: cv[i] == ce[i]
+            cc.rule = lambda m, i: cp[i] == ce[i] + var_w[i]
             cc.reconstruct()
 
-            con_w.rule = lambda m, i: cp[i] == cv[i] + var_w[i]
-            con_w.reconstruct()
+            # con_w.rule = lambda m, i: cp[i] == cv[i] + var_w[i]
+            # con_w.reconstruct()
             with open("file_cv.txt", "a") as f:
                 cc.pprint(ostream=f)
-                con_w.pprint(ostream=f)
+                # con_w.pprint(ostream=f)
                 f.close()
 
         self.lsmhe.U_mhe = Param(range(1, self.nfe_t + 1), self.u, initialize=1, mutable=True)
 
         #: Deactivate icc constraints
         if self.deact_ics:
-            pass
-            # for i in self.states:
-                # self.lsmhe.del_component(i + "_icc")
+            # pass
+            for i in self.states:
+                self.lsmhe.del_component(i + "_icc")
         #: Maybe only for a subset of the states
         else:
             for i in self.states:
@@ -190,7 +189,7 @@ class MheGen(NmpcGen):
                      for j in self.lsmhe.xkNk_mhe))
 
         self.lsmhe.obfun_dum_mhe = Objective(sense=minimize,
-                                             expr=self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.U_e_mhe)
+                                             expr=self.lsmhe.U_e_mhe)
         self.lsmhe.obfun_dum_mhe.activate()
 
         self.lsmhe.obfun_mhe = Objective(sense=minimize,
@@ -570,9 +569,11 @@ class MheGen(NmpcGen):
         """Deactivates the icc constraints in the mhe problem"""
         if self.deact_ics:
             for i in self.states:
-                icccon = getattr(self.lsmhe, i + "_icc")
-                # icccon.deactivate()
-                self.lsmhe.del_component(icccon)
+                try:
+                    icccon = getattr(self.lsmhe, i + "_icc")
+                    self.lsmhe.del_component(icccon)
+                except AttributeError:
+                    continue
 
 
         #: Maybe only for a subset of the states

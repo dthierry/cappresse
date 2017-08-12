@@ -123,7 +123,8 @@ for i in range(1, 61):
     stat = e.solve_d(e.lsmhe, skip_update=False)
     if stat == 1:
         stat = e.solve_d(e.lsmhe, skip_update=False, iter_max=250, stop_if_nopt=True)
-
+    if i == 10:
+        e.lsmhe.pprint(filename="lsmhe_dist.txt")
 
     # Prior-Covariance stuff
     e.check_active_bound_noisy()

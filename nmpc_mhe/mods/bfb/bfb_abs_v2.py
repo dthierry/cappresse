@@ -191,7 +191,7 @@ class bfb_dae(ConcreteModel):
         # output solid valve
         self.CV_4 = Param(initialize=11187.66019532553)
 
-        self.per_opening3 = Param(self.fe_t, initialize=50., mutable=True)
+        # self.per_opening3 = Param(self.fe_t, initialize=50., mutable=True)
         self.per_opening4 = Param(initialize=50)
 
         self.eavg = Param(initialize=0.591951)
@@ -270,12 +270,12 @@ class bfb_dae(ConcreteModel):
         #: Algebraic variables
         self.HXIn_h = Var(self.fe_t, self.cp_ta, initialize=1.)
         self.GasIn_P = Var(self.fe_t, self.cp_ta, initialize=1.)
-        self.GasIn_F = Var(self.fe_t, self.cp_ta, initialize=1.)
+        # self.GasIn_F = Var(self.fe_t, self.cp_ta, initialize=1.)
         self.GasOut_P = Var(self.fe_t, self.cp_ta, initialize=1.)
-        self.GasOut_F = Var(self.fe_t, self.cp_ta, initialize=1.)
+        # self.GasOut_F = Var(self.fe_t, self.cp_ta, initialize=1.)
         self.GasOut_T = Var(self.fe_t, self.cp_ta, initialize=1.)
         self.GasOut_z = Var(self.fe_t, self.cp_ta, self.sp, initialize=1.)
-        self.SolidIn_Fm = Var(self.fe_t, self.cp_ta, initialize=1.)
+        self.SolidIn_Fm = Param(self.fe_t, initialize=583860.584859)
         # self.SolidOut_Fm = Var(initialize=ic.SolidOut_Fm)
         self.SolidIn_P = Var(self.fe_t, self.cp_ta, initialize=1.)
         self.SolidOut_P = Var(self.fe_t, self.cp_ta, initialize=1.)
@@ -415,11 +415,13 @@ class bfb_dae(ConcreteModel):
         self.c_capture = Var(self.fe_t, self.cp_ta, initialize=1.)
         # --------------------------------------------------------------------------------------------------------------
         #: Controls
-        self.u1 = Param(self.fe_t, initialize=85., mutable=True)
-        self.u2 = Param(self.fe_t, initialize=50., mutable=True)
+        self.u1 = Param(self.fe_t, initialize=9937.98446662, mutable=True)
+        self.u2 = Param(self.fe_t, initialize=9286.03346463, mutable=True)
 
-        self.per_opening1 = Var(self.fe_t, initialize=85.)
-        self.per_opening2 = Var(self.fe_t, initialize=50.)
+        self.GasIn_F = Var(self.fe_t, initialize=9937.98446662)
+        self.GasOut_F = Var(self.fe_t, initialize=9286.03346463)
+        # self.per_opening1 = Var(self.fe_t, initialize=85.)
+        # self.per_opening2 = Var(self.fe_t, initialize=50.)
 
         # --------------------------------------------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
@@ -660,11 +662,11 @@ class bfb_dae(ConcreteModel):
         self.e20 = Constraint(self.fe_t, self.cp_ta, rule=e20_rule)  #: BC
         self.e25 = Constraint(self.fe_t, self.cp_ta, self.sp, rule=e25_rule)  #: BC
         self.e26 = Constraint(self.fe_t, self.cp_ta, rule=e26_rule)
-        self.v1 = Constraint(self.fe_t, self.cp_ta, rule=v1_rule)
+        # self.v1 = Constraint(self.fe_t, self.cp_ta, rule=v1_rule)
         self.v2 = Constraint(self.fe_t, self.cp_ta, rule=v2_rule)
-        self.v4 = Constraint(self.fe_t, self.cp_ta, rule=v4_rule)
+        # self.v4 = Constraint(self.fe_t, self.cp_ta, rule=v4_rule)
         self.v5 = Constraint(self.fe_t, self.cp_ta, rule=v5_rule)
-        self.v3 = Constraint(self.fe_t, self.cp_ta, rule=v3_rule)
+        # self.v3 = Constraint(self.fe_t, self.cp_ta, rule=v3_rule)
 
         #: BVP equations
         self.de_x_cbin = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=fdvar_x_cbin_)
@@ -720,8 +722,8 @@ class bfb_dae(ConcreteModel):
 
         # --------------------------------------------------------------------------------------------------------------
         #: Control constraint
-        self.u1_e = Expression(self.fe_t, rule=lambda m, i: self.per_opening1[i])
-        self.u2_e = Expression(self.fe_t, rule=lambda m, i: self.per_opening2[i])
+        self.u1_e = Expression(self.fe_t, rule=lambda m, i: self.GasIn_F[i])
+        self.u2_e = Expression(self.fe_t, rule=lambda m, i: self.GasOut_F[i])
 
         self.u1_c = Constraint(self.fe_t, rule=lambda m, i: self.u1[i] == self.u1_e[i])
         self.u2_c = Constraint(self.fe_t, rule=lambda m, i: self.u2[i] == self.u2_e[i])
@@ -745,9 +747,10 @@ class bfb_dae(ConcreteModel):
         for it in range(1, self.nfe_t + 1):
             for jt in range(1, self.ncp_t + 1):
                 self.GasOut_P[it, jt].setlb(0)
-                self.GasOut_F[it, jt].setlb(0)
+                self.GasIn_F[it].setlb(0)
+                self.GasOut_F[it].setlb(0)
                 self.GasOut_T[it, jt].setlb(0)
-                self.SolidIn_Fm[it, jt].setlb(0)
+                # self.SolidIn_Fm[it, jt].setlb(0)
                 self.SolidIn_P[it, jt].setlb(0)
                 self.SolidOut_P[it, jt].setlb(0)
                 self.rhog_in[it, jt].setlb(0)
@@ -889,6 +892,22 @@ class bfb_dae(ConcreteModel):
                             self.yc[it, jt, ix, jx, cx].setlb(1e-07)
                             self.ye[it, jt, ix, jx, cx].setlb(0)
 
+        # for it in range(1, self.nfe_t + 1):
+        #     for jt in range(1, self.ncp_t + 1):
+        #         for ix in range(1, self.nfe_x + 1):
+        #             for jx in range(1, self.ncp_x + 1):
+        #                 self.Hgb[it, jt, ix, jx].setlb(0)
+        #                 self.Hgc[it, jt, ix, jx].setlb(0)
+        #                 self.Hsc[it, jt, ix, jx].setlb(0)
+        #                 self.Hge[it, jt, ix, jx].setlb(0)
+        #                 self.Hse[it, jt, ix, jx].setlb(0)
+        #                 self.Ws[it, jt, ix, jx].setlb(0)
+        #                 for cx in ['c', 'h', 'n']:
+        #                     self.Ngb[it, jt, ix, jx, cx].setlb(0)
+        #                     self.Ngc[it, jt, ix, jx, cx].setlb(0)
+        #                     self.Nge[it, jt, ix, jx, cx].setlb(0)
+        #                     self.Nse[it, jt, ix, jx, cx].setlb(0)
+
     def clear_bounds(self):
         """Sets bounds of variables
         Args:
@@ -901,25 +920,35 @@ class bfb_dae(ConcreteModel):
 
     def init_steady_ref(self):
         """If the model is steady, we try to initialize it with an initial guess from ampl"""
+        self.create_bounds()
         for var in self.component_data_objects(Var):
             try:
                 var.set_value(ss[var.parent_component().name, var.index()])
             except KeyError:
                 pass
         if self.nfe_t == 1 and self.ncp_t == 1:
-            solver = SolverFactory('ipopt')
-            someresults = solver.solve(self, tee=True)
+            solver = SolverFactory('asl:ipopt')
+            solver.options["linear_solver"] = "ma57"
+            solver.options["halt_on_ampl_error"] = "yes"
+            with open("ipopt.opt", "w") as f:
+                f.write("max_iter 10\n")
+                f.write("mu_init 1e-08\n")
+                f.write("bound_push 1e-08\n")
+                f.close()
+            solver.options["print_user_options"] = "yes"
+            self.display(filename="whatevs.txt")
+            someresults = solver.solve(self, tee=True, symbolic_solver_labels=True, report_timing=True)
             self.solutions.load_from(someresults)
 
     def equalize_u(self, direction="u_to_r"):
         """set current controls to the values of their respective dummies"""
         if direction == "u_to_r":
-            for i in self.per_opening1.keys():
-                self.per_opening1[i].set_value(value(self.u1[i]))
-            for i in self.per_opening2.keys():
-                self.per_opening2[i].set_value(value(self.u2[i]))
+            for i in self.GasIn_F.keys():
+                self.GasIn_F[i].set_value(value(self.u1[i]))
+            for i in self.GasOut_F.keys():
+                self.GasOut_F[i].set_value(value(self.u2[i]))
         elif direction == "r_to_u":
             for i in self.u1.keys():
-                self.u1[i].value = value(self.per_opening1[i])
+                self.u1[i].value = value(self.GasIn_F[i])
             for i in self.u2.keys():
-                self.u2[i].value = value(self.per_opening2[i])
+                self.u2[i].value = value(self.GasOut_F[i])

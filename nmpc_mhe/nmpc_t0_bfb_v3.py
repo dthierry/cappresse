@@ -1,18 +1,19 @@
 from pyomo.environ import *
 from nmpc_mhe.dync.NMPCGen import NmpcGen
-from nmpc_mhe.mods.bfb.bfb_abs_v2 import *
+from nmpc_mhe.mods.bfb.bfb_abs_v3 import *
 import sys
 
-states = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"]
-u = ["u1", "u2"]
-u_bounds = {"u1":(0.0001, 9937.98446662*10), "u2":(0.0001, 9937.98446662*10)}
-ref_state = {("c_capture", ((),)): 0.4}
+states = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse"]
+u = ["u1"]
+u_bounds = {"u1":(0.0001,9286.03346463*100), "u2":(0.0001,9286.03346463*100)}
+ref_state = {("c_capture", ((),)): 0.50}
 # weights = {("c_capture", ((),)): 1E+05}
 c = NmpcGen(d_mod=bfb_dae, u=u, states=states, ref_state=ref_state, u_bounds=u_bounds)
 c.load_iguess_ss()
+c.ss.create_bounds()
 c.solve_ss()
 c.load_d_s(c.d1)
-c.solve_d(c.d1)
+c.solve_d(c.d1, iter_max=100)
 
 c.find_target_ss()
 c.ss2.write_nl()

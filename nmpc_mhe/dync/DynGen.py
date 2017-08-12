@@ -87,6 +87,8 @@ class DynGen(object):
 
         self.curr_state_target = {}  #: Current target state
         self.curr_u_target = {}  #: Current control state
+        with open("ipopt.opt", "w") as f:
+            f.close()
 
     def load_iguess_ss(self):
         """"Call the method for loading initial guess from steady-state"""
@@ -100,21 +102,32 @@ class DynGen(object):
             None"""
         # self.k_aug.solve(self.ss, tee=True, symbolic_solver_labels=True)
         with open("ipopt.opt", "w") as f:
-            f.write("max_iter 10\n")
+            f.write("max_iter 100\n")
             f.write("mu_init 1e-08\n")
+            f.write("bound_push 1e-08\n")
             f.close()
-        results = self.ipopt.solve(self.ss, tee=True, symbolic_solver_labels=True, report_timing=True)
+        ip = SolverFactory("asl:ipopt")
+        ip.options["halt_on_ampl_error"] = "yes"
+        ip.options["print_user_options"] = "yes"
+        ip.options["linear_solver"] = "ma57"
+        results = ip.solve(self.ss, tee=True, symbolic_solver_labels=True, report_timing=True)
         self.ss.solutions.load_from(results)
         for x in self.states:
             self.state_vars[x] = []
-            xv = getattr(self.ss, x)
+            try:
+                xv = getattr(self.ss, x)
+            except AttributeError:  # delete this
+                continue
             for j in xv.keys():
                 if xv[j].stale:
                     continue
                 self.state_vars[x].append(j[2:])
 
         for x in self.states:
-            xvar = getattr(self.ss, x)
+            try:
+                xvar = getattr(self.ss, x)
+            except AttributeError:  # delete this
+                continue
             for j in self.state_vars[x]:
                 self.curr_state_offset[(x, j)] = 0.0
                 self.curr_state_noise[(x, j)] = 0.0
@@ -153,7 +166,10 @@ class DynGen(object):
                         for kd in vd.keys():
                             vd[kd].set_value(value(vs[ks]))
         for x in self.states:
-            dv = getattr(dmod, "d" + x + "_dt")
+            try:
+                dv = getattr(dmod, "d" + x + "_dt")
+            except AttributeError:  # delete this
+                continue
             for i in dv.itervalues():
                 i.set_value(0.0)
         for i in self.states:
@@ -197,8 +213,8 @@ class DynGen(object):
             iter_max = kwargs["iter_max"]
         if kwargs.get("mu_init"):
             mu_init = kwargs["mu_init"]
-        if kwargs.get("max_cpu_time"):
-            max_cpu_time = kwargs["max_cpu_time"]
+
+
         if kwargs.get("linear_solver"):
             linear_solver = kwargs["linear_solver"]
         if kwargs.get("ma57_pre_alloc"):
@@ -208,9 +224,12 @@ class DynGen(object):
         if kwargs.get("ma57_small_pivot_flag"):
             ma57_small_pivot_flag = kwargs["ma57_small_pivot_flag"]
 
+        max_cpu_time = kwargs.pop("max_cpu_time", 1e+06)
+
         o_tee = kwargs.pop("o_tee", True)
         skip_mult_update = kwargs.pop("skip_update", True)
         halt_on_ampl_error = kwargs.pop("halt_on_ampl_error", False)
+        warm_start = kwargs.pop("warm_start", False)
 
         name = mod.name
 
@@ -225,6 +244,8 @@ class DynGen(object):
             f.write("ma57_pre_alloc\t" + str(ma57_pre_alloc) + "\n")
             f.write("ma57_automatic_scaling\t" + ma57_automatic_scaling + "\n")
             f.write("ma57_small_pivot_flag\t" + str(ma57_small_pivot_flag) + "\n")
+            if warm_start:
+                f.write("warm_start_init_point\t" + "yes" + "\n")
             # f.write("mu_init 1e-08\n")
             # f.write("halt_on_ampl_error yes")
             f.close()

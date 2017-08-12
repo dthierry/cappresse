@@ -8,7 +8,7 @@ import itertools, sys
 states = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"]
 x_noisy = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"]
 u = ["u1", "u2"]
-u_bounds = {"u1":(0.0001, 99.9999), "u2":(0.0001, 99.99)}
+u_bounds = {"u1":(0.0001, 95), "u2":(0.0001, 95)}
 ref_state = {("c_capture", ((),)): 0.50}
 
 # Let's roll with the Temperature of the gas-emulsion, pressure and gas_velocity

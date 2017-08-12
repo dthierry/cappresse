@@ -3,15 +3,16 @@ from pyomo.environ import *
 from pyomo.core.base import Suffix
 from pyomo.opt import ProblemFormat
 from nmpc_mhe.dync.MHEGen import MheGen
-from nmpc_mhe.mods.bfb.bfb_abs_v2 import *
+from nmpc_mhe.mods.bfb.bfb_abs_v4 import *
 import sys
 import itertools, sys
 
 states = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"]
 x_noisy = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"]
-u = ["u1", "u2"]
-u_bounds = {"u1":(0.0001,9286.03346463*3), "u2":(0.0001,9286.03346463*3)}
-ref_state = {("c_capture", ((),)): 0.5}
+u = ["u1"]
+u_bounds = {"u1":(0.0001, 9937.98446662*10),
+            "u2":(0.0001, 9937.98446662*10)}
+ref_state = {("c_capture", ((),)): 0.44}
 # Known targets 0.38, 0.4, 0.5
 # Let's roll with the Temperature of the gas-emulsion, pressure and gas_velocity
 
@@ -108,8 +109,8 @@ for i in lfe:
 
 u_cov = {}
 for i in tfe:
-    u_cov["u1", i] = 10.
-    u_cov["u2", i] = 10.
+    u_cov["u1", i] = 1000.
+    # u_cov["u2", i] = 1000.
 
 
 e.set_covariance_meas(m_cov)
@@ -129,10 +130,12 @@ dum = e.d_mod(1, e.ncp_t, _t=e.hi_t)
 e.init_step_mhe(dum, e.nfe_t)
 e.find_target_ss()  #: Compute target-steady state (beforehand)
 
+e.lsmhe.hyk_c_mhe.deactivate()
 tst = e.solve_d(e.lsmhe,
                 skip_update=False,
                 # iter_max=300,
-                max_cpu_time=60*10,
+                max_cpu_time=60*120*10,
+                iter_max=1000,
                 rep_timing=True,
                 ma57_small_pivot_flag=1
                 )  #: Pre-loaded mhe solve
@@ -188,7 +191,7 @@ for i in range(1, 60):
         e.lsmhe.u1.display(ostream=f)
         e.lsmhe.u2.display(ostream=f)
         f.close()
-    stat = e.solve_d(e.lsmhe, skip_update=False)
+    stat = e.solve_d(e.lsmhe, skip_update=False, max_cpu_time=60*60)
     e.lsmhe.write(filename="bad_problem_" + str(i) + ".nl",
                   format=ProblemFormat.nl,
                   io_options={"symbolic_solver_labels": True})
