@@ -8,7 +8,7 @@ from pyomo.core.base import Param, ConcreteModel, Var, Constraint, Set, exp, sqr
 from pyomo.opt import ProblemFormat
 from nmpc_mhe.aux.cpoinsc import collptsgen
 from nmpc_mhe.aux.lagrange_f import lgr, lgry, lgrdot, lgrydot
-from bfb_abs_cons_v4 import *
+from bfb_abs_cons_v5 import *
 from initial_s import ss
 import os
 
@@ -561,7 +561,7 @@ class bfb_dae(ConcreteModel):
         self.a9 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=a9_rule)
         self.a11_2 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a11_rule_2)
         self.a12 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a12_rule)
-        self.a13 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a13_rule)
+        # self.a13 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a13_rule)
         self.a14 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a14_rule)
         self.a15 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=a15_rule)
         self.a16 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=a16_rule)

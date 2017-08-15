@@ -3,7 +3,7 @@ from pyomo.environ import *
 from pyomo.core.base import Suffix
 from pyomo.opt import ProblemFormat
 from nmpc_mhe.dync.MHEGen import MheGen
-from nmpc_mhe.mods.bfb.bfb_abs_v4 import *
+from nmpc_mhe.mods.bfb.bfb_abs_v5 import *
 import sys
 import itertools, sys
 
@@ -16,7 +16,7 @@ ref_state = {("c_capture", ((),)): 0.45}
 # Known targets 0.38, 0.4, 0.5
 # Let's roll with the Temperature of the gas-emulsion, pressure and gas_velocity
 
-y = ["Ngb"]
+y = ["Ttube"]
 nfet = 5
 ncpx = 3
 nfex = 5
@@ -26,7 +26,7 @@ lcp = [i for i in range(1, ncpx + 1)]
 lc = ['c', 'h', 'n']
 
 y_vars = {
-          "Ngb": [i for i in itertools.product(lfe, lcp, lc)],
+          "Ttube": [i for i in itertools.product(lfe, lcp)],
           # "ye": [i for i in itertools.product(lfe, lcp, lc)],
          }
 
@@ -95,16 +95,16 @@ for i in tfe:
 
 
 m_cov = {}
-# for i in lfe:
-#     for j in itertools.product(lfe, lcp):
-#         m_cov[("Ttube", j), ("Ttube", j), i] = 1e-05
+for i in lfe:
+    for j in itertools.product(lfe, lcp):
+        m_cov[("Ttube", j), ("Ttube", j), i] = 1e-05
         # m_cov[("P", j), ("P", j), i] = 1e-04
         # m_cov[("vg", j), ("vg", j), i] = 1e-05
 
-for i in tfe:
-    for j in itertools.product(lfe, lcp, lc):
-        # "Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"
-        m_cov[("Ngb", j), ("Ngb", j), i] = 10
+# for i in tfe:
+#     for j in itertools.product(lfe, lcp, lc):
+#         # "Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"
+#         m_cov[("ye", j), ("ye", j), i] = 1.e-03
 
 
 u_cov = {}
@@ -124,7 +124,7 @@ e.init_lsmhe_prep(e.d1)
 
 
 
-# e.shift_mhe()
+e.shift_mhe()
 # dum = e.d_mod(1, e.ncp_t, _t=e.hi_t)
 # e.init_step_mhe(dum, e.nfe_t)
 # e.find_target_ss()  #: Compute target-steady state (beforehand)
@@ -133,10 +133,10 @@ e.init_lsmhe_prep(e.d1)
 tst = e.solve_d(e.lsmhe,
                 skip_update=False,
                 # iter_max=300,
-                max_cpu_time=60*100,
+                max_cpu_time=60*1,
                 iter_max=1000,
                 rep_timing=True,
-                # warm_start=True
+                warm_start=True
                 # ma57_small_pivot_flag=1
                 )  #: Pre-loaded mhe solve
 

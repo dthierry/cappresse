@@ -428,17 +428,17 @@ class bfb_dae(ConcreteModel):
         #: Differential equations
 
         #: Differential equations
-        self.de_ngb = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=de_ngb_rule)
-        self.de_hgb = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_hgb_rule)
-        self.de_ngc = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=de_ngc_rule)
-        self.de_hgc = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_hgc_rule)
-        self.de_nsc = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=de_nsc_rule)
-        self.de_hsc = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_hsc_rule)
-        self.de_nge = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=de_nge_rule)
-        self.de_hge = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_hge_rule)
-        self.de_nse = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=de_nse_rule)
-        self.de_hse = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_hse_rule)
-        self.de_ws = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_ws_rule)
+        self.de_Ngb = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=de_ngb_rule)
+        self.de_Hgb = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_hgb_rule)
+        self.de_Ngc = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=de_ngc_rule)
+        self.de_Hgc = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_hgc_rule)
+        self.de_Nsc = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=de_nsc_rule)
+        self.de_Hsc = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_hsc_rule)
+        self.de_Nge = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=de_nge_rule)
+        self.de_Hge = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_hge_rule)
+        self.de_Nse = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=de_nse_rule)
+        self.de_Hse = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_hse_rule)
+        self.de_Ws = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_ws_rule)
 
         #: Collocation equations
         self.dvar_t_Ngb = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp,

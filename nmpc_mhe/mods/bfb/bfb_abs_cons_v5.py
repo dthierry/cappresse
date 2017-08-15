@@ -456,7 +456,7 @@ def fcp_t_ws(m, it, ix, kx):
 # it, jt, ix, jx, k
 def a1_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.vg[it, jt, ix, jx] * m.Ax * m.cbt[it, jt, ix, jx] * 3600 == m.Gb[it, jt, ix, jx]
+        return m.vg[it, jt, ix, jx] == m.vb[it, jt, ix, jx] * m.delta[it, jt, ix, jx]
     else:
         return Constraint.Skip
 
@@ -539,12 +539,11 @@ def a12_rule(m, it, jt, ix, jx):
 
 
 
-def a13_rule(m, it, jt, ix, jx):
-    if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.Gb[it, jt, ix, jx] / 3600 == m.vb[it, jt, ix, jx] * m.Ax * m.delta[it, jt, ix, jx] * m.cbt[
-            it, jt, ix, jx]
-    else:
-        return Constraint.Skip
+# def a13_rule(m, it, jt, ix, jx):
+#     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
+#         return m.Gb[it, jt, ix, jx] / 3600 ==
+#     else:
+#         return Constraint.Skip
 
 
 

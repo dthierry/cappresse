@@ -94,6 +94,7 @@ class MheGen(NmpcGen):
         self.lsmhe.hyk_c_mhe = Constraint(self.lsmhe.fe_t, self.lsmhe.ykk_mhe,
                                           rule=
                                           lambda mod, t, i:mod.yk0_mhe[t, i] - self.yk_l[t][i] - mod.nuk_mhe[t, i] == 0.0)
+        self.lsmhe.hyk_c_mhe.deactivate()
         self.lsmhe.R_mhe = Param(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, initialize=1.0, mutable=True) if self.diag_Q_R else \
             Param(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, self.lsmhe.ykk_mhe,
                              initialize=lambda mod, t, i, ii: 1.0 if i == ii else 0.0, mutable=True)
@@ -105,35 +106,32 @@ class MheGen(NmpcGen):
             # self.lsmhe.del_component(cv)  #: Delete the param
             # self.lsmhe.add_component(u + "_mhe", Var(self.lsmhe.fe_t, initialize=lambda m, i: c_val[i-1]))
             self.lsmhe.add_component("w_" + u + "_mhe", Var(self.lsmhe.fe_t, initialize=0.0))  #: Noise for input
-            # self.lsmhe.add_component("w_" + u + "c_mhe", Constraint(self.lsmhe.fe_t))
+            self.lsmhe.add_component("w_" + u + "c_mhe", Constraint(self.lsmhe.fe_t))
             self.lsmhe.equalize_u(direction="r_to_u")
-            cc = getattr(self.lsmhe, u + "_c")  #: Get the constraint for input
-            # con_w = getattr(self.lsmhe, "w_" + u + "c_mhe")  #: Get the constraint-noisy
+            # cc = getattr(self.lsmhe, u + "_c")  #: Get the constraint for input
+            con_w = getattr(self.lsmhe, "w_" + u + "c_mhe")  #: Get the constraint-noisy
             var_w = getattr(self.lsmhe, "w_" + u + "_mhe")  #: Get the constraint-noisy
             ce = getattr(self.lsmhe, u + "_e")  #: Get the expression
-            # cv = getattr(self.lsmhe, u + "_mhe")  #: Get the new variable
             cp = getattr(self.lsmhe, u)  #: Get the param
-            # for k in cv.keys():
-            #     cv[k].setlb(self.u_bounds[u][0])
-            #     cv[k].setub(self.u_bounds[u][1])
-            cc.clear()
-            cc.rule = lambda m, i: cp[i] == ce[i] + var_w[i]
-            cc.reconstruct()
+
+            con_w.rule = lambda m, i: cp[i] == ce[i] + var_w[i]
+            con_w.reconstruct()
+            con_w.deactivate()
 
             # con_w.rule = lambda m, i: cp[i] == cv[i] + var_w[i]
             # con_w.reconstruct()
-            with open("file_cv.txt", "a") as f:
-                cc.pprint(ostream=f)
-                # con_w.pprint(ostream=f)
-                f.close()
+            # with open("file_cv.txt", "a") as f:
+            #     cc.pprint(ostream=f)
+            #     con_w.pprint(ostream=f)
+                # f.close()
 
         self.lsmhe.U_mhe = Param(range(1, self.nfe_t + 1), self.u, initialize=1, mutable=True)
 
         #: Deactivate icc constraints
         if self.deact_ics:
-            # pass
-            for i in self.states:
-                self.lsmhe.del_component(i + "_icc")
+            pass
+            # for i in self.states:
+            #     self.lsmhe.del_component(i + "_icc")
         #: Maybe only for a subset of the states
         else:
             for i in self.states:
@@ -144,13 +142,19 @@ class MheGen(NmpcGen):
                             ic_con[k].deactivate()
         #: Put the noise in the continuation equations (finite-element)
         j = 0
+        self.lsmhe.noisy_cont = ConstraintList()
         for i in self.x_noisy:
-            cp_con = getattr(self.lsmhe, "cp_" + i)
+            # cp_con = getattr(self.lsmhe, "cp_" + i)
             cp_exp = getattr(self.lsmhe, "noisy_" + i)
+            # self.lsmhe.del_component(cp_con)
             for k in self.x_vars[i]:  #: This should keep the same order
                 for t in range(1, self.nfe_t):
-                    cp_con[t, k].set_value(cp_exp[t, k] == self.lsmhe.wk_mhe[t, j])
+                    # pass
+                    self.lsmhe.noisy_cont.add(cp_exp[t, k] == self.lsmhe.wk_mhe[t, j])
+                    # self.lsmhe.noisy_cont.add(cp_exp[t, k] == 0.0)
                 j += 1
+            # cp_con.reconstruct()
+        self.lsmhe.noisy_cont.deactivate()
 
         #: Expressions for the objective function (least-squares)
         self.lsmhe.Q_e_mhe = Expression(
@@ -188,9 +192,12 @@ class MheGen(NmpcGen):
                      sum(self.lsmhe.PikN_mhe[j, k] * (self.xkN_l[k] - self.lsmhe.x_0_mhe[k]) for k in self.lsmhe.xkNk_mhe)
                      for j in self.lsmhe.xkNk_mhe))
 
+
+        self.lsmhe.obfun_dum_mhe_deb = Objective(sense=minimize,
+                                             expr=1.0)
         self.lsmhe.obfun_dum_mhe = Objective(sense=minimize,
-                                             expr=self.lsmhe.U_e_mhe)
-        self.lsmhe.obfun_dum_mhe.activate()
+                                             expr=self.lsmhe.R_e_mhe)
+        self.lsmhe.obfun_dum_mhe.deactivate()
 
         self.lsmhe.obfun_mhe = Objective(sense=minimize,
                                          expr=self.lsmhe.Arrival_e_mhe + self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.U_e_mhe)
@@ -278,6 +285,26 @@ class MheGen(NmpcGen):
             #: Patch
             self.load_d_d(dum, self.lsmhe, finite_elem)
             self.load_input_mhe("mod", src=dum, fe=finite_elem)
+        tst = self.solve_d(self.lsmhe, o_tee=False, skip_update=False)
+        if tst != 0:
+            sys.exit()
+        for i in self.x_noisy:
+            cp_con = getattr(self.lsmhe, "cp_" + i)
+            cp_con.deactivate()
+        # self.lsmhe.noisy_cont.activate()
+        self.lsmhe.obfun_dum_mhe_deb.deactivate()
+        self.lsmhe.obfun_dum_mhe.activate()
+        self.lsmhe.hyk_c_mhe.activate()
+        for u in self.u:
+            cc = getattr(self.lsmhe, u + "_c")  #: Get the constraint for input
+            con_w = getattr(self.lsmhe, "w_" + u + "c_mhe")  #: Get the constraint-noisy
+            cc.deactivate()
+            con_w.activate()
+
+        # if self.deact_ics:
+        #     for i in self.states:
+        #         self.lsmhe.del_component(i + "_icc")
+
         self.journalizer("I", self._c_it, "initialize_lsmhe", "Attempting to initialize lsmhe Done")
 
     def patch_meas_mhe(self, t, **kwargs):
@@ -934,3 +961,37 @@ class MheGen(NmpcGen):
 
     def method_for_mhe_simulation_step(self):
         pass
+
+    def deb_alg_sys(self):
+        """Debugging the algebraic system"""
+        # Fix differential states
+        # Deactivate ODEs de_
+        # Deactivate FE cont cp_
+        # Deactivate IC _icc
+        # Deactivate coll dvar_t_
+
+        # Deactivate hyk
+        for i in self.x_noisy:
+            x = getattr(self.lsmhe, i)
+            x.fix()
+            cp_con = getattr(self.lsmhe, "cp_" + i)
+            cp_con.deactivate()
+            de_con = getattr(self.lsmhe, "de_" + i)
+            de_con.deactivate()
+            icc_con = getattr(self.lsmhe, i + "_icc")
+            icc_con.deactivate()
+            dvar_con = getattr(self.lsmhe, "dvar_t_" + i)
+            dvar_con.deactivate()
+
+        self.lsmhe.obfun_dum_mhe.deactivate()
+        self.lsmhe.obfun_dum_mhe_deb.activate()
+        self.lsmhe.hyk_c_mhe.deactivate()
+        self.lsmhe.noisy_cont.deactivate()
+
+        for u in self.u:
+            cc = getattr(self.lsmhe, u + "_c")  #: Get the constraint for input
+            con_w = getattr(self.lsmhe, "w_" + u + "c_mhe")  #: Get the constraint-noisy
+            cc.deactivate()
+            con_w.deactivate()
+
+        # self.lsmhe.pprint(filename="algeb_mod.txt")

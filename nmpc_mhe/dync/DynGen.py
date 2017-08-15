@@ -231,6 +231,7 @@ class DynGen(object):
         halt_on_ampl_error = kwargs.pop("halt_on_ampl_error", False)
         warm_start = kwargs.pop("warm_start", False)
 
+
         name = mod.name
 
         self.journalizer("I", self._c_it, "Solving with IPOPT", name)
@@ -246,6 +247,8 @@ class DynGen(object):
             f.write("ma57_small_pivot_flag\t" + str(ma57_small_pivot_flag) + "\n")
             if warm_start:
                 f.write("warm_start_init_point\t" + "yes" + "\n")
+                f.write("warm_start_bound_push\t" + "1e-06" + "\n")
+                f.write("mu_init\t" + "0.001" + "\n")
             # f.write("mu_init 1e-08\n")
             # f.write("halt_on_ampl_error yes")
             f.close()

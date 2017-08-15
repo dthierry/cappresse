@@ -421,11 +421,19 @@ class NmpcGen(DynGen):
         ofexp = 0
         for i in self.ref_state.keys():
             v = getattr(self.ss2, i[0])
+            val = value((v[(1, 1) + vkey]))
             vkey = i[1]
             ofexp += weights[i] * (v[(1, 1) + vkey] - self.ref_state[i])**2
+            # ofexp += -weights[i] * (v[(1, 1) + vkey])**2 #- self.ref_state[i])**2
         self.ss2.obfun_ss2 = Objective(expr=ofexp, sense=minimize)
 
-        self.solve_d(self.ss2, iter_max=900, stop_if_nopt=False, halt_on_ampl_error=False)
+        tst = self.solve_d(self.ss2, iter_max=900, stop_if_nopt=False, halt_on_ampl_error=False)
+        if tst != 0:
+            self.ss2.display(filename="failed_ss2.txt")
+        self.ss2.write(filename="failed_ss2.nl",
+                       format=ProblemFormat.nl,
+                       io_options={"symbolic_solver_labels": True})
+            # sys.exit(-1)
         self.journalizer("I", self._c_it, "find_target_ss", "Target: solve done")
         for i in self.ref_state.keys():
             v = getattr(self.ss2, i[0])
