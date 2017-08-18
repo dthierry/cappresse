@@ -10,8 +10,8 @@ from nmpc_mhe.dync.DynGen import DynGen
 from nmpc_mhe.dync.NMPCGen import NmpcGen
 import numpy as np
 from itertools import product
-import sys
-import time
+import sys, os
+
 __author__ = "David M Thierry @dthierry"
 """Not yet. Our people, they don't understand."""
 
@@ -32,8 +32,7 @@ class MheGen(NmpcGen):
         self.deact_ics = kwargs.pop('del_ics', True)
         self.diag_Q_R = kwargs.pop('diag_QR', True)  #: By default use diagonal matrices for Q and R matrices
         self.u = kwargs.pop('u', [])
-        self.int_file_mhe_suf = int(time.time())
-        self.res_file_mhe_suf = str(self.int_file_mhe_suf)
+
 
         print("-" * 120)
         print("I[[create_lsmhe]] lsmhe (full) model created.")
@@ -166,8 +165,6 @@ class MheGen(NmpcGen):
                          sum(self.lsmhe.Q_mhe[i, j, k] * self.lsmhe.wk_mhe[i, k] for k in self.lsmhe.xkNk_mhe)
                          for j in self.lsmhe.xkNk_mhe) for i in range(1, self.nfe_t)))
 
-        # self.lsmhe.Q_e_mhe = 0.0
-
         self.lsmhe.R_e_mhe = Expression(
             expr=0.5 * sum(
                 sum(
@@ -196,7 +193,7 @@ class MheGen(NmpcGen):
         self.lsmhe.obfun_dum_mhe_deb = Objective(sense=minimize,
                                              expr=1.0)
         self.lsmhe.obfun_dum_mhe = Objective(sense=minimize,
-                                             expr=self.lsmhe.R_e_mhe)
+                                             expr=self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.U_e_mhe)
         self.lsmhe.obfun_dum_mhe.deactivate()
 
         self.lsmhe.obfun_mhe = Objective(sense=minimize,
@@ -291,9 +288,11 @@ class MheGen(NmpcGen):
         for i in self.x_noisy:
             cp_con = getattr(self.lsmhe, "cp_" + i)
             cp_con.deactivate()
-        # self.lsmhe.noisy_cont.activate()
+        self.lsmhe.noisy_cont.activate()
+
         self.lsmhe.obfun_dum_mhe_deb.deactivate()
         self.lsmhe.obfun_dum_mhe.activate()
+
         self.lsmhe.hyk_c_mhe.activate()
         for u in self.u:
             cc = getattr(self.lsmhe, u + "_c")  #: Get the constraint for input
@@ -412,7 +411,6 @@ class MheGen(NmpcGen):
             vni = key[0]
             _t = key[1]
             qtarget[_t, vni] = 1 / cov_dict[vni, _t]
-
 
     def shift_mhe(self):
         """Shifts current initial guesses of variables for the mhe problem"""
@@ -732,6 +730,7 @@ class MheGen(NmpcGen):
         # f1.close()
 
     def print_r_mhe(self):
+        self.journalizer("I", self._c_it, "print_r_mhe", "Results at" + os.getcwd())
         self.journalizer("I", self._c_it, "print_r_mhe", "Results suffix " + self.res_file_mhe_suf)
         for x in self.x_noisy:
             elist = []
@@ -862,12 +861,12 @@ class MheGen(NmpcGen):
             f.write('\n')
             f.close()
 
-        with open("res_mhe_uoffset_" + self.res_file_mhe_suf + ".txt", "a") as f:
+        with open("res_mhe_unoise_" + self.res_file_mhe_suf + ".txt", "a") as f:
             for u in self.u:
-                u_mhe = getattr(self.lsmhe, u)
-                ue_mhe = getattr(self.lsmhe, u + "_mhe")
+                # u_mhe = getattr(self.lsmhe, u)
+                ue_mhe = getattr(self.lsmhe, "w_" + u + "_mhe")
                 for i in self.lsmhe.fe_t:
-                    dv = value(u_mhe[i]) - value(ue_mhe[i])
+                    dv = value(ue_mhe[i])
                     dstr = str(dv)
                     f.write(dstr)
                     f.write('\t')

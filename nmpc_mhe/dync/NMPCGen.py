@@ -7,7 +7,7 @@ from pyomo.core.base import Var, Objective, minimize, value, Set, Constraint, Ex
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
 from nmpc_mhe.dync.DynGen import DynGen
 import numpy as np
-import sys, os, time
+import sys, os
 from six import iterkeys
 __author__ = "David M Thierry @dthierry"
 
@@ -25,7 +25,9 @@ class NmpcGen(DynGen):
         self.olnmpc = object()
 
         self.curr_soi = {}  #: Values that we would like to keep track
-        self.curr_sp = {}  #: Values that we would like to keep track
+        self.curr_sp = {}  #: Values that we would like to keep track (from ss2)
+        self.curr_off_soi = {}
+        self.curr_ur = dict.fromkeys(self.u, 0.0)  #: Controls that we would like to keep track of(from ss2)
         for k in self.ref_state.keys():
             self.curr_soi[k] = 0.0
             self.curr_sp[k] = 0.0
@@ -33,7 +35,8 @@ class NmpcGen(DynGen):
         self.soi_dict = {}  #: State-of-interest
         self.sp_dict = {}  #: Set-point
         self.u_dict = dict.fromkeys(self.u, [])
-        self.res_file_name = "res_nmpc_" + str(int(time.time())) + ".txt"
+
+        # self.res_file_name = "res_nmpc_" + str(int(time.time())) + ".txt"
 
     def create_nmpc(self):
         self.olnmpc = self.d_mod(self.nfe_t, self.ncp_t, _t=self._t)
@@ -122,6 +125,7 @@ class NmpcGen(DynGen):
             self.load_init_state_nmpc(src_kind="dict", state_dict="predicted")
 
         dum = self.d_mod(1, self.ncp_t, _t=self.hi_t)
+        dum.create_bounds()
         dum.name = "Dummy I"
         #: Load current solution
         self.load_d_d(ref, dum, fe, fe_src="s")  #: This is supossed to work
@@ -155,7 +159,7 @@ class NmpcGen(DynGen):
                 cv_nmpc[finite_elem].set_value(value(cv_dum[1]))
         self.journalizer("I", self._c_it, "initialize_olnmpc", "Done")
 
-    def load_init_state_nmpc(self, **kwargs):
+    def load_init_state_nmpc(self, src_kind, **kwargs):
         """Loads ref state for set-point
         Args:
             **kwargs: Arbitrary keyword arguments.
@@ -167,7 +171,7 @@ class NmpcGen(DynGen):
             fe (int): The required finite element
             cp (int): The required collocation point
         """
-        src_kind = kwargs.pop("src_kind", "mod")
+        # src_kind = kwargs.pop("src_kind", "mod")
         self.journalizer("I", self._c_it, "load_init_state_nmpc", "Load State to nmpc src_kind=" + src_kind)
         ref = kwargs.pop("ref", None)
         fe = kwargs.pop("fe", self.nfe_t)
@@ -430,9 +434,9 @@ class NmpcGen(DynGen):
         tst = self.solve_d(self.ss2, iter_max=900, stop_if_nopt=False, halt_on_ampl_error=False)
         if tst != 0:
             self.ss2.display(filename="failed_ss2.txt")
-        self.ss2.write(filename="failed_ss2.nl",
-                       format=ProblemFormat.nl,
-                       io_options={"symbolic_solver_labels": True})
+            self.ss2.write(filename="failed_ss2.nl",
+                           format=ProblemFormat.nl,
+                           io_options={"symbolic_solver_labels": True})
             # sys.exit(-1)
         self.journalizer("I", self._c_it, "find_target_ss", "Target: solve done")
         for i in self.ref_state.keys():
@@ -515,40 +519,47 @@ class NmpcGen(DynGen):
 
     def print_r_nmpc(self):
         self.journalizer("I", self._c_it, "print_r_nmpc", "Results at" + os.getcwd())
+        self.journalizer("I", self._c_it, "print_r_nmpc", "Results suffix " + self.res_file_mhe_suf)
         for k in self.ref_state.keys():
             self.soi_dict[k].append(self.curr_soi[k])
             self.sp_dict[k].append(self.curr_sp[k])
 
-        for u in self.u:
-            self.u_dict[u].append(self.curr_u[u])
+        # for u in self.u:
+        #     self.u_dict[u].append(self.curr_u[u])
+        #     print(self.curr_u[u])
 
-        with open(self.res_file_name, "a") as f:
+        with open("res_nmpc_rs_" + self.res_file_mhe_suf + ".txt", "a") as f:
             for k in self.ref_state.keys():
                 i = self.soi_dict[k]
                 iv = str(i[-1])
                 f.write(iv)
                 f.write('\t')
             for k in self.ref_state.keys():
-                i = self.soi_dict[k]
+                i = self.sp_dict[k]
                 iv = str(i[-1])
                 f.write(iv)
                 f.write('\t')
             for u in self.u:
-                i = self.u_dict[u]
-                iv = str(i[-1])
+                i = self.curr_u[u]
+                iv = str(i)
+                f.write(iv)
+                f.write('\t')
+            for u in self.u:
+                i = self.curr_ur[u]
+                iv = str(i)
                 f.write(iv)
                 f.write('\t')
             f.write('\n')
             f.close()
 
-        with open("res_nmpc_input.txt", "w") as f:
-            for u in self.u:
-                for i in range(0, len(self.u_dict[u])):
-                    iv = str(i)
-                    f.write(iv)
-                    f.write('\t')
-                f.write('\n')
-            f.close()
+        # with open("res_nmpc_u_" + self.res_file_mhe_suf + ".txt", "a") as f:
+        #     for u in self.u:
+        #         for i in range(0, len(self.u_dict[u])):
+        #             iv = str(self.u_dict[u][i])
+        #             f.write(iv)
+        #             f.write('\t')
+        #         f.write('\n')
+        #     f.close()
 
     def update_soi_sp_nmpc(self):
         """States-of-interest and set-point update"""
@@ -576,6 +587,16 @@ class NmpcGen(DynGen):
             var = getattr(self.ss2, vname)
             #: Assuming the variable is indexed by time
             self.curr_sp[k] = value(var[(1, 1) + vkey])
+        self.journalizer("I", self._c_it, "update_soi_sp_nmpc", "Current offsets:")
+        for k in self.ref_state.keys():
+            #: Assuming the variable is indexed by time
+            self.curr_off_soi[k] = 100 * abs(self.curr_soi[k] - self.curr_sp[k])/abs(self.curr_sp[k])
+            print("\tCurrent offset \% \% \t", k, self.curr_off_soi[k])
+
+
+        for u in self.u:
+            ur = getattr(self.ss2, u)
+            self.curr_ur[u] = value(ur[1])
 
     def method_for_nmpc_simulation(self):
         pass

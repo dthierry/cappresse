@@ -133,18 +133,18 @@ e.init_lsmhe_prep(e.d1)
 tst = e.solve_d(e.lsmhe,
                 skip_update=False,
                 # iter_max=300,
-                max_cpu_time=60*100,
+                max_cpu_time=60*5,
                 iter_max=1000,
                 rep_timing=True,
                 # warm_start=True
                 # ma57_small_pivot_flag=1
                 )  #: Pre-loaded mhe solve
 
-e.deb_alg_sys()
-tst = e.solve_d(e.lsmhe,
-                skip_update=False,
-                # iter_max=300,
-                max_cpu_time=60*1)
+# e.deb_alg_sys()
+# tst = e.solve_d(e.lsmhe,
+#                 skip_update=False,
+#                 # iter_max=300,
+#                 max_cpu_time=60*1)
 e.lsmhe.write(filename="test.nl",
               format=ProblemFormat.nl,
               io_options={"symbolic_solver_labels": True})

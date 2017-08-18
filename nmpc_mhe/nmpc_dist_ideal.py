@@ -27,20 +27,7 @@ x_vars = {"x": [(i,) for i in range(1, ntrays + 1)],
           "M": [(i,) for i in range(1, ntrays + 1)]}
 nfet = 10
 tfe = [i for i in range(1, nfet + 1)]
-# States -- (5 * 3 + 6) * fe_x * cp_x.
-# For fe_x = 5 and cp_x = 3 we will have 315 differential-states.
 
-# e = MheGen(d_mod=DistDiehlNegrete,
-#            y=y,
-#            x_noisy=x_noisy,
-#            y_vars=y_vars,
-#            x_vars=x_vars,
-#            states=states,
-#            u=u,
-#            ref_state=ref_state,
-#            u_bounds=u_bounds,
-#            diag_QR=True,
-#            nfe_t=nfet)
 
 c = NmpcGen(d_mod=DistDiehlNegrete,
             u=u,
@@ -54,46 +41,44 @@ c.solve_ss()
 c.load_d_s(c.d1)
 c.solve_d(c.d1)
 
-q_cov = {}
-for i in range(1, nfet):
-    for j in range(1, ntrays + 1):
-        q_cov[("x", (j,)), ("x", (j,)), i] = 1e-05
-        q_cov[("M", (j,)), ("M", (j,)), i] = 1
+c.update_state_real()  # update the current state
 
-m_cov = {}
-for i in range(1, nfet + 1):
-    for j in range(1, ntrays + 1):
-        m_cov[("T", (j,)), ("T", (j,)), i] = 6.25e-2
-    for j in range(2, 42):
-        m_cov[("Mv", (j,)), ("Mv", (j,)), i] = 10e-08
-    m_cov[("Mv1", ((),)), ("Mv1", ((),)), i] = 10e-08
-    m_cov[("Mvn", ((),)), ("Mvn", ((),)), i] = 10e-08
-
-u_cov = {}
-for i in tfe:
-    u_cov["u1", i] = 7.72700925775773761472464684629813E-01 * 0.01
-    u_cov["u2", i] = 1.78604740940007800236344337463379E+06 * 0.001
-
-
-# e.set_covariance_meas(m_cov)
-# e.set_covariance_disturb(q_cov)
-# e.set_covariance_u(u_cov)
-
-# Preparation phase
-# e.init_lsmhe_prep(e.d1)
-
-# e.shift_mhe()
-# dum = e.d_mod(1, e.ncp_t, _t=e.hi_t)
 c.find_target_ss()
 c.create_nmpc()
 c.update_targets_nmpc()
 c.compute_QR_nmpc(n=-1)
-c.initialize_olnmpc(c.d1)
+c.new_weights_olnmpc(10000, 1e+06)
+with open("somefile.txt", "w") as f:
+    c.olnmpc.objfun_nmpc.pprint(ostream=f)
+    f.close()
+c.d1.create_bounds()
 
-c.solve_d(c.olnmpc)
-c.initialize_olnmpc(c.d1)
-c.solve_d(c.olnmpc)
-c.update_u(c.olnmpc)
-c.cycle_ics()
-c.plant_input_gen(c.d1, src_kind="dict")
+q_cov = {}
+for j in range(1, ntrays + 1):
+    q_cov[("x", (j,))] = 1e-05
+    q_cov[("M", (j,))] = 1
+
+
+c.make_noisy(q_cov)
+for i in range(1, 1000):
+    c.solve_d(c.d1, stop_if_nopt=True, o_tee=True)
+
+    with open("debug1.txt", "w") as f:
+        c.d1.w_pnoisy.display(ostream=f)
+    c.randomize_noize(q_cov)
+    c.update_state_real()  # update the current state
+    c.update_soi_sp_nmpc()
+
+    c.initialize_olnmpc(c.d1)
+    c.load_init_state_nmpc(src_kind="state_dict")
+
+    c.solve_d(c.olnmpc, stop_if_nopt=True, skip_update=False)
+    c.update_u(c.olnmpc)
+    c.print_r_nmpc()
+    c.cycle_ics(plant_step=True)
+    # c.cycle_ics_noisy()
+    c.plant_input_gen(c.d1, src_kind="dict")
+
+    # sys.exit()        self.d1.ics_noisy.pprint(ostream=f)
+
 

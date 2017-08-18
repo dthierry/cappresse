@@ -4,17 +4,20 @@
 from __future__ import print_function
 from __future__ import division
 
-from pyomo.core.base import Var, Objective, minimize, value, Set, Constraint, Expression, Param, Suffix
+from pyomo.core.base import Var, Objective, minimize, value, Set, Constraint, Expression, Param, Suffix, maximize
+from pyomo.core.base import ConstraintList
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
 
 import numpy as np
-import sys
+import sys, time
 
 __author__ = "David M Thierry @dthierry"
 
 
 class DynGen(object):
     def __init__(self, **kwargs):
+        self.int_file_mhe_suf = int(time.time())
+        self.res_file_mhe_suf = str(self.int_file_mhe_suf)
         self.d_mod = kwargs.pop('d_mod', None)
 
         self.nfe_t = kwargs.pop('nfe_t', 5)
@@ -72,9 +75,7 @@ class DynGen(object):
             u = getattr(self.d1, i)
             for t in range(0, self._window_keep):
                 self._u_plant[(i, t)] = value(u[1])
-        self.curr_u = {}
-        for u in self.u:
-            self.curr_u[u] = []
+        self.curr_u = dict.fromkeys(self.u, 0.0)
 
         self.state_vars = {}
         self.curr_estate = {}  #: Current estimated state (for the olnmpc)
@@ -87,6 +88,10 @@ class DynGen(object):
 
         self.curr_state_target = {}  #: Current target state
         self.curr_u_target = {}  #: Current control state
+
+        self.xp_l = []
+        self.xp_key = {}
+
         with open("ipopt.opt", "w") as f:
             f.close()
 
@@ -121,7 +126,10 @@ class DynGen(object):
             for j in xv.keys():
                 if xv[j].stale:
                     continue
-                self.state_vars[x].append(j[2:])
+                if type(j[2:]) == tuple:
+                    self.state_vars[x].append(j[2:])
+                else:
+                    self.state_vars[x].append((j[2:],))
 
         for x in self.states:
             try:
@@ -307,6 +315,8 @@ class DynGen(object):
         Return:
             None"""
         for vs in src.component_objects(Var, active=True):
+            if vs.getname()[-7:] == "_pnoisy":
+                continue
             vd = getattr(d_mod, vs.getname())
             # there are two cases: 1 key 1 elem, several keys 1 element
             vskeys = vs.keys()  #: keys of the source model
@@ -390,7 +400,7 @@ class DynGen(object):
         print("-" * 120)
 
     # NMPC or just dyn?
-    def cycle_ics_noisy(self, sigma_bar=0.01):
+    def cycle_ics_noisy(self, sigma_bar=0.0001):
         """Patches the initial conditions with the last result from the simulation with noise.
         Args:
             sigma_bar (float): The variance.
@@ -399,6 +409,7 @@ class DynGen(object):
         print("-" * 120)
         print("I[[cycle_ics]] Cycling initial state -- NOISY.")
         print("-" * 120)
+        s = np.random.normal(0, sigma_bar)
         for x in self.states:
             x_ic = getattr(self.d1, x + "_ic")
             v_tgt = getattr(self.d1, x)
@@ -406,10 +417,13 @@ class DynGen(object):
                 if type(ks) != tuple:
                     ks = (ks,)
                 x_ic[ks].value = value(v_tgt[(1, self.ncp_t) + ks])
-                sigma = value(v_tgt[(1, self.ncp_t) + ks]) * sigma_bar
-                s = np.random.normal(0, sigma)
-                self.curr_state_noise[(x, ks)] = s
-                x_ic[ks].value = value(v_tgt[(1, self.ncp_t) + ks]) + s
+                sigma = value(v_tgt[(1, self.ncp_t) + ks]) * s
+
+                self.curr_state_noise[(x, ks)] = sigma
+                tst_val = value(v_tgt[(1, self.ncp_t) + ks]) + sigma
+                if tst_val < 0:
+                    print("error", tst_val, x, ks)
+                x_ic[ks].value = value(v_tgt[(1, self.ncp_t) + ks]) + sigma
         self._c_it += 1
 
     def create_predictor(self):
@@ -479,7 +493,12 @@ class DynGen(object):
             if i == ncont_steps:
                 self.solve_d(d_mod, o_tee=False, stop_if_nopt=True)
             else:
-                self.solve_d(d_mod, o_tee=False, stop_if_nopt=False)
+                tstv = self.solve_d(d_mod, o_tee=True, stop_if_nopt=False)
+                if tstv != 0:
+                    for x in self.states:
+                        x_ic = getattr(self.d1, x + "_ic")
+                        for ks in x_ic.keys():
+                            print(ks, value(x_ic[ks]))
 
     def update_u(self, src, **kwargs):
         """Update the current control(input) vector
@@ -564,3 +583,56 @@ class DynGen(object):
                 self.journalizer("W", self._c_it, "load_init_state_gen", "No dict w/state was specified")
                 self.journalizer("W", self._c_it, "load_init_state_gen", "No update on state performed")
                 return
+
+    def make_noisy(self, cov_dict, conf_level=2):
+        self.d1.name = "Noisy plant (d1)"
+        k = 0
+        for x in self.states:
+            s = getattr(self.d1, x)  #: state
+            xicc = getattr(self.d1, x + "_icc")
+            xicc.deactivate()
+            for j in self.state_vars[x]:
+                self.xp_l.append(s[(1, 0) + j])
+                self.xp_key[(x, j)] = k
+                k += 1
+
+        self.d1.xS_pnoisy = Set(initialize=[i for i in range(0, len(self.xp_l))])  #: Create set of noisy_states
+        self.d1.w_pnoisy = Var(self.d1.xS_pnoisy, initialize=0.0)  #: Model disturbance
+        self.d1.Q_pnoisy = Param(self.d1.xS_pnoisy, initialize=1, mutable=True)
+        self.d1.obj_fun_noisy = Objective(sense=maximize,
+                                          expr=0.5 *
+                                              sum(self.d1.Q_pnoisy[k] * self.d1.w_pnoisy[k]**2 for k in self.d1.xS_pnoisy)
+                                          )
+        self.d1.ics_noisy = ConstraintList()
+
+        k = 0
+        for x in self.states:
+            s = getattr(self.d1, x)  #: state
+            xic = getattr(self.d1, x + "_ic")
+            for j in self.state_vars[x]:
+                expr = s[(1, 1) + j] == xic[j] + self.d1.w_pnoisy[k]
+                self.d1.ics_noisy.add(expr)
+                k += 1
+
+        for key in cov_dict:
+            vni = key
+            v_i = self.xp_key[vni]
+            self.d1.Q_pnoisy[v_i].value = cov_dict[vni]
+            self.d1.w_pnoisy[v_i].setlb(-conf_level * cov_dict[vni])
+            self.d1.w_pnoisy[v_i].setub(conf_level * cov_dict[vni])
+
+        with open("debug.txt", "w") as f:
+            self.d1.Q_pnoisy.display(ostream=f)
+            self.d1.obj_fun_noisy.pprint(ostream=f)
+            self.d1.ics_noisy.pprint(ostream=f)
+            self.d1.w_pnoisy.display(ostream=f)
+
+    def randomize_noize(self, cov_dict):
+        conf_level = np.random.randint(1, high=4)
+        print("Confidence level", conf_level)
+        for key in cov_dict:
+            vni = key
+            v_i = self.xp_key[vni]
+            self.d1.w_pnoisy[v_i].setlb(-conf_level * cov_dict[vni])
+            self.d1.w_pnoisy[v_i].setub(conf_level * cov_dict[vni])
+
