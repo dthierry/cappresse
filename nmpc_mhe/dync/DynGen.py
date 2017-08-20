@@ -238,6 +238,7 @@ class DynGen(object):
         skip_mult_update = kwargs.pop("skip_update", True)
         halt_on_ampl_error = kwargs.pop("halt_on_ampl_error", False)
         warm_start = kwargs.pop("warm_start", False)
+        tol = kwargs.pop("tol", None)
 
 
         name = mod.name
@@ -257,6 +258,8 @@ class DynGen(object):
                 f.write("warm_start_init_point\t" + "yes" + "\n")
                 f.write("warm_start_bound_push\t" + "1e-06" + "\n")
                 f.write("mu_init\t" + "0.001" + "\n")
+            if tol:
+                f.write("tol\t" + str(tol) + "\n")
             # f.write("mu_init 1e-08\n")
             # f.write("halt_on_ampl_error yes")
             f.close()
@@ -430,10 +433,15 @@ class DynGen(object):
         self.d2 = self.d_mod(1, self.ncp_t, _t=self.hi_t)
         self.d2.name = "Dynamic Predictor"
 
-    def predictor_step(self, ref, **kwargs):
+    def predictor_step(self, ref, state_dict, **kwargs):
         """Predicted-state computation by forward simulation.
         Args:
-            ref (pyomo.core.base.PyomoModel.ConcreteModel): Reference model (mostly for initialization)"""
+            ref (pyomo.core.base.PyomoModel.ConcreteModel): Reference model (mostly for initialization)
+            state_dict (str): Source of state. For nmpc = real, mhe = estimated
+
+        It always loads the input from the input dictionary"""
+
+
         fe = kwargs.pop("fe", 1)
         if fe > 1:
             fe_src = "s"
@@ -441,9 +449,9 @@ class DynGen(object):
             fe_src = "d"
         self.journalizer("I", self._c_it, "predictor_step", "Predictor step")
         self.load_d_d(ref, self.d2, fe, fe_src=fe_src)  #: Load the initial guess
-        self.load_init_state_gen(self.d2, src_kind="dict", state_dict="estimated")  #: Load the initial state
+        self.load_init_state_gen(self.d2, src_kind="dict", state_dict=state_dict)  #: Load the initial state
         self.plant_input_gen(self.d2, src_kind="dict")  #: Load the current control
-        self.solve_d(self.d2)
+        self.solve_d(self.d2, stop_if_nopt=True)
         self.journalizer("I", self._c_it, "predictor_step", "Predictor step - Success")
 
     def plant_input_gen(self, d_mod, src_kind, nsteps=5, **kwargs):
@@ -493,7 +501,7 @@ class DynGen(object):
             if i == ncont_steps:
                 self.solve_d(d_mod, o_tee=False, stop_if_nopt=True)
             else:
-                tstv = self.solve_d(d_mod, o_tee=True, stop_if_nopt=False)
+                tstv = self.solve_d(d_mod, o_tee=False, stop_if_nopt=False)
                 if tstv != 0:
                     for x in self.states:
                         x_ic = getattr(self.d1, x + "_ic")

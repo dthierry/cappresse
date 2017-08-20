@@ -110,23 +110,33 @@ class NmpcGen(DynGen):
             for fe in range(1, self.nfe_t + 1)))
         self.olnmpc.objfun_nmpc = Objective(expr=self.olnmpc.xQ_expr_nmpc + self.olnmpc.xR_expr_nmpc)
 
-    def initialize_olnmpc(self, ref, fe=1, predicted=False):
+    def initialize_olnmpc(self, ref, src_kind, **kwargs):
         # The reference is always a model
         # The source of the state might be different
         # The source might be a predicted-state from forward simulation
         """Initializes the olnmpc from a reference state, loads the state into the olnmpc
         Args
             ref (pyomo.core.base.PyomoModel.ConcreteModel): The reference model
+            fe (int): Source fe
+            src_kind (str): the kind of source
         Returns:
             """
+        fe = kwargs.pop("fe", 1)
         self.journalizer("I", self._c_it, "initialize_olnmpc", "Attempting to initialize olnmpc")
+        self.journalizer("I", self._c_it, "initialize_olnmpc", "src_kind=" + src_kind)
         self.load_init_state_nmpc(src_kind="mod", ref=ref, fe=1, cp=self.ncp_t)
-        if predicted:
-            self.load_init_state_nmpc(src_kind="dict", state_dict="predicted")
 
+        if src_kind == "real":
+            self.load_init_state_nmpc(src_kind="dict", state_dict="real")
+        elif src_kind == "estimated":
+            self.load_init_state_nmpc(src_kind="dict", state_dict="estimated")
+        elif src_kind == "predicted":
+            self.load_init_state_nmpc(src_kind="dict", state_dict="predicted")
+        else:
+            self.journalizer("E", self._c_it, "initialize_olnmpc", "SRC not given")
+            sys.exit()
         dum = self.d_mod(1, self.ncp_t, _t=self.hi_t)
         dum.create_bounds()
-        dum.name = "Dummy I"
         #: Load current solution
         self.load_d_d(ref, dum, fe, fe_src="s")  #: This is supossed to work
         for u in self.u:  #: Initialize controls dummy model
@@ -135,11 +145,18 @@ class NmpcGen(DynGen):
             for i in cv_dum.keys():
                 cv_dum[i].value = value(cv_ref[fe])
         #: Patching of finite elements
+        k_notopt = 0
         for finite_elem in range(1, self.nfe_t + 1):
-            if predicted and finite_elem==1:
+            dum.name = "Dummy I " + str(finite_elem)
+            if src_kind == "predicted" and finite_elem == 1:
                 self.load_init_state_gen(dum, src_kind="dict", state_dict="predicted")
-            elif finite_elem == 1:
-                self.load_init_state_gen(dum, src_kind="mod", ref=ref, fe=1)
+            elif src_kind == "estimated" and finite_elem == 1:
+                self.load_init_state_gen(dum, src_kind="dict", state_dict="estimated")
+            elif src_kind == "real" and finite_elem == 1:
+                self.load_init_state_gen(dum, src_kind="dict", state_dict="real")
+            elif src_kind == None and finite_elem == 1:
+                self.journalizer("E", self._c_it, "initialize_olnmpc", "SRC not given")
+                sys.exit()
             else:
                 self.load_init_state_gen(dum, src_kind="mod", ref=dum, fe=1)
             # for i in self.states:  #: Cycle ICs for dum
@@ -148,7 +165,11 @@ class NmpcGen(DynGen):
             #     for ks in xdum_ic.keys():
             #         xdum_ic[ks].value = value(xdum[(1, self.ncp_t) + (ks,)])
             #         xdum[(1, 0) + (ks,)].set_value(value(xdum[(1, self.ncp_t) + (ks,)]))
-            self.solve_d(dum, o_tee=False)
+            tst = self.solve_d(dum, o_tee=False)
+            if tst != 0:
+                self.journalizer("W", self._c_it, "initialize_olnmpc", "non-optimal dummy")
+                self.solve_d(dum, o_tee=False, tol=1e-03, stop_if_nopt=False)
+                k_notopt += 1
             #: Patch
             self.load_d_d(dum, self.olnmpc, finite_elem)
 
@@ -157,7 +178,7 @@ class NmpcGen(DynGen):
                 cv_dum = getattr(dum, u)
                 # works only for fe_t index
                 cv_nmpc[finite_elem].set_value(value(cv_dum[1]))
-        self.journalizer("I", self._c_it, "initialize_olnmpc", "Done")
+        self.journalizer("I", self._c_it, "initialize_olnmpc", "Done, k_notopt " + str(k_notopt))
 
     def load_init_state_nmpc(self, src_kind, **kwargs):
         """Loads ref state for set-point
@@ -520,6 +541,7 @@ class NmpcGen(DynGen):
     def print_r_nmpc(self):
         self.journalizer("I", self._c_it, "print_r_nmpc", "Results at" + os.getcwd())
         self.journalizer("I", self._c_it, "print_r_nmpc", "Results suffix " + self.res_file_mhe_suf)
+        # print(self.soi_dict)
         for k in self.ref_state.keys():
             self.soi_dict[k].append(self.curr_soi[k])
             self.sp_dict[k].append(self.curr_sp[k])
@@ -552,6 +574,15 @@ class NmpcGen(DynGen):
             f.write('\n')
             f.close()
 
+        with open("res_nmpc_offs_" + self.res_file_mhe_suf + ".txt", "a") as f:
+            for x in self.states:
+                for j in self.state_vars[x]:
+                    i = self.curr_state_offset[(x, j)]
+                    iv = str(i)
+                    f.write(iv)
+                    f.write('\t')
+            f.write('\n')
+            f.close()
         # with open("res_nmpc_u_" + self.res_file_mhe_suf + ".txt", "a") as f:
         #     for u in self.u:
         #         for i in range(0, len(self.u_dict[u])):

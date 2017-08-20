@@ -45,14 +45,6 @@ e.load_iguess_ss()
 e.solve_ss()
 e.load_d_s(e.d1)
 e.solve_d(e.d1)
-e.update_state_real()  # update the current state
-
-e.find_target_ss()
-e.create_nmpc()
-e.update_targets_nmpc()
-e.compute_QR_nmpc(n=-1)
-e.new_weights_olnmpc(1000, 1e+06)
-
 
 q_cov = {}
 for i in range(1, nfet):
@@ -87,6 +79,7 @@ dum = e.d_mod(1, e.ncp_t, _t=e.hi_t)
 
 e.init_step_mhe(dum, e.nfe_t)
 e.solve_d(e.lsmhe, skip_update=False)  #: Pre-loaded mhe solve
+# e.lsmhe.pprint(filename="somefile.model")
 
 e.create_rh_sfx()  #: Reduced hessian computation
 
@@ -100,27 +93,38 @@ e.deact_icc_mhe()  #: Remove the initial conditions
 e.set_prior_state_from_prior_mhe()  #: Update prior-state
 e.find_target_ss()  #: Compute target-steady state (beforehand)
 # For ideal nmpc
-for i in range(1, 1000):
+for i in range(1, 61):
+    print(str(i) + "--"*20, file=sys.stderr)
+    print("*"*100)
 
-    e.solve_d(e.d1, stop_if_nopt=True)
-    e.update_state_real()  # update the current state
-    e.update_soi_sp_nmpc()
+    if i == 30:
+        e.plant_input_gen(e.d1, "mod", src=e.ss2)
 
-
+    e.solve_d(e.d1)
+    if i == 30:
+        e.d1.display(filename="plant.txt")
     e.update_noise_meas(e.d1, m_cov)
     e.load_input_mhe("mod", src=e.d1, fe=e.nfe_t)  #: The inputs must coincide
-
-
-
+    some_val = value(e.lsmhe.u1[e.nfe_t]) - value(e.d1.u1[1])
+    print(some_val, "Value of the offset")
     e.patch_meas_mhe(e.nfe_t, src=e.d1, noisy=True)  #: Get the measurement
     e.compute_y_offset()
 
     e.init_step_mhe(dum, e.nfe_t)  # Initialize next time-slot
+    with open("file_src.txt", "w") as f:
+        e.d1.u1.display(ostream=f)
+        e.d1.u2.display(ostream=f)
+        f.close()
 
+    with open("file1.txt", "w") as f:
+        e.lsmhe.u1.display(ostream=f)
+        e.lsmhe.u2.display(ostream=f)
+        f.close()
     stat = e.solve_d(e.lsmhe, skip_update=False)
     if stat == 1:
         stat = e.solve_d(e.lsmhe, skip_update=False, iter_max=250, stop_if_nopt=True)
-    e.update_state_mhe()
+    if i == 10:
+        e.lsmhe.pprint(filename="lsmhe_dist.txt")
 
     # Prior-Covariance stuff
     e.check_active_bound_noisy()
@@ -133,22 +137,10 @@ for i in range(1, 1000):
     e.print_r_mhe()
 
     # Compute the controls
-    e.initialize_olnmpc(dum, "estimated")
-    e.load_init_state_nmpc(src_kind="estimated")  # for good measure
-    if i == 5:
-        with open("somefile.txt", "w") as f:
-            e.olnmpc.R_nmpc.display(ostream=f)
-            e.olnmpc.Q_nmpc.display(ostream=f)
-            f.close()
-
-    stat_nmpc = e.solve_d(e.olnmpc, skip_update=False)
-    if stat_nmpc != 0:
-        stat_nmpc = e.solve_d(e.olnmpc, stop_if_nopt=True, skip_update=False, iter_max=300)
-    e.update_u(e.olnmpc)
-    e.print_r_nmpc()
 
     e.shift_mhe()
     e.shift_measurement_input_mhe()
 
+
+
     e.cycle_ics(plant_step=True)
-    e.plant_input_gen(e.d1, src_kind="dict")
