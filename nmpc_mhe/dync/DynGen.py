@@ -4,10 +4,10 @@
 from __future__ import print_function
 from __future__ import division
 
-from pyomo.core.base import Var, Objective, minimize, value, Set, Constraint, Expression, Param, Suffix, maximize
+from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix, maximize
 from pyomo.core.base import ConstraintList
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
-
+from pyomo.core.base import value
 import numpy as np
 import sys, time
 
@@ -16,8 +16,15 @@ __author__ = "David M Thierry @dthierry"
 
 class DynGen(object):
     def __init__(self, **kwargs):
-        self.int_file_mhe_suf = int(time.time())
-        self.res_file_mhe_suf = str(self.int_file_mhe_suf)
+        # Values for the suffixes of input files
+        self.int_file_mhe_suf = int()
+        self.res_file_mhe_suf = str()
+
+        self.int_file_nmpc_suf = int()
+        self.res_file_nmpc_suf = str()
+
+        self.res_file_suf = str(int(time.time()))
+
         self.d_mod = kwargs.pop('d_mod', None)
 
         self.nfe_t = kwargs.pop('nfe_t', 5)
@@ -147,9 +154,7 @@ class DynGen(object):
             self.curr_u_target[u] = value(uvar[1])
             self.curr_u[u] = value(uvar[1])
 
-
-
-        # self.ss.write(filename="ss.nl",format=ProblemFormat.nl, io_options={"symbolic_solver_labels":True})
+    # self.ss.write(filename="ss.nl",format=ProblemFormat.nl, io_options={"symbolic_solver_labels":True})
 
     def load_d_s(self, dmod):
         """Loads the solution of the steady state model into the dynamic
@@ -219,9 +224,6 @@ class DynGen(object):
             stop_if_nopt = kwargs["stop_if_nopt"]
         if kwargs.get("iter_max"):
             iter_max = kwargs["iter_max"]
-        if kwargs.get("mu_init"):
-            mu_init = kwargs["mu_init"]
-
 
         if kwargs.get("linear_solver"):
             linear_solver = kwargs["linear_solver"]
@@ -239,16 +241,29 @@ class DynGen(object):
         halt_on_ampl_error = kwargs.pop("halt_on_ampl_error", False)
         warm_start = kwargs.pop("warm_start", False)
         tol = kwargs.pop("tol", None)
+        mu_init = kwargs.pop("mu_init", None)
+        out_file = kwargs.pop("output_file", None)
+        if out_file:
+            if type(out_file) != str:
+                self.journalizer("E", self._c_it, "solve_d", "incorrect_output")
+                print("output_file is not str", file=sys.stderr)
+                sys.exit()
+        jacRegVal = kwargs.pop("jacobian_regularization_value", None)
+        if jacRegVal:
+            if type(jacRegVal) != float:
+                self.journalizer("E", self._c_it, "solve_d", "incorrect_output")
+                print("jacobian_regularization_value is not float", file=sys.stderr)
 
+                sys.exit()
 
         name = mod.name
 
-        self.journalizer("I", self._c_it, "Solving with IPOPT", name)
+        self.journalizer("I", self._c_it, "Solving with IPOPT\t", name)
 
         with open("ipopt.opt", "w") as f:
             f.write("print_info_string\tyes\n")
             f.write("max_iter\t" + str(iter_max) + "\n")
-            f.write("mu_init\t" + str(mu_init) + "\n")
+
             f.write("max_cpu_time\t" + str(max_cpu_time) + "\n")
             f.write("linear_solver\t" + linear_solver + "\n")
             f.write("ma57_pre_alloc\t" + str(ma57_pre_alloc) + "\n")
@@ -260,10 +275,13 @@ class DynGen(object):
                 f.write("mu_init\t" + "0.001" + "\n")
             if tol:
                 f.write("tol\t" + str(tol) + "\n")
-            # f.write("mu_init 1e-08\n")
-            # f.write("halt_on_ampl_error yes")
+            if mu_init:
+                f.write("mu_init\t" + str(mu_init) + "\n")
+            if out_file:
+                f.write("output_file\t" + out_file + "\n")
+            if jacRegVal:
+                f.write("jacobian_regularization_value\t" + str(jacRegVal) + "\n")
             f.close()
-            # self.ipopt.options["halt_on_ampl_error"] = "yes"
             if halt_on_ampl_error:
                 solver_ip = self.asl_ipopt
             else:
@@ -643,4 +661,3 @@ class DynGen(object):
             v_i = self.xp_key[vni]
             self.d1.w_pnoisy[v_i].setlb(-conf_level * cov_dict[vni])
             self.d1.w_pnoisy[v_i].setub(conf_level * cov_dict[vni])
-

@@ -74,7 +74,7 @@ for i in range(1, 1000):
     c.predictor_step(c.d1, "real")
     c.update_state_predicted()
     c.compute_offset_state("real")
-    c.initialize_olnmpc(c.d2)
+    c.initialize_olnmpc(c.d2, "predicted")
     c.load_init_state_nmpc(src_kind="predicted")
 
     c.solve_d(c.olnmpc, stop_if_nopt=True, skip_update=False, iter_max=1000)

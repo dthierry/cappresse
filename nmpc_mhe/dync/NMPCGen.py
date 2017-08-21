@@ -7,7 +7,7 @@ from pyomo.core.base import Var, Objective, minimize, value, Set, Constraint, Ex
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
 from nmpc_mhe.dync.DynGen import DynGen
 import numpy as np
-import sys, os
+import sys, os, time
 from six import iterkeys
 __author__ = "David M Thierry @dthierry"
 
@@ -17,6 +17,7 @@ __author__ = "David M Thierry @dthierry"
 class NmpcGen(DynGen):
     def __init__(self, **kwargs):
         DynGen.__init__(self, **kwargs)
+        self.int_file_nmpc_suf = int(time.time())+1
 
         self.ref_state = kwargs.pop("ref_state", None)
         self.u_bounds = kwargs.pop("u_bounds", None)
@@ -124,7 +125,7 @@ class NmpcGen(DynGen):
         fe = kwargs.pop("fe", 1)
         self.journalizer("I", self._c_it, "initialize_olnmpc", "Attempting to initialize olnmpc")
         self.journalizer("I", self._c_it, "initialize_olnmpc", "src_kind=" + src_kind)
-        self.load_init_state_nmpc(src_kind="mod", ref=ref, fe=1, cp=self.ncp_t)
+        # self.load_init_state_nmpc(src_kind="mod", ref=ref, fe=1, cp=self.ncp_t)
 
         if src_kind == "real":
             self.load_init_state_nmpc(src_kind="dict", state_dict="real")
@@ -148,27 +149,31 @@ class NmpcGen(DynGen):
         k_notopt = 0
         for finite_elem in range(1, self.nfe_t + 1):
             dum.name = "Dummy I " + str(finite_elem)
-            if src_kind == "predicted" and finite_elem == 1:
-                self.load_init_state_gen(dum, src_kind="dict", state_dict="predicted")
-            elif src_kind == "estimated" and finite_elem == 1:
-                self.load_init_state_gen(dum, src_kind="dict", state_dict="estimated")
-            elif src_kind == "real" and finite_elem == 1:
-                self.load_init_state_gen(dum, src_kind="dict", state_dict="real")
-            elif src_kind == None and finite_elem == 1:
-                self.journalizer("E", self._c_it, "initialize_olnmpc", "SRC not given")
-                sys.exit()
+            if finite_elem == 1:
+                if src_kind == "predicted":
+                    self.load_init_state_gen(dum, src_kind="dict", state_dict="predicted")
+                elif src_kind == "estimated":
+                    self.load_init_state_gen(dum, src_kind="dict", state_dict="estimated")
+                elif src_kind == "real":
+                    self.load_init_state_gen(dum, src_kind="dict", state_dict="real")
+                else:
+                    self.journalizer("E", self._c_it, "initialize_olnmpc", "SRC not given")
+                    sys.exit()
             else:
                 self.load_init_state_gen(dum, src_kind="mod", ref=dum, fe=1)
-            # for i in self.states:  #: Cycle ICs for dum
-            #     xdum_ic = getattr(dum, i + "_ic")
-            #     xdum = getattr(dum, i)
-            #     for ks in xdum_ic.keys():
-            #         xdum_ic[ks].value = value(xdum[(1, self.ncp_t) + (ks,)])
-            #         xdum[(1, 0) + (ks,)].set_value(value(xdum[(1, self.ncp_t) + (ks,)]))
-            tst = self.solve_d(dum, o_tee=False)
+
+            tst = self.solve_d(dum,
+                               o_tee=False,
+                               tol=1e-06,
+                               stop_if_nopt=False,
+                               output_file="dummy_ip.log")
             if tst != 0:
                 self.journalizer("W", self._c_it, "initialize_olnmpc", "non-optimal dummy")
-                self.solve_d(dum, o_tee=False, tol=1e-03, stop_if_nopt=False)
+                self.solve_d(dum,
+                             o_tee=True,
+                             tol=1e-03,
+                             stop_if_nopt=False,
+                             output_file="dummy_ip.log")
                 k_notopt += 1
             #: Patch
             self.load_d_d(dum, self.olnmpc, finite_elem)
@@ -183,6 +188,7 @@ class NmpcGen(DynGen):
     def load_init_state_nmpc(self, src_kind, **kwargs):
         """Loads ref state for set-point
         Args:
+            src_kind (str): the kind of source
             **kwargs: Arbitrary keyword arguments.
         Returns:
             None
@@ -201,7 +207,7 @@ class NmpcGen(DynGen):
             if not ref:
                 self.journalizer("W", self._c_it, "load_init_state_nmpc", "No model was given")
                 self.journalizer("W", self._c_it, "load_init_state_nmpc", "No update on state performed")
-                return
+                sys.exit()
             for x in self.states:
                 xic = getattr(self.olnmpc, x + "_ic")
                 xvar = getattr(self.olnmpc, x)
@@ -235,9 +241,9 @@ class NmpcGen(DynGen):
             else:
                 self.journalizer("W", self._c_it, "load_init_state_nmpc", "No dict w/state was specified")
                 self.journalizer("W", self._c_it, "load_init_state_nmpc", "No update on state performed")
-                return
+                sys.exit()
 
-    def compute_QR_nmpc(self, src="mhe", n=-1, **kwargs):
+    def compute_QR_nmpc(self, src="plant", n=-1, **kwargs):
         """Using the current state & control targets, computes the Qk and Rk matrices (diagonal)
         Args:
             src (str): The source of the update (default mhe) (mhe or plant)
@@ -293,7 +299,7 @@ class NmpcGen(DynGen):
             for fe in self.olnmpc.fe_t:
                 self.olnmpc.R_w_nmpc[fe].value = control_weight[fe]
 
-    def create_suffixes(self):
+    def create_suffixes_nmpc(self):
         """Creates the required suffixes for the olnmpc problem"""
         if hasattr(self.olnmpc, "npdp"):
             pass
@@ -308,37 +314,58 @@ class NmpcGen(DynGen):
             uv = getattr(self.olnmpc, u)
             uv[1].set_suffix_value(self.olnmpc.dof_v, 1)
 
-    def solve_dot_dri(self):
+    def sens_dot_nmpc(self):
+        self.journalizer("I", self._c_it, "sens_dot_nmpc", "Set-up")
+
+        if hasattr(self.olnmpc, "npdp"):
+            self.olnmpc.npdp.clear()
+        else:
+            self.olnmpc.npdp = Suffix(direction=Suffix.EXPORT)
+
         for x in self.states:
             con_name = x + "_icc"
             con_ = getattr(self.olnmpc, con_name)
             for j in self.state_vars[x]:
                 con_[j].set_suffix_value(self.olnmpc.npdp, self.curr_state_offset[(x, j)])
-            # for ks in con_.keys():
 
-        self.journalizer("I", self._c_it, "solve_dot_driver", self.olnmpc.name)
-        # with open("r1.txt", "w") as r1:
-        #     self.olnmpc.per_opening1.pprint(ostream=r1)
-        #     self.olnmpc.per_opening2.pprint(ostream=r1)
-        #     r1.close()
+        if hasattr(self.olnmpc, "f_timestamp"):
+            self.olnmpc.f_timestamp.clear()
+        else:
+            self.olnmpc.f_timestamp = Suffix(direction=Suffix.EXPORT,
+                                            datatype=Suffix.INT)
+        self.olnmpc.set_suffix_value(self.olnmpc.f_timestamp, self.int_file_nmpc_suf)
+
+        self.olnmpc.f_timestamp.display(ostream=sys.stderr)
+
+        self.journalizer("I", self._c_it, "sens_dot_nmpc", self.olnmpc.name)
+
         results = self.dot_driver.solve(self.olnmpc, tee=True, symbolic_solver_labels=True)
         self.olnmpc.solutions.load_from(results)
-        # with open("r2.txt", "w") as r2:
-        #     self.olnmpc.per_opening1.pprint(ostream=r2)
-        #     self.olnmpc.per_opening2.pprint(ostream=r2)
-        #     r2.close()
+        self.olnmpc.f_timestamp.display(ostream=sys.stderr)
+
         ftiming = open("timings_dot_driver.txt", "r")
         s = ftiming.readline()
         ftiming.close()
         k = s.split()
         self._dot_timing = k[0]
 
-    def solve_k_aug_nmpc(self):
+    def sens_k_aug_nmpc(self):
+        self.journalizer("I", self._c_it, "sens_k_aug_nmpc", "k_aug sensitivity")
         self.olnmpc.ipopt_zL_in.update(self.olnmpc.ipopt_zL_out)
         self.olnmpc.ipopt_zU_in.update(self.olnmpc.ipopt_zU_out)
-        self.journalizer("I", self._c_it, "solve_k_aug", self.olnmpc.name)
+        self.journalizer("I", self._c_it, "solve_k_aug_nmpc", self.olnmpc.name)
+
+        if hasattr(self.olnmpc, "f_timestamp"):
+            self.olnmpc.f_timestamp.clear()
+        else:
+            self.olnmpc.f_timestamp = Suffix(direction=Suffix.EXPORT,
+                                             datatype=Suffix.INT)
+
+        self.olnmpc.set_suffix_value(self.olnmpc.f_timestamp, self.int_file_nmpc_suf)
+        self.olnmpc.f_timestamp.display(ostream=sys.stderr)
         results = self.k_aug_sens.solve(self.olnmpc, tee=True, symbolic_solver_labels=True)
         self.olnmpc.solutions.load_from(results)
+        self.olnmpc.f_timestamp.display(ostream=sys.stderr)
         ftimings = open("timings_k_aug.txt", "r")
         s = ftimings.readline()
         ftimings.close()
@@ -377,7 +404,6 @@ class NmpcGen(DynGen):
                                  "Max number of tries reached")
                 sys.exit()
             self.stall_strategy("increase_weights")
-
 
     def find_target_ss(self, ref_state=None, **kwargs):
         """Attempt to find a second steady state
@@ -470,6 +496,7 @@ class NmpcGen(DynGen):
             v = getattr(self.ss2, u)
             val = value(v[1])
             print("target {:}".format(u), " value {:f}".format(val))
+        self.update_targets_nmpc()
 
     def update_targets_nmpc(self):
         """Use the reference model to update  the current state and control targets"""
@@ -526,6 +553,7 @@ class NmpcGen(DynGen):
             val = value(v[(1, 1) + vkey])
             print("target {:}".format(i[0]), "key {:}".format(i[1]), "weight {:f}".format(weights[i]),
                   "value {:f}".format(val))
+        self.update_targets_nmpc()
 
     def compute_offset_state(self, src_kind="estimated"):
         """Missing noisy"""
@@ -540,7 +568,7 @@ class NmpcGen(DynGen):
 
     def print_r_nmpc(self):
         self.journalizer("I", self._c_it, "print_r_nmpc", "Results at" + os.getcwd())
-        self.journalizer("I", self._c_it, "print_r_nmpc", "Results suffix " + self.res_file_mhe_suf)
+        self.journalizer("I", self._c_it, "print_r_nmpc", "Results suffix " + self.res_file_suf)
         # print(self.soi_dict)
         for k in self.ref_state.keys():
             self.soi_dict[k].append(self.curr_soi[k])
@@ -550,7 +578,7 @@ class NmpcGen(DynGen):
         #     self.u_dict[u].append(self.curr_u[u])
         #     print(self.curr_u[u])
 
-        with open("res_nmpc_rs_" + self.res_file_mhe_suf + ".txt", "a") as f:
+        with open("res_nmpc_rs_" + self.res_file_suf + ".txt", "a") as f:
             for k in self.ref_state.keys():
                 i = self.soi_dict[k]
                 iv = str(i[-1])
@@ -574,7 +602,7 @@ class NmpcGen(DynGen):
             f.write('\n')
             f.close()
 
-        with open("res_nmpc_offs_" + self.res_file_mhe_suf + ".txt", "a") as f:
+        with open("res_nmpc_offs_" + self.res_file_suf + ".txt", "a") as f:
             for x in self.states:
                 for j in self.state_vars[x]:
                     i = self.curr_state_offset[(x, j)]
@@ -583,7 +611,7 @@ class NmpcGen(DynGen):
                     f.write('\t')
             f.write('\n')
             f.close()
-        # with open("res_nmpc_u_" + self.res_file_mhe_suf + ".txt", "a") as f:
+        # with open("res_nmpc_u_" + self.res_file_suf + ".txt", "a") as f:
         #     for u in self.u:
         #         for i in range(0, len(self.u_dict[u])):
         #             iv = str(self.u_dict[u][i])
@@ -623,7 +651,6 @@ class NmpcGen(DynGen):
             #: Assuming the variable is indexed by time
             self.curr_off_soi[k] = 100 * abs(self.curr_soi[k] - self.curr_sp[k])/abs(self.curr_sp[k])
             print("\tCurrent offset \% \% \t", k, self.curr_off_soi[k])
-
 
         for u in self.u:
             ur = getattr(self.ss2, u)

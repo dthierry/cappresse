@@ -10,7 +10,7 @@ from nmpc_mhe.dync.DynGen import DynGen
 from nmpc_mhe.dync.NMPCGen import NmpcGen
 import numpy as np
 from itertools import product
-import sys, os
+import sys, os, time
 
 __author__ = "David M Thierry @dthierry"
 """Not yet. Our people, they don't understand."""
@@ -19,6 +19,7 @@ __author__ = "David M Thierry @dthierry"
 class MheGen(NmpcGen):
     def __init__(self, **kwargs):
         NmpcGen.__init__(self, **kwargs)
+        self.int_file_mhe_suf = int(time.time())-1
 
         # Need a list of relevant measurements y
 
@@ -504,6 +505,7 @@ class MheGen(NmpcGen):
         self.load_d_d(tgt, self.lsmhe, self.nfe_t)
 
         if patch_pred_y:
+            self.journalizer("I", self._c_it, "init_step_mhe", "Prediction for advanced-step.. Ready")
             self.patch_meas_mhe(self.nfe_t, src=tgt, noisy=True)
         self.adjust_nu0_mhe()
         self.adjust_w_mhe()
@@ -731,7 +733,7 @@ class MheGen(NmpcGen):
 
     def print_r_mhe(self):
         self.journalizer("I", self._c_it, "print_r_mhe", "Results at" + os.getcwd())
-        self.journalizer("I", self._c_it, "print_r_mhe", "Results suffix " + self.res_file_mhe_suf)
+        self.journalizer("I", self._c_it, "print_r_mhe", "Results suffix " + self.res_file_suf)
         for x in self.x_noisy:
             elist = []
             rlist = []
@@ -753,7 +755,7 @@ class MheGen(NmpcGen):
         #             f.write('\n')
         #     f.close()
 
-        with open("res_mhe_es_" + self.res_file_mhe_suf + ".txt", "a") as f:
+        with open("res_mhe_es_" + self.res_file_suf + ".txt", "a") as f:
             for x in self.x_noisy:
                 for j in self.s_estimate[x][-1]:
                     xvs = str(j)
@@ -761,7 +763,7 @@ class MheGen(NmpcGen):
                     f.write('\t')
             f.write('\n')
             f.close()
-        with open("res_mhe_rs_" + self.res_file_mhe_suf + ".txt", "a") as f:
+        with open("res_mhe_rs_" + self.res_file_suf + ".txt", "a") as f:
             for x in self.x_noisy:
                 for j in self.s_real[x][-1]:
                     xvs = str(j)
@@ -769,7 +771,7 @@ class MheGen(NmpcGen):
                     f.write('\t')
             f.write('\n')
             f.close()
-        with open("res_mhe_eoff_" + self.res_file_mhe_suf + ".txt", "a") as f:
+        with open("res_mhe_eoff_" + self.res_file_suf + ".txt", "a") as f:
             for x in self.x_noisy:
                 for j in range(0, len(self.s_estimate[x][-1])):
                     e = self.s_estimate[x][-1][j]
@@ -816,7 +818,7 @@ class MheGen(NmpcGen):
         #             f.write('\n')
         #     f.close()
 
-        with open("res_mhe_ey_" + self.res_file_mhe_suf + ".txt", "a") as f:
+        with open("res_mhe_ey_" + self.res_file_suf + ".txt", "a") as f:
             for y in self.y:
                 for j in self.y_estimate[y][-1]:
                     yvs = str(j)
@@ -825,7 +827,7 @@ class MheGen(NmpcGen):
             f.write('\n')
             f.close()
 
-        with open("res_mhe_yreal_" + self.res_file_mhe_suf + ".txt", "a") as f:
+        with open("res_mhe_yreal_" + self.res_file_suf + ".txt", "a") as f:
             for y in self.y:
                 for j in self.y_real[y][-1]:
                     yvs = str(j)
@@ -834,7 +836,7 @@ class MheGen(NmpcGen):
             f.write('\n')
             f.close()
 
-        with open("res_mhe_yk0_" + self.res_file_mhe_suf + ".txt", "a") as f:
+        with open("res_mhe_yk0_" + self.res_file_suf + ".txt", "a") as f:
             for y in self.y:
                 for j in self.yk0_jrnl[y][-1]:
                     yvs = str(j)
@@ -843,7 +845,7 @@ class MheGen(NmpcGen):
             f.write('\n')
             f.close()
 
-        with open("res_mhe_ynoise_" + self.res_file_mhe_suf + ".txt", "a") as f:
+        with open("res_mhe_ynoise_" + self.res_file_suf + ".txt", "a") as f:
             for y in self.y:
                 for j in self.y_noise_jrnl[y][-1]:
                     yvs = str(j)
@@ -852,7 +854,7 @@ class MheGen(NmpcGen):
             f.write('\n')
             f.close()
 
-        with open("res_mhe_yoffset_" + self.res_file_mhe_suf + ".txt", "a") as f:
+        with open("res_mhe_yoffset_" + self.res_file_suf + ".txt", "a") as f:
             for y in self.y:
                 for j in self.y_vars[y]:
                     yvs = str(self.curr_y_offset[(y, j)])
@@ -861,7 +863,7 @@ class MheGen(NmpcGen):
             f.write('\n')
             f.close()
 
-        with open("res_mhe_unoise_" + self.res_file_mhe_suf + ".txt", "a") as f:
+        with open("res_mhe_unoise_" + self.res_file_suf + ".txt", "a") as f:
             for u in self.u:
                 # u_mhe = getattr(self.lsmhe, u)
                 ue_mhe = getattr(self.lsmhe, "w_" + u + "_mhe")
@@ -886,6 +888,8 @@ class MheGen(NmpcGen):
 
     def sens_dot_mhe(self):
         """Updates suffixes, solves using the dot_driver"""
+        self.journalizer("I", self._c_it, "sens_dot_mhe", "Set-up")
+
         if hasattr(self.lsmhe, "npdp"):
             self.lsmhe.npdp.clear()
         else:
@@ -896,7 +900,7 @@ class MheGen(NmpcGen):
                 k = self.yk_key[(y, j)]
                 self.lsmhe.hyk_c_mhe[self.nfe_t, k].set_suffix_value(self.lsmhe.npdp, self.curr_y_offset[(y, j)])
 
-        self.journalizer("I", self._c_it, "sens_dot_mhe", "Set-up")
+
 
         # with open("somefile0.txt", "w") as f:
         #     self.lsmhe.x.display(ostream=f)
@@ -911,7 +915,9 @@ class MheGen(NmpcGen):
         self.lsmhe.set_suffix_value(self.lsmhe.f_timestamp, self.int_file_mhe_suf)
 
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
-        # self.lsmhe.f_timestamp.clear()
+
+        self.journalizer("I", self._c_it, "sens_dot_mhe", self.lsmhe.name)
+
         results = self.dot_driver.solve(self.lsmhe, tee=True, symbolic_solver_labels=True)
         self.lsmhe.solutions.load_from(results)
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
@@ -928,14 +934,11 @@ class MheGen(NmpcGen):
         self._dot_timing = k[0]
 
     def sens_k_aug_mhe(self):
-        self.journalizer("I", self._c_it, "sens_k_aug_mhe", "K_AUG w sensitivity")
+        self.journalizer("I", self._c_it, "sens_k_aug_mhe", "k_aug sensitivity")
         self.lsmhe.ipopt_zL_in.update(self.lsmhe.ipopt_zL_out)
         self.lsmhe.ipopt_zU_in.update(self.lsmhe.ipopt_zU_out)
         self.journalizer("I", self._c_it, "sens_k_aug_mhe", self.lsmhe.name)
 
-        # if hasattr(self.k_aug.options, "eig_rh")
-        #     delattr(self.k_aug.options, "eig_rh")
-        # print(self.k_aug.options)
         if hasattr(self.lsmhe, "f_timestamp"):
             self.lsmhe.f_timestamp.clear()
         else:
@@ -952,11 +955,21 @@ class MheGen(NmpcGen):
         ftimings.close()
         self._k_timing = s.split()
 
-    def update_state_mhe(self):
+    def update_state_mhe(self, as_nmpc_mhe_strategy=False):
+        # Improvised strategy
+        if as_nmpc_mhe_strategy:
+            self.journalizer("I", self._c_it, "update_state_mhe", "offset ready for asnmpcmhe")
+            for x in self.states:
+                xvar = getattr(self.lsmhe, x)
+                for j in self.state_vars[x]:
+                    self.curr_state_offset[(x, j)] = self.curr_estate[(x, j)] - value(xvar[self.nfe_t, self.ncp_t, j])
+
         for x in self.states:
             xvar = getattr(self.lsmhe, x)
             for j in self.state_vars[x]:
                 self.curr_estate[(x, j)] = value(xvar[self.nfe_t, self.ncp_t, j])
+
+
 
     def method_for_mhe_simulation_step(self):
         pass

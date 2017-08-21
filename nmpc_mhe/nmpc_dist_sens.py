@@ -46,7 +46,7 @@ c.update_state_real()  # update the current state
 
 c.find_target_ss()
 c.create_nmpc()
-c.create_suffixes()
+c.create_suffixes_nmpc()
 c.update_targets_nmpc()
 c.compute_QR_nmpc(n=-1)
 c.new_weights_olnmpc(10000, 1e+06)
@@ -76,14 +76,14 @@ for i in range(1, 1000):
     # Dot_sens
     if i > 1:
         c.compute_offset_state("real")
-        c.solve_dot_dri()
+        c.sens_dot_nmpc()
         c.update_u(c.olnmpc)
 
     c.predictor_step(c.d1, "real")
     c.update_state_predicted()
 
     c.initialize_olnmpc(c.d2, "predicted")
-    c.load_init_state_nmpc(src_kind="predicted")
+    c.load_init_state_nmpc(src_kind="state_dict", state_dict="predicted")
 
     c.solve_d(c.olnmpc, stop_if_nopt=True, skip_update=False, iter_max=1000)
     c.solve_k_aug_nmpc()
