@@ -108,7 +108,12 @@ e.deact_icc_mhe()  #: Remove the initial conditions
 e.set_prior_state_from_prior_mhe()  #: Update prior-state
 e.find_target_ss()  #: Compute target-steady state (beforehand)
 # For ideal nmpc
-for i in range(1, 10000):
+q2_cov = {}
+for j in range(1, ntrays + 1):
+    q2_cov[("x", (j,))] = 1e-05
+    q2_cov[("M", (j,))] = 1
+e.make_noisy(q2_cov)
+for i in range(1, 1000):
 
     e.solve_d(e.d1, stop_if_nopt=True)
     e.update_state_real()  # update the current state
@@ -120,7 +125,13 @@ for i in range(1, 10000):
     e.patch_meas_mhe(e.nfe_t, src=e.d1, noisy=True)  #: Get the measurement
     e.compute_y_offset()  # compute the offset for dot_sens
     # do dot_sens mhe
+    if i > 1:
+        e.sens_dot_mhe()
     e.update_state_mhe(as_nmpc_mhe_strategy=True)
+    print(e.curr_state_offset)
+    if i > 1:
+        e.sens_dot_nmpc()
+        e.update_u(e.olnmpc)
     # do dot-sens nmpc
 
     e.shift_mhe()
@@ -131,7 +142,7 @@ for i in range(1, 10000):
     stat = e.solve_d(e.lsmhe, skip_update=False)
     if stat == 1:
         stat = e.solve_d(e.lsmhe, skip_update=False, iter_max=250, stop_if_nopt=True)
-    e.create_sens_suffix_mhe()
+    # e.create_sens_suffix_mhe()
     e.sens_k_aug_mhe()  # sensitivity matrix for mhe
 
     e.update_state_mhe()
@@ -155,10 +166,7 @@ for i in range(1, 10000):
         stat_nmpc = e.solve_d(e.olnmpc, stop_if_nopt=True, skip_update=False, iter_max=300,
                               jacobian_regularization_value=1)
     e.sens_k_aug_nmpc()  # sensitivity matrix for nmpc
-    e.update_u(e.olnmpc)
+
     e.print_r_nmpc()
-
-
-
     e.cycle_ics(plant_step=True)
     e.plant_input_gen(e.d1, src_kind="dict")

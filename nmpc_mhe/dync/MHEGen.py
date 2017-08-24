@@ -538,7 +538,7 @@ class MheGen(NmpcGen):
                 for j in self.x_vars[key]:
                     var[(2, 0) + j].set_suffix_value(self.lsmhe.dof_v, 1)
 
-    def create_sens_suffix(self, set_suffix=True):
+    def create_sens_suffix_mhe(self, set_suffix=True):
         """Creates relevant suffixes for k_aug (Sensitivity)
         Args:
             set_suffix (bool): True if update must be done
@@ -945,8 +945,10 @@ class MheGen(NmpcGen):
             self.lsmhe.f_timestamp = Suffix(direction=Suffix.EXPORT,
                                             datatype=Suffix.INT)
         #: Now, the sensitivity step will have the timestamp for dot_in
+
         self.lsmhe.set_suffix_value(self.lsmhe.f_timestamp, self.int_file_mhe_suf)
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
+        self.create_sens_suffix_mhe()
         results = self.k_aug_sens.solve(self.lsmhe, tee=True, symbolic_solver_labels=True)
         self.lsmhe.solutions.load_from(results)
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
