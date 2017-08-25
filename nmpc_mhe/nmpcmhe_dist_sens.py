@@ -41,7 +41,7 @@ e = MheGen(d_mod=DistDiehlNegrete,
            u_bounds=u_bounds,
            diag_QR=True,
            nfe_t=nfet,
-           _t=1000)
+           _t=10000)
 
 e.load_iguess_ss()
 e.solve_ss()
@@ -56,7 +56,7 @@ e.create_nmpc()
 e.create_suffixes_nmpc()
 e.update_targets_nmpc()
 e.compute_QR_nmpc(n=-1)
-e.new_weights_olnmpc(1000, 1e+06)
+e.new_weights_olnmpc(10000, 1e+06)
 with open("current_QR.txt", "w") as f:
     e.olnmpc.Q_nmpc.display(ostream=f)
     e.olnmpc.R_nmpc.display(ostream=f)
@@ -116,17 +116,25 @@ e.make_noisy(q2_cov)
 for i in range(1, 1000):
 
     e.solve_d(e.d1, stop_if_nopt=True)
+    e.randomize_noize(q2_cov)
     e.update_state_real()  # update the current state
     e.update_soi_sp_nmpc()
 
     e.update_noise_meas(e.d1, m_cov)
     e.load_input_mhe("mod", src=e.d1, fe=e.nfe_t)  #: The inputs must coincide
 
-    e.patch_meas_mhe(e.nfe_t, src=e.d1, noisy=True)  #: Get the measurement
     e.compute_y_offset()  # compute the offset for dot_sens
+    e.patch_meas_mhe(e.nfe_t, src=e.d1, noisy=True)  #: Get the measurement
     # do dot_sens mhe
+
     if i > 1:
+        with open("f1.txt", "w") as f:
+            e.lsmhe.x.display(ostream=f)
+            f.close
         e.sens_dot_mhe()
+        with open("f2.txt", "w") as f:
+            e.lsmhe.x.display(ostream=f)
+            f.close
     e.update_state_mhe(as_nmpc_mhe_strategy=True)
     print(e.curr_state_offset)
     if i > 1:

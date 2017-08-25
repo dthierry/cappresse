@@ -277,7 +277,7 @@ class MheGen(NmpcGen):
                     vs = getattr(dum, i)  #: Source
                     for ks in p.iterkeys():
                         p[ks].value = value(vs[(1, self.ncp_t) + (ks,)])
-            self.patch_meas_mhe(finite_elem)
+            self.patch_meas_mhe(finite_elem, src=self.d1)
             #: Solve
             self.solve_d(dum, o_tee=False)
             #: Patch
@@ -314,7 +314,7 @@ class MheGen(NmpcGen):
         Returns:
             meas_dict (dict): A dictionary containing the measurements list by meas_var
         """
-        src = kwargs.pop("src", self.d1)
+        src = kwargs.pop("src", None)
         skip_update = kwargs.pop("skip_update", False)
         noisy = kwargs.pop("noisy", True)
 
@@ -329,11 +329,13 @@ class MheGen(NmpcGen):
             meas_dic[i] = lm
 
         if not skip_update:  #: Update the mhe model
+            self.journalizer("I", self._c_it, "patch_meas_mhe", "Measurement patched to " + str(t))
             y0dest = getattr(self.lsmhe, "yk0_mhe")
             # print("there is an update", file=sys.stderr)
             for i in self.y:
                 for j in self.y_vars[i]:
                     k = self.yk_key[(i, j)]
+                    #: Adding noise to the mhe measurement
                     y0dest[t, k].value = l[k] + self.curr_m_noise[(i, j)] if noisy else l[k]
         return meas_dic
 
@@ -635,7 +637,7 @@ class MheGen(NmpcGen):
         else:
             self.lsmhe.f_timestamp = Suffix(direction=Suffix.EXPORT,
                                             datatype=Suffix.INT)
-
+        self.create_rh_sfx()
         self.k_aug.solve(self.lsmhe, tee=True)
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
 
@@ -894,7 +896,7 @@ class MheGen(NmpcGen):
             self.lsmhe.npdp.clear()
         else:
             self.lsmhe.npdp = Suffix(direction=Suffix.EXPORT)
-
+        self.create_sens_suffix_mhe()
         for y in self.y:
             for j in self.y_vars[y]:
                 k = self.yk_key[(y, j)]
@@ -963,8 +965,11 @@ class MheGen(NmpcGen):
             self.journalizer("I", self._c_it, "update_state_mhe", "offset ready for asnmpcmhe")
             for x in self.states:
                 xvar = getattr(self.lsmhe, x)
+                x0 = getattr(self.olnmpc, x + "_ic")
                 for j in self.state_vars[x]:
-                    self.curr_state_offset[(x, j)] = self.curr_estate[(x, j)] - value(xvar[self.nfe_t, self.ncp_t, j])
+                    # self.curr_state_offset[(x, j)] = self.curr_estate[(x, j)] - value(xvar[self.nfe_t, self.ncp_t, j])
+                    self.curr_state_offset[(x, j)] = value(x0[j] )- value(xvar[self.nfe_t, self.ncp_t, j])
+                    print("state !", self.curr_state_offset[(x, j)])
 
         for x in self.states:
             xvar = getattr(self.lsmhe, x)

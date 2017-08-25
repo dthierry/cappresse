@@ -135,7 +135,7 @@ for i in range(1, 10000):
     e.sens_k_aug_mhe()  # sensitivity matrix for mhe
 
     e.update_state_mhe()
-
+    e.create_rh_sfx() # Need this!!
     # Prior-Covariance stuff
     e.check_active_bound_noisy()
     e.load_covariance_prior()
