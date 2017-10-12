@@ -2,7 +2,7 @@ from __future__ import print_function
 from pyomo.environ import *
 from pyomo.opt import ProblemFormat
 from nmpc_mhe.dync.MHEGen import MheGen
-from nmpc_mhe.mods.bfb.bfb_abs import *
+from nmpc_mhe.mods.bfb.bfb_abs3 import *
 import sys, os
 import itertools, sys
 
@@ -122,20 +122,32 @@ dum = e.d_mod(1, e.ncp_t, _t=e.hi_t)
 
 e.init_step_mhe(dum, e.nfe_t)
 
-e.deb_alg_sys_dyn()
+
 tst = e.solve_d(e.d1, skip_update=False)  #: Pre-loaded mhe solve
-e.d1.write(filename="heorqie.nl",
+e.deb_alg_sys_dyn()
+e.d1.dbu.fix()
+e.d1.a35.deactivate()
+e.d1.P.fix()
+e.d1.a21.deactivate()
+e.d1.Gb.fix()
+e.d1.a13.deactivate()
+e.d1.e8.deactivate()
+e.d1.write(filename="algebraic_nl.nl",
               format=ProblemFormat.nl,
               io_options={"symbolic_solver_labels": True})
-print(os.getcwd())
+tst = e.solve_d(e.d1, skip_update=False)  #: Pre-loaded mhe solve
+e.d1.write(filename="algebraic_nl.nl",
+              format=ProblemFormat.nl,
+              io_options={"symbolic_solver_labels": True})
+# print(os.getcwd())
 sys.exit()
 
 
-tst = e.solve_d(e.lsmhe, skip_update=False, iter_max=10)  #: Pre-loaded mhe solve
-# if tst != 0:
-#     e.k_aug.solve(e.lsmhe, tee=True)
-#     sys.exit()
-# e.lsmhe.pprint(filename="somefile.model")
+tst = e.solve_d(e.lsmhe, skip_update=False, iter_max=500)  #: Pre-loaded mhe solve
+if tst != 0:
+    e.k_aug.solve(e.lsmhe, tee=True)
+    sys.exit()
+e.lsmhe.pprint(filename="somefile.model")
 
 e.check_active_bound_noisy()
 e.load_covariance_prior()

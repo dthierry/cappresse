@@ -117,9 +117,10 @@ class DynGen(object):
             f.write("max_iter 100\n")
             f.write("mu_init 1e-08\n")
             f.write("bound_push 1e-08\n")
+            f.write("print_info_string yes\n")
             f.close()
-        ip = SolverFactory("asl:ipopt")
-        ip.options["halt_on_ampl_error"] = "yes"
+        ip = SolverFactory("ipopt")
+        # ip.options["halt_on_ampl_error"] = "yes"
         ip.options["print_user_options"] = "yes"
         ip.options["linear_solver"] = "ma57"
         results = ip.solve(self.ss, tee=True, symbolic_solver_labels=True, report_timing=True)
@@ -661,3 +662,28 @@ class DynGen(object):
             v_i = self.xp_key[vni]
             self.d1.w_pnoisy[v_i].setlb(-conf_level * cov_dict[vni])
             self.d1.w_pnoisy[v_i].setub(conf_level * cov_dict[vni])
+
+
+    def deb_alg_sys_dyn(self):
+        """Debugging the algebraic system"""
+        # Fix differential states
+        # Deactivate ODEs de_
+        # Deactivate FE cont cp_
+        # Deactivate IC _icc
+        # Deactivate coll dvar_t_
+
+        # Deactivate hyk
+        for i in self.states:
+            x = getattr(self.d1, i)
+            x.fix()
+            # cp_con = getattr(self.d1, "cp_" + i)
+            # cp_con.deactivate()
+            de_con = getattr(self.d1, "de_" + i)
+            de_con.deactivate()
+            icc_con = getattr(self.d1, i + "_icc")
+            icc_con.deactivate()
+            dvar_con = getattr(self.d1, "dvar_t_" + i)
+            dvar_con.deactivate()
+
+
+        # self.lsmhe.pprint(filename="algeb_mod.txt")

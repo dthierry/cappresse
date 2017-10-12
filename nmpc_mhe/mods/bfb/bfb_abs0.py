@@ -293,9 +293,9 @@ class bfb_dae(ConcreteModel):
         self.Sot = Var(self.fe_t, self.cp_ta, initialize=1.)
         self.g1 = Var(self.fe_t, self.cp_ta, initialize=1.)
         self.Ar = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
-        self.cbt = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
-        self.cct = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
-        self.cet = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
+        # self.cbt = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
+        # self.cct = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
+        # self.cet = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
         self.cb = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=1.)
         self.cbin = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=1.)
         self.cc = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=1.)
@@ -391,7 +391,8 @@ class bfb_dae(ConcreteModel):
         self.debin_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
         self.decwin_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
         self.deein_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
-        self.dP_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
+        # self.dP_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
+        self.dGb_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
         self.dPhx_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
         self.dccwin_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=1.)
         self.dz_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
@@ -429,6 +430,7 @@ class bfb_dae(ConcreteModel):
 
         #: Differential equations
         self.de_Ngb = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=de_ngb_rule)
+        self.de_Gb = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=gb_de_rule)
         self.de_Hgb = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_hgb_rule)
         self.de_Ngc = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=de_ngc_rule)
         self.de_Hgc = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=de_hgc_rule)
@@ -547,25 +549,25 @@ class bfb_dae(ConcreteModel):
         # --------------------------------------------------------------------------------------------------------------
         # --------------------------------------------------------------------------------------------------------------
         #: Algebraic constraints
-        self.a1 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a1_rule)
+        # self.a1 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a1_rule)
         self.a3 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a3_rule)
         self.a4 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a4_rule)
         self.a5 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a5_rule)
         self.a7 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=a7_rule)
-        self.dummy_con = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=dummy)
         self.a8 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=a8_rule)
         self.a9 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=a9_rule)
         self.a11_2 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a11_rule_2)
-        self.a12 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a12_rule)
+        # self.a12 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a12_rule)
         self.a13 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a13_rule)
         self.a14 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a14_rule)
         self.a15 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=a15_rule)
         self.a16 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=a16_rule)
         self.a17 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=a17_rule)
-        self.a18 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a18_rule)
-        self.a19 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a19_rule)
-        self.a20 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a20_rule)
+        # self.a18 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a18_rule)
+        # self.a19 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a19_rule)
+        # self.a20 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a20_rule)
         self.a21 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a21_rule)
+        self.delta_rule = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=delta_rule)
         self.a22 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a22_rule)
         self.a23 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a23_rule)
         self.a24 = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a24_rule)
@@ -674,7 +676,8 @@ class bfb_dae(ConcreteModel):
         self.de_x_ecwin = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_x_ecwin_)
         self.de_x_eein = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_x_eein_)
         self.de_x_hxh = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_x_hxh_)
-        self.de_x_p = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_x_p_)
+        self.de_x_gb = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_x_gb_)
+        # self.de_x_p = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_x_p_)
         self.de_x_phx = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_x_phx_)
         self.de_x_ccwin = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=fdvar_x_ccwin_)
         self.de_c_z = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_z_)
@@ -685,8 +688,9 @@ class bfb_dae(ConcreteModel):
         self.cp4_c = Constraint(self.fe_t, self.cp_ta, self.fe_x, rule=fcp_x_ecwin)
         self.cp5_c = Constraint(self.fe_t, self.cp_ta, self.fe_x, rule=fcp_x_eein)
         self.cp6_c = Constraint(self.fe_t, self.cp_ta, self.fe_x, rule=fcp_x_hxh)
+        self.cp_c_gb = Constraint(self.fe_t, self.cp_ta, self.fe_x, rule=fcp_x_gb)
         # self.cp7_c = Constraint(self.fe_x, rule=fcp1_7)
-        self.cp8_c = Constraint(self.fe_t, self.cp_ta, self.fe_x, rule=fcp_x_p)
+        # self.cp8_c = Constraint(self.fe_t, self.cp_ta, self.fe_x, rule=fcp_x_p)
         self.cp9_c = Constraint(self.fe_t, self.cp_ta, self.fe_x, rule=fcp_x_phx)
         self.cp10_c = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.sp, rule=fcp_x_ccwin)
         self.cpz_c = Constraint(self.fe_t, self.cp_ta, self.fe_x, rule=fcp_z_)
@@ -740,7 +744,6 @@ class bfb_dae(ConcreteModel):
                    format=ProblemFormat.nl,
                    io_options={"symbolic_solver_labels": True})
 
-
     def create_bounds(self):
         print('problem with bounds activated')
         for it in range(1, self.nfe_t + 1):
@@ -781,9 +784,9 @@ class bfb_dae(ConcreteModel):
                 for ix in range(1, self.nfe_x + 1):
                     for jx in range(0, self.ncp_x + 1):
                         self.Ar[it, jt, ix, jx].setlb(0)
-                        self.cbt[it, jt, ix, jx].setlb(0)
-                        self.cct[it, jt, ix, jx].setlb(0)
-                        self.cet[it, jt, ix, jx].setlb(0)
+                        # self.cbt[it, jt, ix, jx].setlb(1e-06)
+                        # self.cct[it, jt, ix, jx].setlb(0)
+                        # self.cet[it, jt, ix, jx].setlb(0)
                         self.db[it, jt, ix, jx].setlb(0)
                         self.dbe[it, jt, ix, jx].setlb(0)
                         self.dbm[it, jt, ix, jx].setlb(0)
@@ -851,9 +854,9 @@ class bfb_dae(ConcreteModel):
                         self.Ke3e[it, jt, ix, jx].setlb(0)
                         self.kpa[it, jt, ix, jx].setlb(0)
                         self.Nup[it, jt, ix, jx].setlb(0)
-                        self.P[it, jt, ix, jx].setlb(0)
+                        self.P[it, jt, ix, jx].setlb(1e-06)
                         self.Phx[it, jt, ix, jx].setlb(0)
-                        self.Red[it, jt, ix, jx].setlb(0)
+                        self.Red[it, jt, ix, jx].setlb(1e-09)
                         self.rhog[it, jt, ix, jx].setlb(0)
                         self.tau[it, jt, ix, jx].setlb(0)
                         self.Tgb[it, jt, ix, jx].setlb(0)
@@ -887,7 +890,7 @@ class bfb_dae(ConcreteModel):
 
                             self.yb[it, jt, ix, jx, cx].setlb(0)
                             self.yc[it, jt, ix, jx, cx].setlb(0)
-                            self.ye[it, jt, ix, jx, cx].setlb(0)
+                            self.ye[it, jt, ix, jx, cx].setlb(1e-09)
 
     def clear_bounds(self):
         """Sets bounds of variables
@@ -907,9 +910,35 @@ class bfb_dae(ConcreteModel):
             except KeyError:
                 pass
         if self.nfe_t == 1 and self.ncp_t == 1:
-            solver = SolverFactory('ipopt')
-            someresults = solver.solve(self, tee=True)
+            solver = SolverFactory('asl:ipopt')
+            with open("ipopt.opt", "w") as f:
+                f.write("max_iter 20\n")
+                # f.write("mu_init 1e-08\n")
+                # f.write("bound_push 1e-08\n")
+                f.write("print_info_string yes\n")
+            solver.options['halt_on_ampl_error'] = "yes"
+            self.create_bounds()
+            print("Number of variables\t", self.nvariables(),end="\t")
+            print("Number of constraints\t", self.nconstraints())
+
+            someresults = solver.solve(self, tee=True, symbolic_solver_labels=True)
             self.solutions.load_from(someresults)
+            self.write(filename="steady.nl",
+                       format=ProblemFormat.nl,
+                       io_options={"symbolic_solver_labels": True})
+            # self.display()
+
+            with open("ipopt.opt", "w") as f:
+                f.write("max_iter 1000\n")
+                # f.write("mu_init 1e-08\n")
+                # f.write("bound_push 1e-08\n")
+                f.write("print_info_string yes\n")
+            self.create_bounds()
+            someresults = solver.solve(self, tee=True, symbolic_solver_labels=True)
+            self.solutions.load_from(someresults)
+            self.write(filename="01.nl",
+                       format=ProblemFormat.nl)
+
 
     def equalize_u(self, direction="u_to_r"):
         """set current controls to the values of their respective dummies"""

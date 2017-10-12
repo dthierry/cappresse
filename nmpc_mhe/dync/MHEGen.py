@@ -977,7 +977,6 @@ class MheGen(NmpcGen):
                 self.curr_estate[(x, j)] = value(xvar[self.nfe_t, self.ncp_t, j])
 
 
-
     def method_for_mhe_simulation_step(self):
         pass
 

@@ -1,8 +1,9 @@
 from __future__ import print_function
 from pyomo.environ import *
+from pyomo.core.base import Constraint
 from pyomo.opt import ProblemFormat
 from nmpc_mhe.dync.MHEGen import MheGen
-from nmpc_mhe.mods.bfb.bfb_abs import *
+from nmpc_mhe.mods.bfb.bfb_abs3 import *
 import sys, os
 import itertools, sys
 
@@ -122,20 +123,91 @@ dum = e.d_mod(1, e.ncp_t, _t=e.hi_t)
 
 e.init_step_mhe(dum, e.nfe_t)
 
-e.deb_alg_sys_dyn()
+
 tst = e.solve_d(e.d1, skip_update=False)  #: Pre-loaded mhe solve
-e.d1.write(filename="heorqie.nl",
+e.deb_alg_sys_dyn()
+
+# e.d1.dbu.fix()
+# e.d1.a35.deactivate()
+# e.d1.P.fix()
+# e.d1.a21.deactivate()
+# e.d1.Gb.fix()
+# e.d1.a13.deactivate()
+# e.d1.e8.deactivate()
+
+# e.d1.de_x_cbin.deactivate()
+# e.d1.de_x_cein.deactivate()
+# e.d1.de_x_ccwin.deactivate()
+# e.d1.de_x_ebin.deactivate()
+# e.d1.de_x_ecwin.deactivate()
+# e.d1.de_x_eein.deactivate()
+#
+# e.d1.de_c_z.deactivate()
+#
+#
+# e.d1.cp1_c.deactivate()
+# e.d1.cp2_c.deactivate()
+# e.d1.cp3_c.deactivate()
+# e.d1.cp4_c.deactivate()
+# e.d1.cp5_c.deactivate()
+# e.d1.cp10_c.deactivate()
+#
+# e.d1.cpz_c.deactivate()
+#
+#
+# e.d1.cp1_c.deactivate()
+# e.d1.cp2_c.deactivate()
+# e.d1.cp3_c.deactivate()
+# e.d1.cp4_c.deactivate()
+# e.d1.cp5_c.deactivate()
+# e.d1.cp10_c.deactivate()
+#
+# e.d1.cpz_c.deactivate()
+#
+#
+# e.d1.dcbin_dx.fix()
+# e.d1.dcein_dx.fix()
+# e.d1.debin_dx.fix()
+# e.d1.decwin_dx.fix()
+# e.d1.deein_dx.fix()
+# e.d1.dccwin_dx.fix()
+#
+# e.d1.dz_dx.fix()
+e.d1.ae_ws.deactivate()
+e.d1.new_z = Constraint(e.d1.fe_t, e.d1.cp_ta, e.d1.fe_x, e.d1.cp_x, rule=lambda m, i, j, k, l: m.dz_dx[i, j, k, l] == 0)
+# e.d1.a21.deactivate()
+# e.d1.a7.deactivate()
+# e.d1.a9.deactivate()
+# e.d1.a3.deactivate()
+# e.d1.a4.deactivate()
+# e.d1.a5.deactivate()
+# e.d1.a3.deactivate()
+#
+# e.d1.ebin.fix()
+# e.d1.cein.fix()
+# e.d1.ebin.fix()
+# e.d1.ecwin.fix()
+# e.d1.eein.fix()
+# e.d1.hxh.fix()
+# e.d1.Phx.fix()
+# e.d1.ccwin.fix()
+# e.z.fix()
+# e.vb.fix()
+
+
+tst = e.solve_d(e.d1, skip_update=False)  #: Pre-loaded mhe solve
+e.d1.write(filename="algebraic_nl.nl",
               format=ProblemFormat.nl,
               io_options={"symbolic_solver_labels": True})
-print(os.getcwd())
+# print(os.getcwd())
 sys.exit()
 
 
-tst = e.solve_d(e.lsmhe, skip_update=False, iter_max=10)  #: Pre-loaded mhe solve
-# if tst != 0:
-#     e.k_aug.solve(e.lsmhe, tee=True)
-#     sys.exit()
-# e.lsmhe.pprint(filename="somefile.model")
+tst = e.solve_d(e.lsmhe, skip_update=False, iter_max=500)  #: Pre-loaded mhe solve
+if tst != 0:
+    e.k_aug.solve(e.lsmhe, tee=True)
+    sys.exit()
+e.lsmhe.pprint(filename="somefile.model")
 
 e.check_active_bound_noisy()
 e.load_covariance_prior()
