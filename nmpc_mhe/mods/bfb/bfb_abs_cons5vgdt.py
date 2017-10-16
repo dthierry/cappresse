@@ -1638,15 +1638,15 @@ def fcp_x_dTgb_dx(m, it, kt, ix):
 # Time discretization Gb
 def fdvar_t_Gb(m, it, kt, ix, kx):
     if 0 < kt <= m.ncp_t and 0 < kx <= m.ncp_x:
-        return m.dGb_dt[it, kt, ix, kx] == \
-               sum(m.ldot_t[jt, kt] * m.Gb[it, jt, ix, kx] for jt in m.cp_t if jt <= m.ncp_t)
+        return m.dvg_dt[it, kt, ix, kx] == \
+               sum(m.ldot_t[jt, kt] * m.vg[it, jt, ix, kx] for jt in m.cp_t if jt <= m.ncp_t)
     else:
         return Constraint.Skip
 
 def fcp_t_Gb(m, it, ix, kx):
     if it < m.nfe_t and 0 < kx <= m.ncp_x:
-        return m.Gb[it + 1, 0, ix, kx] - \
-               sum(m.l1_t[jt] * m.Gb[it, jt, ix, kx] for jt in m.cp_t if jt <= m.ncp_t)
+        return m.vg[it + 1, 0, ix, kx] - \
+               sum(m.l1_t[jt] * m.vg[it, jt, ix, kx] for jt in m.cp_t if jt <= m.ncp_t)
     else:
         return Expression.Skip
 
@@ -1670,8 +1670,13 @@ def hgb_rule(m, it, jt, ix, jx):
 # Momentum balance
 def de_Gb_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return (m.hi_x[ix] / m.Ax) * m.dGb_dt[it, jt, ix, jx] == \
-               -(m.hi_t[it] / m.Ax) * (m.Gb[it, jt, ix, jt] * m.dvg_dx[it, jt, ix, jx] + m.vg[it, jt, ix, jx] * m.dGb_dx[it, jt, ix, jx]) - \
+        # return (m.hi_x[ix] / m.Ax) * m.dGb_dt[it, jt, ix, jx] == \
+        #        -(m.hi_t[it] / m.Ax) * (m.Gb[it, jt, ix, jt] * m.dvg_dx[it, jt, ix, jx] + m.vg[it, jt, ix, jx] * m.dGb_dx[it, jt, ix, jx]) - \
+        #        m.hi_t[it] * m.mug * m.dvgx_dx[it, jt, ix, jx] - \
+        #        m.hi_t[it] * m.dP_dx[it, jt, ix, jx] * 100000 - \
+        #        m.hi_t[it] * m.hi_x[ix] * (1 - m.e[it, jt, ix, jx]) * m.rhos * m.gc
+        return m.hi_x[ix] * m.rhog[it, jt, ix, jx] * m.dvg_dt[it, jt, ix, jx] == \
+               -m.hi_t[it] * (m.rhog[it, jt, ix, jx] * m.vg[it, jt, ix, jt] * m.dvg_dx[it, jt, ix, jx] ) - \
                m.hi_t[it] * m.mug * m.dvgx_dx[it, jt, ix, jx] - \
                m.hi_t[it] * m.dP_dx[it, jt, ix, jx] * 100000 - \
                m.hi_t[it] * m.hi_x[ix] * (1 - m.e[it, jt, ix, jx]) * m.rhos * m.gc
@@ -1709,7 +1714,7 @@ def dum_dex_cb_rule(m, it, jt, ix, jx, c):
 def de_hgb_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
         return m.hi_x[ix] * m.dHgb_dt[it, jt, ix, jx] == \
-               -(m.hi_t[it] * m.cpg_mol/m.Ax) * (m.Gb[it, jt, ix, jt] * m.dTgb_dx[it, jt, ix, jx] + m.Tgb[it, jt, ix, jx] * m.dGb_dx[it, jt, ix, jx]) - \
+               -(m.hi_t[it] * m.cpg_mol/m.Ax) * (m.Gb[it, jt, ix, jt] * m.dTgb_dx[it, jt, ix, jx] + (m.Tgb[it, jt, ix, jx]+273.16) * m.dGb_dx[it, jt, ix, jx]) - \
                m.hi_t[it] * m.kg * m.dTgbx_dx[it, jt, ix, jx] - \
                m.hi_t[it] * m.hi_x[ix] * m.delta[it, jt, ix, jx] * m.Hbc[it, jt, ix, jx] * (m.Tgb[it, jt, ix, jx] - m.Tgc[it, jt, ix, jx]) + \
                m.hi_t[it] * m.Hgbulk[it, jt, ix, jx]/m.Ax
@@ -1899,6 +1904,6 @@ def bc_phx_rule(m, it, jt):
 
 def ic_Gb_rule(m, ix, jx):
     if 0 < jx <= m.ncp_x:
-        return m.Gb[1, 0, ix, jx] == m.Gb_ic[(ix, jx)]
+        return m.vg[1, 0, ix, jx] == m.vg_ic[(ix, jx)]
     else:
         return Constraint.Skip

@@ -599,11 +599,6 @@ def a20_rule(m, it, jt, ix, jx):
 
 
 # bc_P
-def a21_rule(m, it, jt, ix, jx):
-    if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.cbt[it, jt, ix, jx] == m.P[it, jt, ix, jx] * 100 / (8.314 * (m.Tgb[it, jt, ix, jx] + 273.16))
-    else:
-        return Constraint.Skip
 
 
 
