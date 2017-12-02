@@ -8,12 +8,13 @@ from pyomo.core.base import Param, ConcreteModel, Var, Constraint, Set, exp, sqr
 from pyomo.opt import ProblemFormat
 from nmpc_mhe.aux.cpoinsc import collptsgen
 from nmpc_mhe.aux.lagrange_f import lgr, lgry, lgrdot, lgrydot
-from bfb_abs_cons5vgdt import *
+from bfb_abs_cons7momdt import *
 from initial_s_Gb import ss
 import os, sys
 
 """
-BFB reformulation for vg
+BFB reformulation with momemtum balance
+
 """
 __all__ = ["bfb_dae"]
 
@@ -27,7 +28,7 @@ class bfb_dae(ConcreteModel):
 
         nfe_x = kwargs.pop('nfe_x', 5)
         ncp_x = kwargs.pop('ncp_x', 3)
-
+        self.dref = dict()
         self._L = 5.
         self._alp_gauB_x = 0
         self._bet_gauB_x = 0
@@ -197,7 +198,7 @@ class bfb_dae(ConcreteModel):
         self.eavg = Param(initialize=0.591951)
 
         self.llast = Param(initialize=5.)
-        self.lenleft = Param(initialize=5.)
+        self.lenleft = Param(initialize=10.)
         self.hi_x = Param(self.fe_x, initialize=fir_hi)
         hi_t = dict.fromkeys(self.fe_t)
         for key in hi_t.keys():
@@ -235,8 +236,9 @@ class bfb_dae(ConcreteModel):
         self.Hge = Var(self.fe_t, self.cp_t, self.fe_x, self.cp_x, initialize=1.)
         self.Nse = Var(self.fe_t, self.cp_t, self.fe_x, self.cp_x, self.sp, initialize=1.)
         self.Hse = Var(self.fe_t, self.cp_t, self.fe_x, self.cp_x, initialize=1.)
-        self.vg = Var(self.fe_t, self.cp_t, self.fe_x, self.cp_x, initialize=1.)
+        self.mom = Var(self.fe_t, self.cp_t, self.fe_x, self.cp_x, initialize=1.)
 
+        self.vg = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
         self.Gb = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
 
 
@@ -251,7 +253,7 @@ class bfb_dae(ConcreteModel):
         self.Hge_ic = zero2_x if steady else Param(self.fe_x, self.cp_x, initialize=1., mutable=True)
         self.Nse_ic = zero3_x if steady else Param(self.fe_x, self.cp_x, self.sp, initialize=1., mutable=True)
         self.Hse_ic = zero2_x if steady else Param(self.fe_x, self.cp_x, initialize=1., mutable=True)
-        self.vg_ic = zero2_x if steady else Param(self.fe_x, self.cp_x, initialize=1., mutable=True)
+        self.mom_ic = zero2_x if steady else Param(self.fe_x, self.cp_x, initialize=1., mutable=True)
 
         #:  Derivative-var
         self.dNgb_dt = zero5 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=0.0001)
@@ -264,7 +266,7 @@ class bfb_dae(ConcreteModel):
         self.dHge_dt = zero4 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=0.0001)
         self.dNse_dt = zero5 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=0.0001)
         self.dHse_dt = zero4 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=0.0001)
-        self.dvg_dt = zero4 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=0.0001)
+        self.dmom_dt = zero4 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=0.0001)
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -276,6 +278,7 @@ class bfb_dae(ConcreteModel):
         self.dcb_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=1.)
         self.dTgb_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
         self.dP_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
+        self.drhog_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
 
         self.dhxh_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=1.)
         self.dcein_dx = Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=1.)
@@ -458,7 +461,7 @@ class bfb_dae(ConcreteModel):
         self.dvar_t_Nse = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp,
                                                          rule=fdvar_t_nse)
         self.dvar_t_Hse = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_t_hse)
-        self.dvar_t_Gb = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_t_Gb)
+        self.dvar_t_mom = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_t_mom)
 
         #: Continuation equations (redundancy here)
         if self.nfe_t > 1:
@@ -473,7 +476,7 @@ class bfb_dae(ConcreteModel):
             self.noisy_Hge = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, rule=fcp_t_hge)
             self.noisy_Nse = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, self.sp, rule=fcp_t_nse)
             self.noisy_Hse = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, rule=fcp_t_hse)
-            self.noisy_Gb = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, rule=fcp_t_Gb)
+            self.noisy_mom = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, rule=fcp_t_mom)
 
             self.cp_Ngb = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x, self.sp,
                                                          rule=lambda m, i, ix, jx, c:
@@ -531,7 +534,7 @@ class bfb_dae(ConcreteModel):
         self.Hge_icc = None if steady else Constraint(self.fe_x, self.cp_x, rule=ic_hge_rule)
         self.Nse_icc = None if steady else Constraint(self.fe_x, self.cp_x, self.sp, rule=ic_nse_rule)
         self.Hse_icc = None if steady else Constraint(self.fe_x, self.cp_x, rule=ic_hse_rule)
-        self.Gb_icc = None if steady else Constraint(self.fe_x, self.cp_x, rule=ic_Gb_rule)
+        self.mom_icc = None if steady else Constraint(self.fe_x, self.cp_x, rule=ic_mom_rule)
 
         #: Algebraic definitions
         self.ae_ngb = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=ngb_rule)
@@ -544,6 +547,8 @@ class bfb_dae(ConcreteModel):
         self.ae_hge = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=hge_rule)
         self.ae_nse = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=nse_rule)
         self.ae_hse = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=hse_rule)
+        self.mom_rule = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=mom_rule)
+
         self.ae_Gb = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=Gb_rule)
 
         # --------------------------------------------------------------------------------------------------------------
@@ -564,6 +569,7 @@ class bfb_dae(ConcreteModel):
         self.xdvar_Tgb = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_x_Tgb_)
         # self.xdvar_P = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_x_P_)
         self.xdvar_P = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=a21_rule)
+        self.xdvar_rhog = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=drhogx_rule)
 
         self.xcp_cein = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.sp, rule=fcp_x_cein)
         self.xcp_ecwin = Constraint(self.fe_t, self.cp_ta, self.fe_x, rule=fcp_x_ecwin)
@@ -578,6 +584,7 @@ class bfb_dae(ConcreteModel):
         self.xcp_cb = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.sp, rule=fcp_x_cb)
         self.xcp_Tgb = Constraint(self.fe_t, self.cp_ta, self.fe_x, rule=fcp_x_Tgb)
         # self.xcp_P = Constraint(self.fe_t, self.cp_ta, self.fe_x, rule=fcp_x_P)
+        #: P is now piecewise-continuous
 
         #: d2dx2 collocation
         self.xdvar_vgx = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_x_dvg_dx_)
@@ -915,12 +922,18 @@ class bfb_dae(ConcreteModel):
             var.setlb(None)
             var.setub(None)
 
-    def init_steady_ref(self):
+    def init_steady_ref(self, snap_shot=False, verb=False):
         """If the model is steady, we try to initialize it with an initial guess from ampl"""
+
         for var in self.component_data_objects(Var):
             try:
-                var.set_value(ss[var.parent_component().name, var.index()])
+                if snap_shot:
+                    var.set_value(self.dref[var.parent_component().name, var.index()])
+                else:
+                    var.set_value(ss[var.parent_component().name, var.index()])
             except KeyError:
+                if verb:
+                    print(var.name,"\t",str(var.index()),"\tnot found")
                 pass
         if self.nfe_t == 1 and self.ncp_t == 1:
             solver = SolverFactory('asl:ipopt')
@@ -1008,10 +1021,10 @@ class bfb_dae(ConcreteModel):
             for i in self.u2.keys():
                 self.u2[i].value = value(self.per_opening2[i])
     def snap_shot(self, filename="snap_shot.py"):
-        k0 = (1,1)
+        k0 = ((),)
         with open(filename, "w") as f:
             f.write("snap = {}\n")
-            for var in self.component_data_objects(Var, active=True):
+            for var in self.component_objects(Var, active=True):
                 sv = var.name
                 for key in var.iterkeys():
                     if not key:
@@ -1021,10 +1034,10 @@ class bfb_dae(ConcreteModel):
                         val = value(var[key])
                         if type(key) == str:
                             key = tuple(key)
-                    k = k0 + key
-                    f.write("snap[\'" + sv + "\'," + str(k) + "] = " + str(val))
-                f.write("\n")
-                f.close()
+                        k = key
+                        f.write("snap[\'" + sv + "\'," + str(k) + "] = " + str(val))
+                    f.write("\n")
+            f.close()
 
     def infes_test(self, reset_option=True):
         if reset_option:
@@ -1032,7 +1045,10 @@ class bfb_dae(ConcreteModel):
                 # f.write("max_iter 300\n")
                 # f.write("mu_init 1e-08\n")
                 f.write("max_cpu_time 600\n")
+                f.write("print_user_options yes\n")
                 f.write("expect_infeasible_problem yes\n")
+                f.write("linear_solver ma57\n")
+                f.write("ma57_automatic_scaling yes\n")
                 f.write("print_info_string yes\n")
                 f.close()
         solver = SolverFactory('asl:ipopt')

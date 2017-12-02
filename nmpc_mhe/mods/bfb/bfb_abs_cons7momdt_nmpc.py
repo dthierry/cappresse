@@ -1,13 +1,13 @@
-
 from __future__ import division
 
-from pyomo.core.base import Constraint, sqrt, exp, Expression
+from pyomo.core.base import Constraint, sqrt, exp, Expression, log
 from nmpc_mhe.aux.cpoinsc import collptsgen
 from nmpc_mhe.aux.lagrange_f import lgr, lgry, lgrdot, lgrydot
 
 """
 Version note implemented momentum balance and diffusive terms for the bubble region (gas)
-have pressure given by ideal gas and dpdx by dummy   
+have pressure given by ideal gas and dpdx by dummy
+momentum per volume unit mom = vg * rhog   
 """
 
 __author__ = 'David M Thierry @dthierry'
@@ -171,8 +171,8 @@ def hgc_rule(m, it, jt, ix, jx):
 # nc
 def nsc_rule(m, it, jt, ix, jx, c):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.Nsc[it, jt, ix, jx, c] == \
-               m.Ax * m.fcw[it, jt, ix, jx] * m.delta[it, jt, ix, jx] * (1 - m.ed[it, jt, ix, jx]) * m.rhos * \
+        return m.Nsc[it, jt, ix, jx, c]/m.rhos == \
+               m.Ax * m.fcw[it, jt, ix, jx] * m.delta[it, jt, ix, jx] * (1 - m.ed[it, jt, ix, jx]) * \
                m.nc[it, jt, ix, jx, c]
     else:
         return Constraint.Skip
@@ -222,10 +222,9 @@ def nse_rule(m, it, jt, ix, jx, c):
 # Tse
 def hse_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.Hse[it, jt, ix, jx] == \
+        return m.Hse[it, jt, ix, jx]/m.rhos == \
                m.Ax * (1. - m.fcw[it, jt, ix, jx] * m.delta[it, jt, ix, jx] - m.delta[it, jt, ix, jx]) * \
-               (1. - m.ed[it, jt, ix, jx]) * m.rhos * \
-               m.cps * m.Tse[it, jt, ix, jx]
+               (1. - m.ed[it, jt, ix, jx]) * m.cps * m.Tse[it, jt, ix, jx]
     else:
         return Constraint.Skip
 
@@ -668,15 +667,14 @@ def a41_rule(m, it, jt, ix, jx):
 # Hce
 def a42_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.Hce[it, jt, ix, jx] == 6.78 * sqrt(
-            m.ed[it, jt, ix, jx] * m.vb[it, jt, ix, jx] * (m.kg / 1000) * sum(m.cc[it, jt, ix, jx, kx] for kx in m.sp) * m.cpg_mol / (m.db[it, jt, ix, jx] ** 3))
+        return m.Hce[it, jt, ix, jx] == 6.78 * sqrt(m.ed[it, jt, ix, jx] * m.vb[it, jt, ix, jx] * (m.kg / 1000) * sum(m.cc[it, jt, ix, jx, kx] for kx in m.sp) * m.cpg_mol / (m.db[it, jt, ix, jx] ** 3))
     else:
         return Constraint.Skip
 
 # hp
 def a43_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.Nup[it, jt, ix, jx] == 1000 * m.hp[it, jt, ix, jx] * m.dp / m.kg
+        return m.Nup[it, jt, ix, jx] == 1000 * exp(m.whp[it, jt, ix, jx]) * m.dp / m.kg
     else:
         return Constraint.Skip
 
@@ -794,48 +792,44 @@ def a57_rule(m, it, jt):
 # k1c
 def a58_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.k1c[it, jt, ix, jx] == \
-               m.A1 * (m.Tsc[it, jt, ix, jx] + 273.15) * exp(-m.E1 / (m.R * (m.Tsc[it, jt, ix, jx] + 273.15)))
+        # return m.k1c[it, jt, ix, jx] == \
+        #        m.A1 * (m.Tsc[it, jt, ix, jx] + 273.15) * exp(-m.E1 / (m.R * (m.Tsc[it, jt, ix, jx] + 273.15)))
+        return log(m.k1c[it, jt, ix, jx]) - log(m.A1 * (m.Tsc[it, jt, ix, jx] + 273.15)) == (-m.E1 / (m.R * (m.Tsc[it, jt, ix, jx] + 273.15)))
     else:
         return Constraint.Skip
 
 # k2c
 def a59_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.k2c[it, jt, ix, jx] == \
-               m.A2 * (m.Tsc[it, jt, ix, jx] + 273.15) * exp(-m.E2 / (m.R * (m.Tsc[it, jt, ix, jx] + 273.15)))
+        return m.wk2c[it, jt, ix, jx] - log(m.A2 * (m.Tsc[it, jt, ix, jx] + 273.15)) == (-m.E2 / (m.R * (m.Tsc[it, jt, ix, jx] + 273.15)))
     else:
         return Constraint.Skip
 
 # k3c
 def a60_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.k3c[it, jt, ix, jx] == m.A3 * (m.Tsc[it, jt, ix, jx] + 273.15) * exp(
-            -m.E3 / (m.R * (m.Tsc[it, jt, ix, jx] + 273.15)))
+        return m.wk3c[it, jt, ix, jx] - log(m.A3 * (m.Tsc[it, jt, ix, jx] + 273.15)) == (-m.E3 / (m.R * (m.Tsc[it, jt, ix, jx] + 273.15)))
     else:
         return Constraint.Skip
 
 # k1e
 def a61_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.k1e[it, jt, ix, jx] == m.A1 * (m.Tse[it, jt, ix, jx] + 273.15) * exp(
-            -m.E1 / (m.R * (m.Tse[it, jt, ix, jx] + 273.15)))
+        return log(m.k1e[it, jt, ix, jx]) - log(m.A1 * (m.Tse[it, jt, ix, jx] + 273.15)) == (-m.E1 / (m.R * (m.Tse[it, jt, ix, jx] + 273.15)))
     else:
         return Constraint.Skip
 
 # k2e
 def a62_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.k2e[it, jt, ix, jx] == m.A2 * (m.Tse[it, jt, ix, jx] + 273.15) * exp(
-            -m.E2 / (m.R * (m.Tse[it, jt, ix, jx] + 273.15)))
+        return m.wk2e[it, jt, ix, jx] - log(m.A2 * (m.Tse[it, jt, ix, jx] + 273.15)) == (-m.E2 / (m.R * (m.Tse[it, jt, ix, jx] + 273.15)))
     else:
         return Constraint.Skip
 
 # k3e
 def a63_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.k3e[it, jt, ix, jx] == m.A3 * (m.Tse[it, jt, ix, jx] + 273.15) * exp(
-            -m.E3 / (m.R * (m.Tse[it, jt, ix, jx] + 273.15)))
+        return m.wk3e[it, jt, ix, jx] - log(m.A3 * (m.Tse[it, jt, ix, jx] + 273.15)) == (-m.E3 / (m.R * (m.Tse[it, jt, ix, jx] + 273.15)))
     else:
         return Constraint.Skip
 
@@ -848,18 +842,24 @@ def a64_rule(m, it, jt, ix, jx):
         return Constraint.Skip
 
 # Ke2c
+# def a65_rule(m, it, jt, ix, jx):
+#     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
+#         return m.Ke2c[it, jt, ix, jx] * m.P[it, jt, ix, jx] * 1E5 == exp(
+#             -m.dH2 / (m.R * (m.Tsc[it, jt, ix, jx] + 273.15)) + m.dS2 / m.R)
+#     else:
+#         return Constraint.Skip
+
 def a65_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.Ke2c[it, jt, ix, jx] * m.P[it, jt, ix, jx] * 1E5 == exp(
-            -m.dH2 / (m.R * (m.Tsc[it, jt, ix, jx] + 273.15)) + m.dS2 / m.R)
+        return m.wKe2c[it, jt, ix, jx] + log(m.P[it, jt, ix, jx] * 1E5) == -m.dH2 / (m.R * (m.Tsc[it, jt, ix, jx] + 273.15)) + m.dS2 / m.R
     else:
         return Constraint.Skip
+
 
 # Ke3c
 def a66_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.Ke3c[it, jt, ix, jx] * m.P[it, jt, ix, jx] * 1E5 == exp(
-            -m.dH3 / (m.R * (m.Tsc[it, jt, ix, jx] + 273.15)) + m.dS3 / m.R)
+        return m.wKe3c[it, jt, ix, jx] + log(m.P[it, jt, ix, jx] * 1E5) == -m.dH3 / (m.R * (m.Tsc[it, jt, ix, jx] + 273.15)) + m.dS3 / m.R
     else:
         return Constraint.Skip
 
@@ -874,8 +874,7 @@ def a67_rule(m, it, jt, ix, jx):
 # Ke2e
 def a68_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.Ke2e[it, jt, ix, jx] * m.P[it, jt, ix, jx] * 1E5 == exp(
-            -m.dH2 / (m.R * (m.Tse[it, jt, ix, jx] + 273.15)) + m.dS2 / m.R)
+        return m.wKe2e[it, jt, ix, jx] + log(m.P[it, jt, ix, jx] * 1E5) == -m.dH2 / (m.R * (m.Tse[it, jt, ix, jx] + 273.15)) + m.dS2 / m.R
     else:
         return Constraint.Skip
 
@@ -883,8 +882,7 @@ def a68_rule(m, it, jt, ix, jx):
 # Ke3e
 def a69_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.Ke3e[it, jt, ix, jx] * m.P[it, jt, ix, jx] * 1E5 == exp(
-            -m.dH3 / (m.R * (m.Tse[it, jt, ix, jx] + 273.15)) + m.dS3 / m.R)
+        return m.wKe3e[it, jt, ix, jx] + log(m.P[it, jt, ix, jx] * 1E5) == -m.dH3 / (m.R * (m.Tse[it, jt, ix, jx] + 273.15)) + m.dS3 / m.R
     else:
         return Constraint.Skip
 
@@ -892,8 +890,8 @@ def a69_rule(m, it, jt, ix, jx):
 # r1c
 def a70_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.r1c[it, jt, ix, jx] == \
-               m.k1c[it, jt, ix, jx] * ((m.P[it, jt, ix, jx] * m.yc[it, jt, ix, jx, 'h'] * 1E5) - (m.nc[it, jt, ix, jx, 'h'] * m.rhos / m.Ke1c[it, jt, ix, jx]))
+        return (100)*m.r1c[it, jt, ix, jx] / 1E5 == \
+               (m.k1c[it, jt, ix, jx] * ((m.P[it, jt, ix, jx] * m.yc[it, jt, ix, jx, 'h']) - (m.nc[it, jt, ix, jx, 'h'] * m.rhos / m.Ke1c[it, jt, ix, jx]) / 1E5))*100
     else:
         return Constraint.Skip
 
@@ -901,12 +899,7 @@ def a70_rule(m, it, jt, ix, jx):
 # r2c
 def a71_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.r2c[it, jt, ix, jx] == m.k2c[it, jt, ix, jx] * (
-        (1 - 2 * (m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) -
-         (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) * m.nc[it, jt, ix, jx, 'h'] * m.rhos * m.P[
-            it, jt, ix, jx] * m.yc[it, jt, ix, jx, 'c'] * 1E5 -
-        (((m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) + (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) *
-           m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.Ke2c[it, jt, ix, jx]))
+        return m.r2c[it, jt, ix, jx] / 1E5 == m.k2c[it, jt, ix, jx] * ((1 - 2 * (m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) - (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) * m.nc[it, jt, ix, jx, 'h'] * m.rhos * m.P[it, jt, ix, jx] * m.yc[it, jt, ix, jx, 'c'] * 1E5 -(((m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) + (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv))*m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.Ke2c[it, jt, ix, jx]))/1E5
     else:
         return Constraint.Skip
 
@@ -914,42 +907,31 @@ def a71_rule(m, it, jt, ix, jx):
 # r3c
 def a72_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.r3c[it, jt, ix, jx] == m.k3c[it, jt, ix, jx] * (
-        ((1 - 2 * (m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) -
-          (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) ** 2) * (
-            (m.P[it, jt, ix, jx] * m.yc[it, jt, ix, jx, 'c'] * 1E5) ** m.m1) -
-        ((m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) * (
-            (m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) + (
-                m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) /
-         m.Ke3c[it, jt, ix, jx]))
+        return m.r3c[it, jt, ix, jx] == m.k3c[it, jt, ix, jx] * (((1 - 2 * (m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) - (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) ** 2) * ((m.P[it, jt, ix, jx] * m.yc[it, jt, ix, jx, 'c'] * 1E5) ** m.m1) - ((m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) * ((m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) + (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) / m.Ke3c[it, jt, ix, jx]))
     else:
         return Constraint.Skip
 
 # r1e
 def a73_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.r1e[it, jt, ix, jx] == m.k1e[it, jt, ix, jx] * ((m.P[it, jt, ix, jx] * m.ye[it, jt, ix, jx, 'h'] * 1E5) - (m.ne[it, jt, ix, jx, 'h'] * m.rhos / m.Ke1e[it, jt, ix, jx]))
+        return 100 * m.r1e[it, jt, ix, jx] / 1E5 == m.k1e[it, jt, ix, jx] * ((m.P[it, jt, ix, jx] * m.ye[it, jt, ix, jx, 'h']) - (1e-05)*(m.ne[it, jt, ix, jx, 'h'] * m.rhos / m.Ke1e[it, jt, ix, jx]))*100
     else:
         return Constraint.Skip
+
 
 # r2e
 def a74_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.r2e[it, jt, ix, jx] == m.k2e[it, jt, ix, jx] * ((1. - 2. * (m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) -
-         (m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) * m.ne[it, jt, ix, jx, 'h'] * m.rhos * (
-            m.P[it, jt, ix, jx] * m.ye[it, jt, ix, jx, 'c'] * 1E5) -
-        (((m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) +
-          (m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) * m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.Ke2e[
-             it, jt, ix, jx])
-        )
+        return (m.r2e[it, jt, ix, jx] / m.k2e[it, jt, ix, jx]) / (1e+04) == \
+               ((1. - 2. * (m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) - (m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) * m.ne[it, jt, ix, jx, 'h'] * m.rhos * (m.P[it, jt, ix, jx] * m.ye[it, jt, ix, jx, 'c'] * 1E5) - (((m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) +  (m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) * m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.Ke2e[it, jt, ix, jx])) / (1e+04)
     else:
         return Constraint.Skip
 
 # r3e
 def a75_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.r3e[it, jt, ix, jx] == m.k3e[it, jt, ix, jx] * (((1. - 2. * (m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) - (m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) ** 2) * (((m.P[it, jt, ix, jx] * m.ye[it, jt, ix, jx, 'c']) ** m.m1) * 1E5 ** m.m1) -
-               ((m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) * ((m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) + (m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) /m.Ke3e[it, jt, ix, jx]))
+        return (m.r3e[it, jt, ix, jx] / m.k3e[it, jt, ix, jx])/(1e+04)  == (((1. - 2. * (m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) - (m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) ** 2) * (((m.P[it, jt, ix, jx] * m.ye[it, jt, ix, jx, 'c']) ** m.m1) * 1E5 ** m.m1) -
+               ((m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) * ((m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) + (m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) /m.Ke3e[it, jt, ix, jx])) / (1e+04)
     else:
         return Constraint.Skip
 
@@ -1063,12 +1045,16 @@ def a89_rule(m, it, jt, ix, jx):
 # equation A.3 Gas phase component balance
 # dNgc_dt
 def de_ngc_rule(m, it, jt, ix, jx, k):
-    if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.dNgc_dt[it, jt, ix, jx, k] == \
-               (m.delta[it, jt, ix, jx] * m.Kbc[it, jt, ix, jx, k] * (m.cb[it, jt, ix, jx, k] - m.cc[it, jt, ix, jx, k]) - \
-                m.delta[it, jt, ix, jx] * m.Kce[it, jt, ix, jx, k] * (m.cc[it, jt, ix, jx, k] - m.ce[it, jt, ix, jx, k]) - \
-                m.delta[it, jt, ix, jx] * m.fcw[it, jt, ix, jx] * (1. - m.ed[it, jt, ix, jx]) * m.rgc[it, jt, ix, jx, k]) * \
-               m.hi_t[it]
+    if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x and k != "n":
+        return (1e+04) * m.dNgc_dt[it, jt, ix, jx, k]/m.delta[it, jt, ix, jx] == \
+               ((m.Kbc[it, jt, ix, jx, k] * (m.cb[it, jt, ix, jx, k] - m.cc[it, jt, ix, jx, k]) - \
+                                           m.Kce[it, jt, ix, jx, k] * (m.cc[it, jt, ix, jx, k] - m.ce[it, jt, ix, jx, k]) - \
+                                           m.fcw[it, jt, ix, jx] * (1. - m.ed[it, jt, ix, jx]) * m.rgc[it, jt, ix, jx, k]) * \
+                m.hi_t[it]) * (1e+04)
+    elif 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x and k == "n":
+        return (1e+04) * m.dNgc_dt[it, jt, ix, jx, k]/m.delta[it, jt, ix, jx] == \
+               ((m.Kbc[it, jt, ix, jx, k] * (m.cb[it, jt, ix, jx, k] - m.cc[it, jt, ix, jx, k]) - \
+                 m.Kce[it, jt, ix, jx, k] * (m.cc[it, jt, ix, jx, k] - m.ce[it, jt, ix, jx, k])) * m.hi_t[it]) * (1e+04)
     else:
         return Constraint.Skip
 
@@ -1077,15 +1063,11 @@ def de_ngc_rule(m, it, jt, ix, jx, k):
 # dHgc_dt
 def de_hgc_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.dHgc_dt[it, jt, ix, jx] == \
-               (m.Ax * m.delta[it, jt, ix, jx] * \
-                m.Hbc[it, jt, ix, jx] * (m.Tgb[it, jt, ix, jx] - m.Tgc[it, jt, ix, jx]) - \
-                m.Ax * m.delta[it, jt, ix, jx] * \
-                m.Hce[it, jt, ix, jx] * (m.Tgc[it, jt, ix, jx] - m.Tge[it, jt, ix, jx]) - \
-                m.Ax * m.fcw[it, jt, ix, jx] * m.delta[it, jt, ix, jx] * (1 - m.ed[it, jt, ix, jx]) * \
-                m.rhos * m.ap * m.hp[it, jt, ix, jx] * (m.Tgc[it, jt, ix, jx] - m.Tsc[it, jt, ix, jx]) - \
-                m.Ax * m.fcw[it, jt, ix, jx] * m.delta[it, jt, ix, jx] * (1 - m.ed[it, jt, ix, jx]) * \
-                sum(m.rgc[it, jt, ix, jx, k] * m.cpgcgc[k] for k in m.sp) * m.Tgc[it, jt, ix, jx]) * m.hi_t[it]
+        return m.dHgc_dt[it, jt, ix, jx] / m.delta[it, jt, ix, jx] == \
+               (m.Ax * m.Hbc[it, jt, ix, jx] * (m.Tgb[it, jt, ix, jx] - m.Tgc[it, jt, ix, jx]) - \
+                m.Ax * m.Hce[it, jt, ix, jx] * (m.Tgc[it, jt, ix, jx] - m.Tge[it, jt, ix, jx]) - \
+                m.Ax * m.fcw[it, jt, ix, jx] * (1 - m.ed[it, jt, ix, jx]) * m.rhos * m.ap * exp(m.whp[it, jt, ix, jx]) * (m.Tgc[it, jt, ix, jx] - m.Tsc[it, jt, ix, jx]) - \
+                m.Ax * m.fcw[it, jt, ix, jx] * (1 - m.ed[it, jt, ix, jx]) * sum(m.rgc[it, jt, ix, jx, k] * m.cpgcgc[k] for k in m.sp2) * m.Tgc[it, jt, ix, jx]) * m.hi_t[it]
     else:
         return Constraint.Skip
 
@@ -1096,10 +1078,8 @@ def de_nsc_rule(m, it, jt, ix, jx, k):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
         return m.dNsc_dt[it, jt, ix, jx, k] * m.hi_x[ix] == \
                (-m.dccwin_dx[it, jt, ix, jx, k] * m.Ax - m.Ksbulk[it, jt, ix, jx, k] - \
-                m.hi_x[ix] * m.Ax * m.delta[it, jt, ix, jx] * m.rhos * m.Kcebs[it, jt, ix, jx] * (
-                m.nc[it, jt, ix, jx, k] - m.ne[it, jt, ix, jx, k]) + \
-                m.hi_x[ix] * m.Ax * m.fcw[it, jt, ix, jx] * m.delta[it, jt, ix, jx] * (1 - m.ed[it, jt, ix, jx]) *
-                m.rsc[it, jt, ix, jx, k]) * m.hi_t[it]
+                m.hi_x[ix] * m.Ax * m.delta[it, jt, ix, jx] * m.rhos * m.Kcebs[it, jt, ix, jx] * (m.nc[it, jt, ix, jx, k] - m.ne[it, jt, ix, jx, k]) + \
+                m.hi_x[ix] * m.Ax * m.fcw[it, jt, ix, jx] * m.delta[it, jt, ix, jx] * (1 - m.ed[it, jt, ix, jx]) * m.rsc[it, jt, ix, jx, k]) * m.hi_t[it]
     else:
         return Constraint.Skip
 
@@ -1111,10 +1091,9 @@ def de_hsc_rule(m, it, jt, ix, jx):
         return m.dHsc_dt[it, jt, ix, jx] * m.hi_x[ix] \
                == (-m.decwin_dx[it, jt, ix, jx] * m.Ax - m.Hsbulk[it, jt, ix, jx] - \
                    m.hi_x[ix] * m.Ax * m.delta[it, jt, ix, jx] * m.rhos * m.Kcebs[it, jt, ix, jx] * (m.hsc[it, jt, ix, jx] - m.hse[it, jt, ix, jx]) + \
-                   m.hi_x[ix] * m.Ax * m.fcw[it, jt, ix, jx] * m.delta[it, jt, ix, jx] * (1 - m.ed[it, jt, ix, jx]) * sum(
-                       (m.rgc[it, jt, ix, jx, k] * m.cpgcgc[k]) for k in m.sp) * (m.Tgc[it, jt, ix, jx]) + \
+                   m.hi_x[ix] * m.Ax * m.fcw[it, jt, ix, jx] * m.delta[it, jt, ix, jx] * (1 - m.ed[it, jt, ix, jx]) * sum((m.rgc[it, jt, ix, jx, k] * m.cpgcgc[k]) for k in m.sp2) * (m.Tgc[it, jt, ix, jx]) + \
                    m.hi_x[ix] * m.Ax * m.fcw[it, jt, ix, jx] * m.delta[it, jt, ix, jx] * (
-                   1 - m.ed[it, jt, ix, jx]) * m.rhos * m.ap * m.hp[it, jt, ix, jx] * (m.Tgc[it, jt, ix, jx] - m.Tsc[it, jt, ix, jx])) * m.hi_t[it]
+                   1 - m.ed[it, jt, ix, jx]) * m.rhos * m.ap * exp(m.whp[it, jt, ix, jx]) * (m.Tgc[it, jt, ix, jx] - m.Tsc[it, jt, ix, jx])) * m.hi_t[it]
     else:
         return Constraint.Skip
 
@@ -1123,13 +1102,18 @@ def de_hsc_rule(m, it, jt, ix, jx):
 # equation A.7 Gas phase component balance
 # dNge_dt
 def de_nge_rule(m, it, jt, ix, jx, k):
-    if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.dNge_dt[it, jt, ix, jx, k] \
-               == (m.Ax * m.delta[it, jt, ix, jx] * m.Kce[it, jt, ix, jx, k] * (
+    if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x and k != "n":
+        return (1e+03) * m.dNge_dt[it, jt, ix, jx, k] \
+               == ((m.Ax * m.delta[it, jt, ix, jx] * m.Kce[it, jt, ix, jx, k] * (
         m.cc[it, jt, ix, jx, k] - m.ce[it, jt, ix, jx, k]) - \
                    m.Ax * (1. - m.fcw[it, jt, ix, jx] * m.delta[it, jt, ix, jx] - m.delta[it, jt, ix, jx]) * (
                    1. - m.ed[it, jt, ix, jx]) * m.rge[it, jt, ix, jx, k] - \
-                   m.Kgbulk[it, jt, ix, jx, k] / m.hi_x[ix]) * m.hi_t[it]
+                   m.Kgbulk[it, jt, ix, jx, k] / m.hi_x[ix]) * m.hi_t[it]) * (1e+03)
+    if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x and k == "n":
+        return (1e+03) * m.dNge_dt[it, jt, ix, jx, k] \
+               == ((m.Ax * m.delta[it, jt, ix, jx] * m.Kce[it, jt, ix, jx, k] * (
+        m.cc[it, jt, ix, jx, k] - m.ce[it, jt, ix, jx, k]) - \
+                   m.Kgbulk[it, jt, ix, jx, k] / m.hi_x[ix]) * m.hi_t[it]) * (1e+03)
     else:
         return Constraint.Skip
 
@@ -1142,11 +1126,11 @@ def de_hge_rule(m, it, jt, ix, jx):
                == (m.Ax * m.delta[it, jt, ix, jx] * m.Hce[it, jt, ix, jx] * (
         m.Tgc[it, jt, ix, jx] - m.Tge[it, jt, ix, jx]) - \
                    m.Ax * (1 - m.fcw[it, jt, ix, jx] * m.delta[it, jt, ix, jx] - m.delta[it, jt, ix, jx]) * (
-                       1. - m.ed[it, jt, ix, jx]) * m.rhos * m.ap * m.hp[it, jt, ix, jx] * (
+                       1. - m.ed[it, jt, ix, jx]) * m.rhos * m.ap * exp(m.whp[it, jt, ix, jx]) * (
                    m.Tge[it, jt, ix, jx] - m.Tse[it, jt, ix, jx]) - \
                    m.Hgbulk[it, jt, ix, jx] / m.hi_x[ix] - \
                    m.Ax * (1. - m.fcw[it, jt, ix, jx] * m.delta[it, jt, ix, jx] - m.delta[it, jt, ix, jx]) * (1. - m.ed[it, jt, ix, jx]) * \
-                   sum(m.rge[it, jt, ix, jx, k] * m.cpgcge[k] for k in m.sp) * m.Tge[it, jt, ix, jx]) * m.hi_t[it]
+                   sum(m.rge[it, jt, ix, jx, k] * m.cpgcge[k] for k in m.sp2) * m.Tge[it, jt, ix, jx]) * m.hi_t[it]
     else:
         return Constraint.Skip
 
@@ -1179,10 +1163,10 @@ def de_hse_rule(m, it, jt, ix, jx):
                 m.hi_x[ix] * m.Ax * (
                 1 - m.fcw[it, jt, ix, jx] * m.delta[it, jt, ix, jx] - m.delta[it, jt, ix, jx]) * (
                 1 - m.ed[it, jt, ix, jx]) * \
-                sum((m.rge[it, jt, ix, jx, k] * m.cpgcge[k]) for k in m.sp) * m.Tge[it, jt, ix, jx] + \
+                sum((m.rge[it, jt, ix, jx, k] * m.cpgcge[k]) for k in m.sp2) * m.Tge[it, jt, ix, jx] + \
                 m.hi_x[ix] * m.Ax * (
                 1. - m.fcw[it, jt, ix, jx] * m.delta[it, jt, ix, jx] - m.delta[it, jt, ix, jx]) * (
-                1. - m.ed[it, jt, ix, jx]) * m.rhos * m.ap * m.hp[it, jt, ix, jx] * (
+                1. - m.ed[it, jt, ix, jx]) * m.rhos * m.ap * exp(m.whp[it, jt, ix, jx]) * (
                 m.Tge[it, jt, ix, jx] - m.Tse[it, jt, ix, jx]) + \
                 m.hi_x[ix] * m.pi * m.dx * m.ht[it, jt, ix, jx] * m.dThx[it, jt, ix, jx] * m.Nx * m.Cr) * m.hi_t[it]
     else:
@@ -1538,13 +1522,6 @@ def fcp_x_vb(m, it, kt, ix):
     else:
         return Constraint.Skip
 
-# Gb
-def fcp_x_Gb(m, it, kt, ix):
-    if 0 < kt <= m.ncp_t and ix < m.nfe_x:
-        return m.Gb[it, kt, ix + 1, 0] == \
-               sum(m.l1_x[jx] * m.Gb[it, kt, ix, jx] for jx in m.cp_x if jx <= m.ncp_x)
-    else:
-        return Constraint.Skip
 
 # cb
 def fcp_x_cb(m, it, kt, ix, c):
@@ -1623,19 +1600,25 @@ def fcp_x_dTgb_dx(m, it, kt, ix):
         return Constraint.Skip
 
 
-# tvar
-# Time discretization Gb
-def fdvar_t_Gb(m, it, kt, ix, kx):
+# time vars
+def mom_rule(m, it, kt, ix, kx):
     if 0 < kt <= m.ncp_t and 0 < kx <= m.ncp_x:
-        return m.dvg_dt[it, kt, ix, kx] == \
-               sum(m.ldot_t[jt, kt] * m.vg[it, jt, ix, kx] for jt in m.cp_t if jt <= m.ncp_t)
+        return m.mom[it, kt, ix, kx] == (m.cb[it, kt, ix, kx, 'c'] * 44.01 + m.cb[it, kt, ix, kx, 'n'] * 28.01 + m.cb[it, kt, ix, kx,'h'] * 18.02) * m.vg[it, kt, ix, kx]
     else:
         return Constraint.Skip
 
-def fcp_t_Gb(m, it, ix, kx):
+# Time discretiation mom
+def fdvar_t_mom(m, it, kt, ix, kx):
+    if 0 < kt <= m.ncp_t and 0 < kx <= m.ncp_x:
+        return m.dmom_dt[it, kt, ix, kx] == \
+               sum(m.ldot_t[jt, kt] * m.mom[it, jt, ix, kx] for jt in m.cp_t if jt <= m.ncp_t)
+    else:
+        return Constraint.Skip
+
+def fcp_t_mom(m, it, ix, kx):
     if it < m.nfe_t and 0 < kx <= m.ncp_x:
-        return m.vg[it + 1, 0, ix, kx] - \
-               sum(m.l1_t[jt] * m.vg[it, jt, ix, kx] for jt in m.cp_t if jt <= m.ncp_t)
+        return m.mom[it + 1, 0, ix, kx] - \
+               sum(m.l1_t[jt] * m.mom[it, jt, ix, kx] for jt in m.cp_t if jt <= m.ncp_t)
     else:
         return Expression.Skip
 
@@ -1657,37 +1640,12 @@ def hgb_rule(m, it, jt, ix, jx):
 
 
 # Momentum balance
-def de_Gb_rule(m, it, jt, ix, jx):
-    if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        # return (m.hi_x[ix] / m.Ax) * m.dGb_dt[it, jt, ix, jx] == \
-        #        -(m.hi_t[it] / m.Ax) * (m.Gb[it, jt, ix, jt] * m.dvg_dx[it, jt, ix, jx] + m.vg[it, jt, ix, jx] * m.dGb_dx[it, jt, ix, jx]) - \
-        #        m.hi_t[it] * m.mug * m.dvgx_dx[it, jt, ix, jx] - \
-        #        m.hi_t[it] * m.dP_dx[it, jt, ix, jx] * 100000 - \
-        #        m.hi_t[it] * m.hi_x[ix] * (1 - m.e[it, jt, ix, jx]) * m.rhos * m.gc
-        # return m.hi_x[ix] * m.rhog[it, jt, ix, jx] * m.dvg_dt[it, jt, ix, jx] == \
-        #        -m.hi_t[it] * (m.rhog[it, jt, ix, jx] * m.vg[it, jt, ix, jt] * m.dvg_dx[it, jt, ix, jx] ) - \
-        #        m.hi_t[it] * m.mug * m.dvgx_dx[it, jt, ix, jx] - \
-        #        m.hi_t[it] * m.dP_dx[it, jt, ix, jx] * 100000 - \
-        #        m.hi_t[it] * m.hi_x[ix] * (1 - m.e[it, jt, ix, jx]) * m.rhos * m.gc
-        return 0 == -m.hi_t[it] * m.dP_dx[it, jt, ix, jx] * 100000 - \
-               m.hi_t[it] * m.hi_x[ix] * (1 - m.e[it, jt, ix, jx]) * m.rhos * m.gc
-    else:
-        return Constraint.Skip
-
 def alt_de_Gb_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        # return (m.hi_x[ix] / m.Ax) * m.dGb_dt[it, jt, ix, jx] == \
-        #        -(m.hi_t[it] / m.Ax) * (m.Gb[it, jt, ix, jt] * m.dvg_dx[it, jt, ix, jx] + m.vg[it, jt, ix, jx] * m.dGb_dx[it, jt, ix, jx]) - \
-        #        m.hi_t[it] * m.mug * m.dvgx_dx[it, jt, ix, jx] - \
-        #        m.hi_t[it] * m.dP_dx[it, jt, ix, jx] * 100000 - \
-        #        m.hi_t[it] * m.hi_x[ix] * (1 - m.e[it, jt, ix, jx]) * m.rhos * m.gc
-        return m.hi_x[ix] * m.rhog[it, jt, ix, jx] * m.dvg_dt[it, jt, ix, jx] == \
-               -m.hi_t[it] * (m.rhog[it, jt, ix, jx] * m.vg[it, jt, ix, jt] * m.dvg_dx[it, jt, ix, jx] ) - \
-               m.hi_t[it] * m.mug * m.dvgx_dx[it, jt, ix, jx] - \
-               m.hi_t[it] * m.dP_dx[it, jt, ix, jx] * 100000 - \
+        return m.hi_x[ix] * m.dmom_dt[it, jt, ix, jx] == \
+               -m.hi_t[it] * (2 * (m.cb[it, jt, ix, jx, 'c'] * 44.01 + m.cb[it, jt, ix, jx, 'n'] * 28.01 + m.cb[it, jt, ix, jx,'h'] * 18.02) * m.vg[it, jt, ix, jt] * m.dvg_dx[it, jt, ix, jx] + (m.vg[it, jt, ix, jt]**2) * m.drhog_dx[it, jt, ix, jx]) - \
+               m.hi_t[it] * m.mug * m.dvgx_dx[it, jt, ix, jx] - m.hi_t[it] * m.dP_dx[it, jt, ix, jx] * 100000 - \
                m.hi_t[it] * m.hi_x[ix] * (1 - m.e[it, jt, ix, jx]) * m.rhos * m.gc
-        # return 0 == -m.hi_t[it] * m.dP_dx[it, jt, ix, jx] * 100000 - \
-        #        m.hi_t[it] * m.hi_x[ix] * (1 - m.e[it, jt, ix, jx]) * m.rhos * m.gc
     else:
         return Constraint.Skip
 
@@ -1703,10 +1661,10 @@ def dum_dex_vg_rule(m, it, jt, ix, jx):
 def de_ngb_rule(m, it, jt, ix, jx, k):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
         return m.hi_x[ix] * m.dNgb_dt[it, jt, ix, jx, k] == \
-               -m.hi_t[it] * (m.vg[it, jt, ix, jx] * m.dcb_dx[it, jt, ix, jx, k] + m.cb[it, jt, ix, jx, k] * m.dvg_dx[it, jt, ix, jx]) - \
+               (-m.hi_t[it] * (m.vg[it, jt, ix, jx] * m.dcb_dx[it, jt, ix, jx, k] + m.cb[it, jt, ix, jx, k] * m.dvg_dx[it, jt, ix, jx]) - \
                m.hi_t[it] * m.D[it, jt, ix, jx, k] * m.dcbx_dx[it, jt, ix, jx, k] - \
                m.hi_t[it] * m.hi_x[ix] * m.delta[it, jt, ix, jx] * m.Kbc[it, jt, ix, jx, k] * (m.cb[it, jt, ix, jx, k] - m.cc[it, jt, ix, jx, k]) + \
-               m.hi_t[it] * m.Kgbulk[it, jt, ix, jx, k]/m.Ax
+               m.hi_t[it] * m.Kgbulk[it, jt, ix, jx, k]/m.Ax)
     else:
         return Constraint.Skip
 
@@ -1721,10 +1679,10 @@ def dum_dex_cb_rule(m, it, jt, ix, jx, c):
 # Energy balance (mole balance)
 def de_hgb_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.hi_x[ix] * m.dHgb_dt[it, jt, ix, jx] == \
-               -(m.hi_t[it] * m.cpg_mol) * (m.vg[it, jt, ix, jt] * sum(m.cb[it, jt, ix, jx, kx] for kx in m.sp) * m.dTgb_dx[it, jt, ix, jx] + m.Tgb[it, jt, ix, jx] * (m.vg[it, jt, ix, jt] * sum(m.dcb_dx[it, jt, ix, jx, kx] for kx in m.sp) + sum(m.cb[it, jt, ix, jx, kx] for kx in m.sp) * m.dvg_dx[it, jt, ix, jx])) - \
-               m.hi_t[it] * m.kg * m.dTgbx_dx[it, jt, ix, jx] - m.hi_t[it] * m.hi_x[ix] * m.delta[it, jt, ix, jx] * m.Hbc[it, jt, ix, jx] * (m.Tgb[it, jt, ix, jx] - m.Tgc[it, jt, ix, jx]) + \
-               m.hi_t[it] * m.Hgbulk[it, jt, ix, jx]/m.Ax
+        return (1e+02) * (m.hi_x[ix] * m.dHgb_dt[it, jt, ix, jx]) == \
+               (-(m.hi_t[it] * m.cpg_mol) * (m.vg[it, jt, ix, jt] * sum(m.cb[it, jt, ix, jx, kx] for kx in m.sp) * m.dTgb_dx[it, jt, ix, jx] + m.Tgb[it, jt, ix, jx] * (m.vg[it, jt, ix, jt] * sum(m.dcb_dx[it, jt, ix, jx, kx] for kx in m.sp) + sum(m.cb[it, jt, ix, jx, kx] for kx in m.sp) * m.dvg_dx[it, jt, ix, jx])) -\
+               m.hi_t[it] * 1e-03 * m.kg * m.dTgbx_dx[it, jt, ix, jx] - m.hi_t[it] * m.hi_x[ix] * m.delta[it, jt, ix, jx] * m.Hbc[it, jt, ix, jx] * (m.Tgb[it, jt, ix, jx] - m.Tgc[it, jt, ix, jx]) + \
+               m.hi_t[it] * m.Hgbulk[it, jt, ix, jx]/m.Ax) * (1e+02)
     else:
         return Constraint.Skip
     # if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
@@ -1841,7 +1799,7 @@ def bc_Tgbx_rule(m, it, jt):
 # GasOut_F
 def e12_rule(m, it, jt):
     if 0 < jt <= m.ncp_t:
-        return sum(m.l1_x[jx] * m.vg[it, jt, m.nfe_x, jx] * sum(m.cb[it, jt, m.nfe_x, jx, kx] for kx in m.sp) for jx in m.cp_x if 0 < jx <= m.ncp_x) == m.GasOut_F[it, jt] / (3600 * m.Ax)
+        return (1e+04) * sum(m.l1_x[jx] * m.vg[it, jt, m.nfe_x, jx] * sum(m.cb[it, jt, m.nfe_x, jx, kx] for kx in m.sp) for jx in m.cp_x if 0 < jx <= m.ncp_x) == (m.GasOut_F[it, jt] / (3600 * m.Ax))* (1e+04)
     else:
         return Constraint.Skip
 
@@ -1863,21 +1821,21 @@ def e14_rule(m, it, jt, c):
 # Sot -- not bc tough
 def e20_rule(m, it, jt):
     if 0 < jt <= m.ncp_t:
-        return m.Sit[it, jt] - m.Sot[it, jt] == sum(m.l1_x[jx] * m.z[it, jt, m.nfe_x, jx] for jx in m.cp_x if jx <= m.ncp_x) * m.Ax
+        return m.Sit[it] - m.Sot[it, jt] == sum(m.l1_x[jx] * m.z[it, jt, m.nfe_x, jx] for jx in m.cp_x if jx <= m.ncp_x) * m.Ax
     else:
         return Constraint.Skip
 
 # ccwin_l or cein_l
 def bc_mol_rule(m, it, jt, j):
     if 0 < jt <= m.ncp_t:
-        return m.ccwin_l[it, jt, j] * m.Ax + m.Sit[it, jt] * m.nin[j] == m.cein_l[it, jt, j] * m.Ax + m.Sot[it, jt] * m.ne_l[it, jt, j]
+        return m.ccwin_l[it, jt, j] * m.Ax + m.Sit[it] * m.nin[j] == m.cein_l[it, jt, j] * m.Ax + m.Sot[it, jt] * m.ne_l[it, jt, j]
     else:
         return Constraint.Skip
 
 # eein_l or eein_l
 def bc_ene_rule(m, it, jt):
     if 0 < jt <= m.ncp_t:
-        return m.ecwin_l[it, jt] * m.Ax + m.Sit[it, jt] * m.hsint[it, jt] == m.eein_l[it, jt] * m.Ax + m.Sot[it, jt] * m.hse_l[it, jt]
+        return m.ecwin_l[it, jt] * m.Ax + m.Sit[it] * m.hsint[it, jt] == m.eein_l[it, jt] * m.Ax + m.Sot[it, jt] * m.hse_l[it, jt]
     else:
         return Constraint.Skip
 
@@ -1917,8 +1875,18 @@ def bc_phx_rule(m, it, jt):
         return Constraint.Skip
 
 
-def ic_Gb_rule(m, ix, jx):
+def ic_mom_rule(m, ix, jx):
     if 0 < jx <= m.ncp_x:
-        return m.vg[1, 0, ix, jx] == m.vg_ic[(ix, jx)]
+        return m.mom[1, 0, ix, jx] == m.mom_ic[(ix, jx)]
+    else:
+        return Constraint.Skip
+
+
+def drhogx_rule(m, it, kt, ix, kx):
+    if 0 < kt <= m.ncp_t and 0 < kx <= m.ncp_x:
+        return m.drhog_dx[it, kt, ix, kx] == \
+               (m.dcb_dx[it, kt, ix, kx, 'c'] * 44.01 +
+                m.dcb_dx[it, kt, ix, kx, 'n'] * 28.01 +
+                m.dcb_dx[it, kt, ix, kx,'h'] * 18.02)
     else:
         return Constraint.Skip

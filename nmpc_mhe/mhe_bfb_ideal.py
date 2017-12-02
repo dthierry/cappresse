@@ -2,14 +2,15 @@ from __future__ import print_function
 from pyomo.environ import *
 from pyomo.opt import ProblemFormat
 from nmpc_mhe.dync.MHEGen import MheGen
-from nmpc_mhe.mods.bfb.bfb_abs import *
+from nmpc_mhe.mods.bfb.bfb_abs7momdt_ht import *
 import sys, os
 import itertools, sys
+from snap_shot import snap
 
-states = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"]
-x_noisy = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "Ws"]
-u = ["u1", "u2"]
-u_bounds = {"u1":(0.0001, 99.9999), "u2":(0.0001, 99.99)}
+states = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "mom"]
+x_noisy = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "mom"]
+u = ["u1"]
+u_bounds = {"u1":(162.183495794 * 0.0005, 162.183495794 * 10000)}
 ref_state = {("c_capture", ((),)): 0.5}
 # Known targets 0.38, 0.4, 0.5
 # Let's roll with the Temperature of the gas-emulsion, pressure and gas_velocity
@@ -38,7 +39,7 @@ x_vars = {"Ngb": [i for i in itertools.product(lfe, lcp, lc)],
           "Hge": [i for i in itertools.product(lfe, lcp)],
           "Nse": [i for i in itertools.product(lfe, lcp, lc)],
           "Hse": [i for i in itertools.product(lfe, lcp)],
-          "Ws": [i for i in itertools.product(lfe, lcp)]}
+          "mom": [i for i in itertools.product(lfe, lcp)]}
 
 # States -- (5 * 3 + 6) * fe_x * cp_x.
 # For fe_x = 5 and cp_x = 3 we will have 315 differential-states.
@@ -53,7 +54,7 @@ e = MheGen(d_mod=bfb_dae,
            ref_state=ref_state,
            u_bounds=u_bounds,
            diag_QR=True)
-
+e.ss.dref = snap
 e.load_iguess_ss()
 # sys.exit()
 e.ss.create_bounds()
@@ -72,11 +73,11 @@ for i in tfe:
             # q_cov[("Nsc", j), ("Nsc", j), i] = 10.0
             # q_cov[("Nge", j), ("Nge", j), i] = 0.01
             # q_cov[("Nse", j), ("Nse", j), i] = 10.0
-            q_cov[("Ngb", j), ("Ngb", j), i] = 100000.
-            q_cov[("Ngc", j), ("Ngc", j), i] = 100000.
-            q_cov[("Nsc", j), ("Nsc", j), i] = 100000.
-            q_cov[("Nge", j), ("Nge", j), i] = 100000.
-            q_cov[("Nse", j), ("Nse", j), i] = 100000.
+            q_cov[("Ngb", j), ("Ngb", j), i] = 0.0001
+            q_cov[("Ngc", j), ("Ngc", j), i] = 0.0001
+            q_cov[("Nsc", j), ("Nsc", j), i] = 0.01
+            q_cov[("Nge", j), ("Nge", j), i] = 0.0001
+            q_cov[("Nse", j), ("Nse", j), i] = 0.0001
 for i in tfe:
     if i < nfet:
         for j in itertools.product(lfe, lcp):
@@ -86,26 +87,25 @@ for i in tfe:
             # q_cov[("Hge", j), ("Hge", j), i] = 10.
             # q_cov[("Hse", j), ("Hse", j), i] = 100.
             # q_cov[("Ws", j), ("Ws", j), i] = 0.1
-            q_cov[("Hgb", j), ("Hgb", j), i] = 100000.
-            q_cov[("Hgc", j), ("Hgc", j), i] = 100000.
-            q_cov[("Hsc", j), ("Hsc", j), i] = 100000.
-            q_cov[("Hge", j), ("Hge", j), i] = 100000.
-            q_cov[("Hse", j), ("Hse", j), i] = 100000.
-            q_cov[("Ws", j), ("Ws", j), i] = 100000.
+            q_cov[("Hgb", j), ("Hgb", j), i] = 0.1
+            q_cov[("Hgc", j), ("Hgc", j), i] = 10.
+            q_cov[("Hsc", j), ("Hsc", j), i] = 10.
+            q_cov[("Hge", j), ("Hge", j), i] = 10.
+            q_cov[("Hse", j), ("Hse", j), i] = 10.
+            q_cov[("mom", j), ("mom", j), i] = 0.2
 
 
 m_cov = {}
 for i in lfe:
     for j in itertools.product(lfe, lcp):
-        m_cov[("Tge", j), ("Tge", j), i] = 10.0
+        m_cov[("Tge", j), ("Tge", j), i] = 1.0
         m_cov[("P", j), ("P", j), i] = 1e-03
         # m_cov[("vg", j), ("vg", j), i] = 1e-05
 
 
 u_cov = {}
 for i in tfe:
-    u_cov["u1", i] = 10
-    u_cov["u2", i] = 10
+    u_cov["u1", i] = 2
 
 
 e.set_covariance_meas(m_cov)

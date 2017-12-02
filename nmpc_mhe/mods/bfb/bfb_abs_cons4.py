@@ -1239,10 +1239,8 @@ def a87_rule(m, it, jt, ix, jx):
 
 def a88_rule(m, it, jt, ix, jx):
     if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-        return m.hsc[it, jt, ix, jx] == ((m.nc[it, jt, ix, jx, 'h'] + m.nc[it, jt, ix, jx, 'c']) * (
-        m.cpgcsc['h'] * m.Tsc[it, jt, ix, jx] + m.dH1) +
-                                         m.nc[it, jt, ix, jx, 'c'] * (
-                                         m.cpgcsc['c'] * m.Tsc[it, jt, ix, jx] + m.dH2) +
+        return m.hsc[it, jt, ix, jx] == ((m.nc[it, jt, ix, jx, 'h'] + m.nc[it, jt, ix, jx, 'c']) * (m.cpgcsc['h'] * m.Tsc[it, jt, ix, jx] + m.dH1) +
+                                         m.nc[it, jt, ix, jx, 'c'] * (m.cpgcsc['c'] * m.Tsc[it, jt, ix, jx] + m.dH2) +
                                          m.nc[it, jt, ix, jx, 'n'] * (
                                          m.cpgcsc['c'] * m.Tsc[it, jt, ix, jx] + m.dH3)) * 1E-3 + m.cps * m.Tsc[it, jt, ix, jx]
     else:

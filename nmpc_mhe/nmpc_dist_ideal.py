@@ -69,13 +69,15 @@ for i in range(1, 1000):
     c.update_state_real()  # update the current state
     c.update_soi_sp_nmpc()
 
-    c.initialize_olnmpc(c.d1)
-    c.load_init_state_nmpc(src_kind="state_dict")
+    c.initialize_olnmpc(c.d1, "real")
+    c.load_init_state_nmpc(src_kind="state_dict", state_dict="real")
 
-    c.solve_d(c.olnmpc, stop_if_nopt=True, skip_update=False)
+    stat_nmpc = c.solve_d(c.olnmpc, skip_update=False)
+    if stat_nmpc != 0:
+        stat_nmpc = c.solve_d(c.olnmpc, stop_if_nopt=True, skip_update=False, iter_max=300)
     c.update_u(c.olnmpc)
     c.print_r_nmpc()
-    c.cycle_ics(plant_step=True)
+
     # c.cycle_ics_noisy()
     c.plant_input_gen(c.d1, src_kind="dict")
 

@@ -164,19 +164,29 @@ class NmpcGen(DynGen):
 
             tst = self.solve_d(dum,
                                o_tee=False,
-                               tol=1e-06,
+                               tol=1e-04,
+                               iter_max=1000,
+                               max_cpu_time=60,
                                stop_if_nopt=False,
                                output_file="dummy_ip.log")
             if tst != 0:
                 self.journalizer("W", self._c_it, "initialize_olnmpc", "non-optimal dummy")
-                self.solve_d(dum,
+                tst1 = self.solve_d(dum,
                              o_tee=True,
                              tol=1e-03,
+                             iter_max=1000,
                              stop_if_nopt=False,
                              output_file="dummy_ip.log")
+                if tst1 != 0:
+                    # sys.exit()
+                    print("Too bad :(", file=sys.stderr)
                 k_notopt += 1
             #: Patch
             self.load_d_d(dum, self.olnmpc, finite_elem)
+
+            for ii in range(1, self.nfe_t + 1):
+                self.load_d_d(dum, self.olnmpc, ii)  #: Just load a flat line
+            break
 
             for u in self.u:
                 cv_nmpc = getattr(self.olnmpc, u)  #: set controls for open-loop nmpc
@@ -478,7 +488,12 @@ class NmpcGen(DynGen):
             # ofexp += -weights[i] * (v[(1, 1) + vkey])**2 #- self.ref_state[i])**2
         self.ss2.obfun_ss2 = Objective(expr=ofexp, sense=minimize)
 
-        tst = self.solve_d(self.ss2, iter_max=900, stop_if_nopt=False, halt_on_ampl_error=False)
+        tst = self.solve_d(self.ss2, iter_max=10000, stop_if_nopt=True, halt_on_ampl_error=False)
+        # self.ss2.write_nl(name="steady.nl")
+        # self.ss2.write_nl()
+        # self.ss2.snap_shot(filename="mom.py")
+        # sys.exit()
+
         if tst != 0:
             self.ss2.display(filename="failed_ss2.txt")
             self.ss2.write(filename="failed_ss2.nl",
@@ -569,10 +584,12 @@ class NmpcGen(DynGen):
     def print_r_nmpc(self):
         self.journalizer("I", self._c_it, "print_r_nmpc", "Results at" + os.getcwd())
         self.journalizer("I", self._c_it, "print_r_nmpc", "Results suffix " + self.res_file_suf)
+
         # print(self.soi_dict)
         for k in self.ref_state.keys():
             self.soi_dict[k].append(self.curr_soi[k])
             self.sp_dict[k].append(self.curr_sp[k])
+            print("Current values\t", self.ref_state[k], k)
 
         # for u in self.u:
         #     self.u_dict[u].append(self.curr_u[u])
@@ -646,11 +663,13 @@ class NmpcGen(DynGen):
             var = getattr(self.ss2, vname)
             #: Assuming the variable is indexed by time
             self.curr_sp[k] = value(var[(1, 1) + vkey])
-        self.journalizer("I", self._c_it, "update_soi_sp_nmpc", "Current offsets:")
+        self.journalizer("I", self._c_it, "update_soi_sp_nmpc", "Current offsets + Values:")
         for k in self.ref_state.keys():
             #: Assuming the variable is indexed by time
             self.curr_off_soi[k] = 100 * abs(self.curr_soi[k] - self.curr_sp[k])/abs(self.curr_sp[k])
-            print("\tCurrent offset \% \% \t", k, self.curr_off_soi[k])
+            print("\tCurrent offset \% \% \t", k, self.curr_off_soi[k], end="\t")
+            print("\tCurrent value \% \% \t", self.curr_soi[k])
+
 
         for u in self.u:
             ur = getattr(self.ss2, u)
