@@ -16,8 +16,8 @@ c = NmpcGen(d_mod=bfb_dae,
             ref_state=ref_state,
             u_bounds=u_bounds,
             nfe_t=5,
-            ncp_t=1,
-            _t=100)
+            ncp_t=2,
+            _t=1000)
 
 c.ss.dref = snap
 
