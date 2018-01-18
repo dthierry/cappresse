@@ -11,9 +11,13 @@ from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCon
 import numpy as np
 import sys, time, re, os
 from pyutilib.common._exceptions import ApplicationError
+import datetime
 
 __author__ = "David M Thierry @dthierry"
-
+class LogfileError(RuntimeError):
+    """Exception raised when the log file name is not well defined"""
+    def __init__(self, arg):
+        self.args = arg
 
 class DynGen(object):
     """Default class for the Dynamic model"""
@@ -270,7 +274,7 @@ class DynGen(object):
         warm_start = kwargs.pop("warm_start", False)
         tol = kwargs.pop("tol", None)
         mu_init = kwargs.pop("mu_init", None)
-        out_file = kwargs.pop("output_file", None)
+
         linear_scaling_on_demand = kwargs.pop("linear_scaling_on_demand", None)
         mu_strategy = kwargs.pop("mu_strategy", None)
         perturb_always_cd = kwargs.pop("perturb_always_cd", None)
@@ -280,12 +284,23 @@ class DynGen(object):
         ma57_pivtol = kwargs.pop("ma57_pivtol", None)
         bound_push = kwargs.pop("bound_push", None)
 
-
+        out_file = kwargs.pop("output_file", None)
         if out_file:
             if type(out_file) != str:
                 self.journalist("E", self._c_it, "solve_dyn", "incorrect_output")
                 print("output_file is not str", file=sys.stderr)
                 sys.exit()
+
+        tag = kwargs.pop("tag", None)
+
+        if tag:
+            if type(tag) == str:
+                out_file = tag + "_log.log"
+            else:
+                raise LogfileError("Wrong type for the tag argument")
+
+
+
         jacRegVal = kwargs.pop("jacobian_regularization_value", None)
         jacRegExp = kwargs.pop("jacobian_regularization_exponent", None)
         if jacRegVal:
@@ -376,7 +391,23 @@ class DynGen(object):
                 solver_ip = self.asl_ipopt
             else:
                 solver_ip = self.ipopt
-        results = solver_ip.solve(d, tee=o_tee, symbolic_solver_labels=True, report_timing=rep_timing)
+        # Solution attempt
+        try:
+            results = solver_ip.solve(d, tee=o_tee, symbolic_solver_labels=True, report_timing=rep_timing)
+        except (ApplicationError, ValueError):
+            stop_if_nopt = 1
+
+        # Append to the logger
+        if tag:
+            with open("log_ipopt_" + tag + "_" + self.res_file_suf + ".txt", "a") as global_log:
+                with open(out_file, "r") as filelog:
+                    global_log.write("--\t" + str(self._c_it) + "\t" + str(datetime.datetime.now()) + "\t" + "-"*50)
+                    for line in filelog:
+                        global_log.write(line)
+                    filelog.close()
+                global_log.close()
+
+
         if (results.solver.status == SolverStatus.ok) and \
                 (results.solver.termination_condition == TerminationCondition.optimal):
             self.journalist("I", self._c_it, "solve_dyn", " Model solved to optimality")
