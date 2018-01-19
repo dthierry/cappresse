@@ -53,7 +53,8 @@ e = MheGen(bfb_dae, 400/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
            nfe_tmhe=nfe_mhe, ncp_tmhe=1,
            nfe_tnmpc=nfe_mhe, ncp_tnmpc=1,
            ref_state=ref_state, u_bounds=u_bounds,
-           nfe_t=5, ncp_t=1)
+           nfe_t=5, ncp_t=1,
+           )
 
 # 10 fe & _t=1000 definitely degenerate
 # 10 fe & _t=900 definitely degenerate
@@ -140,7 +141,7 @@ e.new_weights_olnmpc(10000, 1e+06)
 e.solve_dyn(e.PlantSample, stop_if_nopt=True)
 ipsr = SolverFactory('ipopt', executable="/home/dav0/Apps/IpoptSR/Ipopt/build/bin/ipoptSR") # This is not useful at all
 for i in range(1, 1000):
-    if i == 3:
+    if i == 500:
         ref_state = {("c_capture", ((),)): 0.63}
         e.change_setpoint(ref_state=ref_state)
         e.new_weights_olnmpc(10000, 1e+06)
@@ -173,11 +174,7 @@ for i in range(1, 1000):
                          jacobian_regularization_value=1e-02,
                          linear_scaling_on_demand=True, tag="lsmhe")
         if stat != 0:
-            e.olnmpc.write_nl(name="bad_mhe.nl")
-            with open("ipopt.opt", "w") as f:
-                f.write("linear_solver ma57\n"
-                        "ma57_dep_tol 1e-8\nbig_M 1e30\n")
-                f.close()
+            e.lsmhe.write_nl(name="bad_mhe.nl")
             sys.exit()
     e.update_state_mhe()
     # # Prior-Covariance stuff
@@ -197,21 +194,13 @@ for i in range(1, 1000):
     e.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
     stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300, jacobian_regularization_value=1e-04, tag="olnmpc")
 
-    # if stat_nmpc != 0:
-    #     stat_nmpc = e.solve_dyn(e.olnmpc,
-    #                             stop_if_nopt=True,
-    #                             skip_update=False,
-    #                             iter_max=300,
-    #                             max_cpu_time=240,
-    #                             ma57_pivtol=1e-12)
     if stat_nmpc != 0:
         e.olnmpc.write_nl(name="bad.nl")
-        # e.olnmpc.pprint(filename="bad_" + str(i))
-        with open("ipopt.opt", "w") as f:
-            f.write("linear_solver ma57\n"
-                    "ma57_dep_tol 1e-8\nbig_M 1e30\n")
-            f.close()
         e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300, jacobian_regularization_value=1e-04, tag="olnmpc")
+        if stat != 0:
+            e.lsmhe.write_nl(name="bad_mhe.nl")
+            sys.exit()
+
     e.update_u(e.olnmpc)
     e.print_r_nmpc()
     #

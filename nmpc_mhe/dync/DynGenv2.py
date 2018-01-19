@@ -30,6 +30,8 @@ class DynGen(object):
 
         self.nfe_t = kwargs.pop('nfe_t', 5)
         self.ncp_t = kwargs.pop('ncp_t', 3)
+        self.k_aug_executable = kwargs.get('k_aug_executable', "/home/dav0/k2/KKT_matrix/src/kmatrix/k_aug")
+        self.ipopt_executable = kwargs.get('ipopt_executable', None)
 
         self.hi_t = hi_t
 
@@ -56,13 +58,19 @@ class DynGen(object):
         self.PlantPred = object()
         self.SteadyRef.name = "SteadyRef"
         self.PlantSample.name = "PlantSample"
+        if type(self.ipopt_executable) == str():
+            self.ipopt = SolverFactory("ipopt",
+                                       executable=self.ipopt_executable)
+            self.asl_ipopt = SolverFactory("asl:ipopt",
+                                           executable=self.ipopt_executable)
+        else:
+            self.ipopt = SolverFactory("ipopt")
+            self.asl_ipopt = SolverFactory("asl:ipopt")
 
-        self.ipopt = SolverFactory("ipopt")
-        self.asl_ipopt = SolverFactory("asl:ipopt")
         self.k_aug = SolverFactory("k_aug",
-                                   executable="/home/dav0/k2/KKT_matrix/src/kmatrix/k_aug")
+                                   executable=self.k_aug_executable)
         self.k_aug_sens = SolverFactory("k_aug",
-                                        executable="/home/dav0/k2/KKT_matrix/src/kmatrix/k_aug")
+                                        executable=self.k_aug_executable)
         self.dot_driver = SolverFactory("dot_driver",
                                         executable="/home/dav0/k2/KKT_matrix/src/kmatrix/dot_driver/dot_driver")
 
