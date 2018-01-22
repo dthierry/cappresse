@@ -3,7 +3,7 @@ from pyomo.environ import *
 from pyomo.core.base import Constraint, Objective, Suffix, minimize
 from pyomo.opt import ProblemFormat, SolverFactory
 from nmpc_mhe.dync.MHEGenv2 import MheGen
-from nmpc_mhe.mods.bfb.nob5_hi_t import bfb_dae
+from sample_mods.bfb.nob5_hi_t import bfb_dae
 from snap_shot import snap
 import sys, os
 import itertools, sys

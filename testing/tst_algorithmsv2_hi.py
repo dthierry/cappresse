@@ -49,7 +49,7 @@ x_vars = {
 # States -- (5 * 3 + 6) * fe_x * cp_x.
 # For fe_x = 5 and cp_x = 3 we will have 315 differential-states.
 
-e = MheGen(bfb_dae, 400/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
+e = MheGen(bfb_dae, 800/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
            nfe_tmhe=nfe_mhe, ncp_tmhe=1,
            nfe_tnmpc=nfe_mhe, ncp_tnmpc=1,
            ref_state=ref_state, u_bounds=u_bounds,

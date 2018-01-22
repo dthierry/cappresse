@@ -7,7 +7,7 @@ from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expressio
 from pyomo.core.base.sets import SimpleSet
 from pyomo.core.kernel.numvalue import value
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
-from nmpc_mhe.dync.DynGen import DynGen
+# from nmpc_mhe.dync.DynGen import DynGen
 from nmpc_mhe.dync.NMPCGenv2 import NmpcGen
 import numpy as np
 from itertools import product

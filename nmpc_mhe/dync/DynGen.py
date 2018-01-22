@@ -465,9 +465,13 @@ class DynGen(object):
         print("-" * 120)
         if flag == 'W':
             print(flag + iter + "[[" + phase + "]]" + message + ".", file=sys.stderr)
+            # print to file warning
+        elif flag == 'E':
+            print(flag + iter + "[[" + phase + "]]" + message + ".", file=sys.stderr)
         else:
             print(flag + iter + "[[" + phase + "]]" + message + "." + "-" * 20)
-        print("-" * 120)
+            # print to file error
+        #print("-" * 120)
 
     # NMPC or just dyn?
     def cycle_ics_noisy(self, sigma_bar=0.0001):
