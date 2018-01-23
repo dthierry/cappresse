@@ -2,7 +2,7 @@ from __future__ import print_function
 from pyomo.environ import *
 from pyomo.core.base import Constraint, Objective
 from pyomo.opt import ProblemFormat
-from nmpc_mhe.dync.MHEGen3 import MheGen
+from nmpc_mhe.dync.MHEGen3__obsolete import MheGen
 from nmpc_mhe.mods.bfb.bfb_abs7momdt_ht2 import bfb_dae
 from snap_shot import snap
 import sys, os

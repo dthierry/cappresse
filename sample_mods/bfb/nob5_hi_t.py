@@ -219,7 +219,7 @@ class bfb_dae(ConcreteModel):
 
         print(self.nfe_t)
         print(_t)
-        print()
+        # print()
         print(type(hi_t))
         print(hi_t)
         if type(self.hi_t) != dict:

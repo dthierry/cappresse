@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 from __future__ import print_function
 from pyomo.environ import *
 from pyomo.core.base import Constraint, Objective, Suffix, minimize
@@ -54,6 +56,7 @@ e = MheGen(bfb_dae, 800/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
            nfe_tnmpc=nfe_mhe, ncp_tnmpc=1,
            ref_state=ref_state, u_bounds=u_bounds,
            nfe_t=5, ncp_t=1,
+           k_aug_executable="/home/dav0/k2/KKT_matrix/src/kmatrix/k_aug"
            )
 
 # 10 fe & _t=1000 definitely degenerate
@@ -138,13 +141,27 @@ e.create_nmpc()
 e.update_targets_nmpc()
 e.compute_QR_nmpc(n=-1)
 e.new_weights_olnmpc(10000, 1e+06)
+# with open("current", "w") as fstt:
+#     for key in e.curr_state_target.keys():
+#         line = str(key) + "\t" + str(e.curr_state_target[key])
+#         print(line, file=fstt)
+    # e.SteadyRef2.display(ostream=fstt)
+    # fstt.close()
 e.solve_dyn(e.PlantSample, stop_if_nopt=True)
-ipsr = SolverFactory('ipopt', executable="/home/dav0/Apps/IpoptSR/Ipopt/build/bin/ipoptSR") # This is not useful at all
+# ipsr = SolverFactory('ipopt', executable="/home/dav0/Apps/IpoptSR/Ipopt/build/bin/ipoptSR") # This is not useful at all
 for i in range(1, 1000):
+
     if i == 500:
         ref_state = {("c_capture", ((),)): 0.63}
         e.change_setpoint(ref_state=ref_state)
+        e.compute_QR_nmpc(n=-1)
         e.new_weights_olnmpc(10000, 1e+06)
+        # with open("updated", "w") as fstt:
+        #     for key in e.curr_state_target.keys():
+        #         line = str(key) + "\t" + str(e.curr_state_target[key])
+        #         print(line, file=fstt)
+        #     # e.SteadyRef2.display(ostream=fstt)
+        #     fstt.close()
 
     e.solve_dyn(e.PlantSample, stop_if_nopt=True, tag="plant")
     e.PlantSample.hi_t.display()
@@ -164,7 +181,7 @@ for i in range(1, 1000):
                      jacobian_regularization_value=1e-04,
                      max_cpu_time=600, tag="lsmhe")
     e.lsmhe.write_nl(name="failed_mhe1.nl")
-    e.lsmhe.hi_t.display()
+    # e.lsmhe.hi_t.display()
     e.lsmhe.report_zL()
     if stat == 1:
         stat = e.solve_dyn(e.lsmhe,

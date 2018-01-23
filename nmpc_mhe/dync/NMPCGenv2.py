@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 from __future__ import division
@@ -529,7 +528,7 @@ class NmpcGen(DynGen):
         self.update_targets_nmpc()
 
     def update_targets_nmpc(self):
-        """Use the reference model to update  the current state and control targets"""
+        """Use the reference model to update  the current state and control targets dictionaries"""
         for x in self.states:
             xvar = getattr(self.SteadyRef2, x)
             for j in self.state_vars[x]:

@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 from __future__ import division
@@ -12,6 +11,7 @@ from nmpc_mhe.dync.NMPCGenv2 import NmpcGen
 import numpy as np
 from itertools import product
 import sys, os, time
+from pyutilib.common._exceptions import ApplicationError
 
 __author__ = "David M Thierry @dthierry"
 """Not yet. Our people, they don't understand."""
@@ -718,7 +718,12 @@ class MheGen(NmpcGen):
             self.lsmhe.f_timestamp = Suffix(direction=Suffix.EXPORT,
                                             datatype=Suffix.INT)
         self.create_rh_sfx()
-        self.k_aug.solve(self.lsmhe, tee=True)
+        try:
+            self.k_aug.solve(self.lsmhe, tee=True)
+        except ApplicationError:
+            self.journalist("E", self._c_it, "load_covariance_prior", "K_AUG failed; no covariance info was loaded")
+            self.lsmhe.write_nl(name="failed_covariance.nl")
+            return 1
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
 
         self._PI.clear()

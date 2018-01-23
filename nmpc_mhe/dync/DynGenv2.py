@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 from __future__ import print_function
@@ -30,7 +29,10 @@ class DynGen(object):
 
         self.nfe_t = kwargs.pop('nfe_t', 5)
         self.ncp_t = kwargs.pop('ncp_t', 3)
-        self.k_aug_executable = kwargs.get('k_aug_executable', "/home/dav0/k2/KKT_matrix/src/kmatrix/k_aug")
+
+        self.k_aug_executable = kwargs.get('k_aug_executable', None)
+
+
         self.ipopt_executable = kwargs.get('ipopt_executable', None)
 
         self.hi_t = hi_t
@@ -67,8 +69,18 @@ class DynGen(object):
             self.ipopt = SolverFactory("ipopt")
             self.asl_ipopt = SolverFactory("asl:ipopt")
 
-        self.k_aug = SolverFactory("k_aug",
-                                   executable=self.k_aug_executable)
+        if not self.k_aug_executable:
+            # try to find it on the path
+            # this has to be moved to mhegen somehow
+            if self.which('k_aug'):
+                self.k_aug = SolverFactory("k_aug")
+            else:
+                print("k_aug not found")
+                sys.exit()
+        else:
+            self.k_aug = SolverFactory("k_aug",
+                                       executable=self.k_aug_executable)
+
         self.k_aug_sens = SolverFactory("k_aug",
                                         executable=self.k_aug_executable)
         self.dot_driver = SolverFactory("dot_driver",
@@ -1106,3 +1118,20 @@ class DynGen(object):
                     f.write('\t')
             f.write('\n')
             f.close()
+
+    @staticmethod
+    def which(str_program):
+        """Literally from stackoverflow. Returns true if program is in path"""
+        def is_exe(fpath):
+            return os.path.isfile(fpath) and os.access(fpath, os.X_OK)
+
+        fpath, fname = os.path.split(str_program)
+        if fpath:
+            if is_exe(str_program):
+                return str_program
+        else:
+            for path in os.environ["PATH"].split(os.pathsep):
+                exe_file = os.path.join(path, str_program)
+                if is_exe(exe_file):
+                    return exe_file
+
