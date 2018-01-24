@@ -29,10 +29,8 @@ class DynGen(object):
 
         self.nfe_t = kwargs.pop('nfe_t', 5)
         self.ncp_t = kwargs.pop('ncp_t', 3)
-
+        # self.k_aug_executable = None
         self.k_aug_executable = kwargs.get('k_aug_executable', None)
-
-
         self.ipopt_executable = kwargs.get('ipopt_executable', None)
 
         self.hi_t = hi_t

@@ -56,7 +56,7 @@ e = MheGen(bfb_dae, 800/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
            nfe_tnmpc=nfe_mhe, ncp_tnmpc=1,
            ref_state=ref_state, u_bounds=u_bounds,
            nfe_t=5, ncp_t=1,
-           k_aug_executable="/home/dav0/k2/KKT_matrix/src/kmatrix/k_aug"
+           k_aug_executable="/home/dav0/k2/KKT_matrix/src/k_aug/k_aug"
            )
 
 # 10 fe & _t=1000 definitely degenerate
