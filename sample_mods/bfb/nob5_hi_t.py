@@ -1084,6 +1084,7 @@ class bfb_dae(ConcreteModel):
 
         if self.nfe_t == 1 and self.ncp_t == 1:
             solver = SolverFactory('asl:ipopt')
+            solver.options["print_user_options"] = 'yes'
             with open("ipopt.opt", "w") as f:
                 f.write("max_iter 300\n")
                 f.write("start_with_resto yes\n")
@@ -1170,8 +1171,8 @@ class bfb_dae(ConcreteModel):
             with open("mult_bounds.txt", "w") as f:
                 self.ipopt_zL_out.pprint(ostream=f)
                 f.close()
-            self.ipopt_zL_out.pprint()
-            self.ipopt_zU_out.pprint()
+            # self.ipopt_zL_out.pprint()
+            # self.ipopt_zU_out.pprint()
             self.clear_bounds()
             someresults = solver.solve(self, tee=True, symbolic_solver_labels=True)
             self.write_nl(name="nonactive.nl")
