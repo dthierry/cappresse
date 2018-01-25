@@ -9,8 +9,10 @@ from sample_mods.bfb.nob5_hi_t import bfb_dae
 from snapshots.snap_shot import snap
 import sys, os
 import itertools, sys
+from pyomo.opt import ReaderFactory, ResultsFormat, ProblemFormat
 from numpy.random import normal as npm
 import random
+from shutil import copyfile
 
 states = ["Hgc", "Nsc", "Hsc", "Hge", "Nse", "Hse"]
 # x_noisy = ["Ngb", "Hgb", "Ngc", "Hgc", "Nsc", "Hsc", "Nge", "Hge", "Nse", "Hse", "mom"]
@@ -60,32 +62,39 @@ s = DynGen(bfb_dae, 800/nfe_mhe, states, u, k_aug_executable="/home/dav0/k2/KKT_
 # 10 fe & _t=1 eventually sort-of degenerate
 s.SteadyRef.dref = snap
 s.load_iguess_steady()
-sys.exit()
 s.SteadyRef.create_bounds()
 s.solve_steady_ref()
 s.SteadyRef.report_zL(filename="mult_ss")
 
 s.load_d_s(s.PlantSample)
-s.PlantSample.create_bounds()
-s.solve_dyn(s.PlantSample)
 
-s.solve_dyn(s.PlantSample, stop_if_nopt=True)
-for i in range(1, 1):
-    s.solve_dyn(s.PlantSample, stop_if_nopt=True)
-    s.update_state_real()
-    s.print_r_dyn()
-    s.cycleSamPlant(plant_step=True)
-    for state in s.states:
-        whatHappensNext = bool(random.getrandbits(1))
-        x_ic = getattr(s.PlantSample, state + "_ic")
-        for key in x_ic.keys():
-            if whatHappensNext:
-                x_ic[key].value += x_ic[key].value * 0.02 # one percent perturbation
-            else:
-                x_ic[key].value -= x_ic[key].value * 0.02  # one percent perturbation
+s.ipopt.solve(s.SteadyRef, keepfiles=True)
+finame = s.ipopt._soln_file
+cwd = os.getcwd()
+filename = "ref_ss.sol"
+# copyfile(finame, cwd + "/ref_ss.sol")
+with open("file_a", "w") as file:
+    for var in s.SteadyRef.component_data_objects(Var):
+        var.set_value(0)
+        val = var.value
+        file.write(str(val))
+        file.write('\n')
+    file.close()
+reader = ReaderFactory(ResultsFormat.sol)
+results = reader(filename)
+_, smapid = s.SteadyRef.write("whathevs.nl", format=ProblemFormat.nl)
+smap = s.SteadyRef.solutions.symbol_map[smapid]
+results._smap = smap
+s.SteadyRef.solutions.load_from(results)
+with open("file_b", "w") as file:
+    for var in s.SteadyRef.component_data_objects(Var):
+        val = var.value
+        file.write(str(val))
+        file.write('\n')
+    file.close()
 
-for i in range(1, 100):
-    s.solve_dyn(s.PlantSample, stop_if_nopt=True)
-    s.update_state_real()
-    s.print_r_dyn()
-    s.cycleSamPlant(plant_step=True)
+s.ipopt.solve(s.SteadyRef, tee=True, load_solutions=False, report_timing=True)
+
+
+
+# example
