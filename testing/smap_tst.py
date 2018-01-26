@@ -63,7 +63,7 @@ s = DynGen(bfb_dae, 800/nfe_mhe, states, u, k_aug_executable="/home/dav0/k2/KKT_
 s.SteadyRef.dref = snap
 s.load_iguess_steady()
 s.SteadyRef.create_bounds()
-s.solve_steady_ref()
+s.get_state_vars()
 s.SteadyRef.report_zL(filename="mult_ss")
 
 s.load_d_s(s.PlantSample)
@@ -71,7 +71,7 @@ s.load_d_s(s.PlantSample)
 s.ipopt.solve(s.SteadyRef, keepfiles=True)
 finame = s.ipopt._soln_file
 cwd = os.getcwd()
-filename = "ref_ss.sol"
+filename = "/home/dav0/nmpc_mhe_q/testing/ref_ss.sol"
 # copyfile(finame, cwd + "/ref_ss.sol")
 with open("file_a", "w") as file:
     for var in s.SteadyRef.component_data_objects(Var):
@@ -94,7 +94,24 @@ with open("file_b", "w") as file:
     file.close()
 
 s.ipopt.solve(s.SteadyRef, tee=True, load_solutions=False, report_timing=True)
+s.param_writer(s.SteadyRef, "gimmemyparams.json")
+with open("params_a", "w") as file:
+    for param in s.SteadyRef.component_data_objects(Param):
+        file.write(str(param.name), str(param))
+    file.close()
+
+for param in s.SteadyRef.component_data_objects(Param):
+        param = 0
 
 
+with open("params_b", "w") as file:
+    for param in s.SteadyRef.component_data_objects(Param):
+        file.write(str(param.name), str(param))
+    file.close()
+s.param_reader(s.SteadyRef, "gimmemyparams.json")
+with open("params_c", "w") as file:
+    for param in s.SteadyRef.component_data_objects(Param):
+        file.write(str(param.name), str(param))
+    file.close()
 
 # example

@@ -140,29 +140,30 @@ class DynGen(object):
         """"Call the method for loading initial guess from steady-state"""
         self.SteadyRef.init_steady_ref()
 
-    def solve_steady_ref(self):
+    def get_state_vars(self, skip_solve=False):
         """Solves steady state model (SteadyRef)
         Args:
             None
         Return:
             None"""
         # Create a separate set of options for Ipopt
-        with open("ipopt.opt", "w") as f:
-            f.write("max_iter 100\n")
-            f.write("mu_init 1e-08\n")
-            f.write("bound_push 1e-08\n")
-            f.write("print_info_string yes\n")
-            f.write("print_user_options yes\n")
-            f.write("linear_solver ma57\n")
-            f.close()
-        ip = SolverFactory("ipopt")
+        if skip_solve:
+            with open("ipopt.opt", "w") as f:
+                f.write("max_iter 100\n")
+                f.write("mu_init 1e-08\n")
+                f.write("bound_push 1e-08\n")
+                f.write("print_info_string yes\n")
+                f.write("print_user_options yes\n")
+                f.write("linear_solver ma57\n")
+                f.close()
+            ip = SolverFactory("ipopt")
 
-        results = ip.solve(self.SteadyRef,
-                           tee=True,
-                           symbolic_solver_labels=True,
-                           report_timing=True)
+            results = ip.solve(self.SteadyRef,
+                               tee=True,
+                               symbolic_solver_labels=True,
+                               report_timing=True)
 
-        self.SteadyRef.solutions.load_from(results)
+            self.SteadyRef.solutions.load_from(results)
 
         # Gather the keys for a given state and form the state_vars dictionary
         for x in self.states:
@@ -190,6 +191,7 @@ class DynGen(object):
                 self.curr_state_noise[(x, j)] = 0.0
                 self.curr_estate[(x, j)] = value(xvar[1, 1, j])
                 self.curr_rstate[(x, j)] = value(xvar[1, 1, j])
+                print(self.curr_rstate[(x, j)])
                 self.curr_state_target[(x, j)] = value(xvar[1, 1, j])
         for u in self.u:
             uvar = getattr(self.SteadyRef, u)
@@ -1133,3 +1135,49 @@ class DynGen(object):
                 if is_exe(exe_file):
                     return exe_file
 
+    @staticmethod
+    def param_writer(mod, filename):
+        """Writes the current mutable parameters to a dict for reloading them later"""
+        # with open(filename, "w") as tgt:
+        #     tgt.write("# Params\n\n")
+        #     for p in mod.component_objects(Param):
+        #         if p._mutable:
+        #             if p.keys()[0] or type(p.keys()[0]) == int:
+        #                 for k in p.keys():
+        #                     pn = p.name
+        #                     pv = value(p[k])
+        #                     tgt.write(pn + "\t" + str(k) + "\t" + str(pv) + "\n")
+        #             else:
+        #                 pn = p.name
+        #                 print(p.name)
+        #                 print(p.keys())
+        #                 pv = value(p)
+        #                 tgt.write(pn + "\t" + str(pv) + "\n")
+        #     tgt.close()
+        # method 2
+        params = dict()
+        for p in mod.component_objects(Param):
+            if p._mutable:
+                # if p.keys()[0] or type(p.keys()[0]) == int:
+                for k in p.keys():
+                    pn = p.name
+                    pv = value(p[k])
+                    key = (pn + "," + str(k))
+                    params[key] = pv
+        import json
+        with open(filename, "w") as f:
+            json.dump(params, f)
+            f.close()
+
+    @staticmethod
+    def param_reader(mod, filename):
+        import json
+        with open(filename, "r") as f:
+            params = json.load(f)
+            for p in mod.component_objects(Param):
+                if p._mutable:
+                    for k in p.keys():
+                        pn = p.name
+                        # pv = value(p[k])
+                        key = (pn + "," + str(k))
+                        p[k].value = params[key]

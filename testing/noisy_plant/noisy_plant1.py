@@ -60,9 +60,9 @@ s = DynGen(bfb_dae, 800/nfe_mhe, states, u, k_aug_executable="/home/dav0/k2/KKT_
 # 10 fe & _t=1 eventually sort-of degenerate
 s.SteadyRef.dref = snap
 s.load_iguess_steady()
-sys.exit()
+# sys.exit()
 s.SteadyRef.create_bounds()
-s.solve_steady_ref()
+s.get_state_vars()
 s.SteadyRef.report_zL(filename="mult_ss")
 
 s.load_d_s(s.PlantSample)

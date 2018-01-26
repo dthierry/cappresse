@@ -70,7 +70,7 @@ e.load_iguess_steady()
 
 
 e.SteadyRef.create_bounds()
-e.solve_steady_ref()
+e.get_state_vars()
 e.SteadyRef.report_zL(filename="mult_ss")
 e.load_d_s(e.PlantSample)
 e.PlantSample.create_bounds()
@@ -148,20 +148,21 @@ e.new_weights_olnmpc(10000, 1e+06)
     # e.SteadyRef2.display(ostream=fstt)
     # fstt.close()
 e.solve_dyn(e.PlantSample, stop_if_nopt=True)
+# e.param_writer(e.lsmhe, "gimmemyparams.txt")
+# sys.exit()
 # ipsr = SolverFactory('ipopt', executable="/home/dav0/Apps/IpoptSR/Ipopt/build/bin/ipoptSR") # This is not useful at all
-for i in range(1, 1000):
+for i in range(1, 1200):
 
-    if i == 500:
+    if i == 400:
         ref_state = {("c_capture", ((),)): 0.63}
         e.change_setpoint(ref_state=ref_state)
         e.compute_QR_nmpc(n=-1)
         e.new_weights_olnmpc(10000, 1e+06)
-        # with open("updated", "w") as fstt:
-        #     for key in e.curr_state_target.keys():
-        #         line = str(key) + "\t" + str(e.curr_state_target[key])
-        #         print(line, file=fstt)
-        #     # e.SteadyRef2.display(ostream=fstt)
-        #     fstt.close()
+    elif i == 800:
+        ref_state = {("c_capture", ((),)): 0.5}
+        e.change_setpoint(ref_state=ref_state)
+        e.compute_QR_nmpc(n=-1)
+        e.new_weights_olnmpc(10000, 1e+06)
 
     e.solve_dyn(e.PlantSample, stop_if_nopt=True, tag="plant")
     e.PlantSample.hi_t.display()
@@ -203,6 +204,7 @@ for i in range(1, 1000):
     e.set_prior_state_from_prior_mhe()
     #
     e.print_r_mhe()
+    e.print_r_dyn()
     #
     e.shift_mhe()
     e.shift_measurement_input_mhe()
