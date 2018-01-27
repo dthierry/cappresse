@@ -97,7 +97,7 @@ s.ipopt.solve(s.SteadyRef, tee=True, load_solutions=False, report_timing=True)
 s.param_writer(s.SteadyRef, "gimmemyparams.json")
 with open("params_a", "w") as file:
     for param in s.SteadyRef.component_data_objects(Param):
-        file.write(str(param.name), str(param))
+        file.write(str(param) + "\n")
     file.close()
 
 for param in s.SteadyRef.component_data_objects(Param):
@@ -106,12 +106,14 @@ for param in s.SteadyRef.component_data_objects(Param):
 
 with open("params_b", "w") as file:
     for param in s.SteadyRef.component_data_objects(Param):
-        file.write(str(param.name), str(param))
+        file.write(str(param) + "\n")
     file.close()
+
+dir(param)
 s.param_reader(s.SteadyRef, "gimmemyparams.json")
 with open("params_c", "w") as file:
     for param in s.SteadyRef.component_data_objects(Param):
-        file.write(str(param.name), str(param))
+        file.write(str(param) + "\n")
     file.close()
 
 # example

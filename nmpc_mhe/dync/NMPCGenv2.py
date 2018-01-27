@@ -502,7 +502,7 @@ class NmpcGen(DynGen):
             # ofexp += -weights[i] * (v[(1, 1) + vkey])**2 #- self.ref_state[i])**2
         self.SteadyRef2.obfun_SteadyRef2 = Objective(expr=ofexp, sense=minimize)
 
-        tst = self.solve_dyn(self.SteadyRef2, iter_max=10000, stop_if_nopt=True, halt_on_ampl_error=False)
+        tst = self.solve_dyn(self.SteadyRef2, iter_max=10000, stop_if_nopt=True, halt_on_ampl_error=False, **kwargs)
         # self.SteadyRef2.write_nl(name="steady.nl")
         # self.SteadyRef2.write_nl()
         # self.SteadyRef2.snap_shot(filename="mom.py")

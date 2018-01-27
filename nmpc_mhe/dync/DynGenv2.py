@@ -6,15 +6,20 @@ from __future__ import division
 from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix, maximize
 from pyomo.core.base import ConstraintList
 from pyomo.core.kernel.numvalue import value
-from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
+from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition, ReaderFactory, ResultsFormat
 import numpy as np
 import sys, time, re, os
 from pyutilib.common._exceptions import ApplicationError
 import datetime
+from shutil import copyfile
 
 __author__ = "David M Thierry @dthierry"
 class LogfileError(RuntimeError):
     """Exception raised when the log file name is not well defined"""
+    def __init__(self, arg):
+        self.args = arg
+class SolfileError(Exception):
+    """Exception raised when the sol file solve didn't go okay"""
     def __init__(self, arg):
         self.args = arg
 
@@ -191,7 +196,7 @@ class DynGen(object):
                 self.curr_state_noise[(x, j)] = 0.0
                 self.curr_estate[(x, j)] = value(xvar[1, 1, j])
                 self.curr_rstate[(x, j)] = value(xvar[1, 1, j])
-                print(self.curr_rstate[(x, j)])
+                # print(self.curr_rstate[(x, j)])
                 self.curr_state_target[(x, j)] = value(xvar[1, 1, j])
         for u in self.u:
             uvar = getattr(self.SteadyRef, u)
@@ -246,7 +251,7 @@ class DynGen(object):
                 p[ks].value = value(vs[(1, 1)+(ks,)])
                 vd0[(1, 0)+(ks,)].set_value(value(vs[(1, 1)+(ks,)]))
 
-    def solve_dyn(self, mod, **kwargs):
+    def solve_dyn(self, mod, keepsolve=False, **kwargs):
         """Solves a given dynamic model
         Args:
             mod (pyomo.core.base.PyomoModel.ConcreteModel): Target model
@@ -272,6 +277,7 @@ class DynGen(object):
             want_stime = kwargs["want_stime"]
         if kwargs.get("rep_timing"):
             rep_timing = kwargs["rep_timing"]
+
         if kwargs.get("stop_if_nopt"):
             stop_if_nopt = kwargs["stop_if_nopt"]
         if kwargs.get("iter_max"):
@@ -305,6 +311,8 @@ class DynGen(object):
         bound_push = kwargs.pop("bound_push", None)
 
         out_file = kwargs.pop("output_file", None)
+
+
         if out_file:
             if type(out_file) != str:
                 self.journalist("E", self._c_it, "solve_dyn", "incorrect_output")
@@ -411,11 +419,33 @@ class DynGen(object):
                 solver_ip = self.asl_ipopt
             else:
                 solver_ip = self.ipopt
+
+        keepfiles = kwargs.pop("keepfiles", False)
+        loadsolve = kwargs.pop("loadsolve", False)
+        if loadsolve:
+            solfile = kwargs.pop("solfile", None)
+            if not solfile:
+                raise SolfileError("Missing .sol file")
+            else:
+                self.load_solfile(d, solfile)
+
+        if keepsolve:
+            keepfiles = True
+
+
         # Solution attempt
         try:
-            results = solver_ip.solve(d, tee=o_tee, symbolic_solver_labels=True, report_timing=rep_timing)
+            results = solver_ip.solve(d,
+                                      tee=o_tee,
+                                      symbolic_solver_labels=True,
+                                      report_timing=rep_timing,
+                                      keepfiles=keepfiles)
         except (ApplicationError, ValueError):
             stop_if_nopt = 1
+
+        if keepsolve:
+            self.write_solfile(d, solve=False)  #: solve false otherwise it'll call sol_dyn again
+
 
         # Append to the logger
         if tag:
@@ -1181,3 +1211,32 @@ class DynGen(object):
                         # pv = value(p[k])
                         key = (pn + "," + str(k))
                         p[k].value = params[key]
+
+    def write_solfile(self, mod, solve=True, **kwargs):
+        """Attempts to write the sol file from a particular run"""
+        import random
+        hash = random.getrandbits(16)
+        filename = mod.name.replace(" ", "") + "_" + self.res_file_suf + "_" + str(hash) + ".sol"
+        path = os.getcwd()
+        f = path + "/" + filename
+        if solve:
+            tst = self.solve_dyn(mod, keepfiles=True, **kwargs)
+            if tst:
+                raise SolfileError("Solution was not optimal")
+        solf = self.ipopt._soln_file
+        copyfile(solf, f)
+        self.journalist("I", self._c_it, "write_solfile", "name:\t\n\t" + filename)
+        self.journalist("I", self._c_it, "write_solfile", "path:\t\n\t" + f)
+
+    def load_solfile(self, mod, solfilename):
+        """Attempts to read the solfile and load it into the corresponding mod"""
+        _, smap_id = mod.write("dummy.nl", format=ProblemFormat.nl)
+        os.remove("dummy.nl")
+        smap = mod.solutions.symbol_map[smap_id]
+        reader = ReaderFactory(ResultsFormat.sol)
+        self.journalist("I", self._c_it, "load_solfile", "name:\t\n\t" + solfilename)
+        results = reader(solfilename)
+        results._smap = smap
+        mod.solutions.load_from(results)
+
+
