@@ -37,9 +37,9 @@ class NmpcGen(DynGen):
                 self.curr_soi[k] = 0.0
                 self.curr_sp[k] = 0.0
         else:
-            self.journalist('W', self._c_it, "Initializing NMPC", "No ref_state has been specified")
+            self.journalist('W', self._iteration_count, "Initializing NMPC", "No ref_state has been specified")
         if not self.u_bounds:
-            self.journalist('W', self._c_it, "Initializing NMPC", "No bounds dictionary has been specified")
+            self.journalist('W', self._iteration_count, "Initializing NMPC", "No bounds dictionary has been specified")
 
         self.soi_dict = {}  #: State-of-interest
         self.sp_dict = {}  #: Set-point
@@ -50,7 +50,7 @@ class NmpcGen(DynGen):
     def create_nmpc(self, **kwargs):
         kwargs.pop("newnfe", self.nfe_tnmpc)
         kwargs.pop("newncp", self.ncp_tnmpc)
-        self.journalist('W', self._c_it, "Initializing NMPC",
+        self.journalist('W', self._iteration_count, "Initializing NMPC",
                         "With {:d} fe and {:d} cp".format(self.nfe_tnmpc, self.ncp_tnmpc))
         _tnmpc = self.hi_t * self.nfe_tnmpc
         self.olnmpc = self.d_mod(self.nfe_tnmpc, self.ncp_tnmpc, _t=_tnmpc)
@@ -135,8 +135,8 @@ class NmpcGen(DynGen):
         Returns:
             """
         fe = kwargs.pop("fe", 1)
-        self.journalist("I", self._c_it, "initialize_olnmpc", "Attempting to initialize olnmpc")
-        self.journalist("I", self._c_it, "initialize_olnmpc", "src_kind=" + src_kind)
+        self.journalist("I", self._iteration_count, "initialize_olnmpc", "Attempting to initialize olnmpc")
+        self.journalist("I", self._iteration_count, "initialize_olnmpc", "src_kind=" + src_kind)
         # self.load_init_state_nmpc(src_kind="mod", ref=ref, fe=1, cp=self.ncp_t)
 
         if src_kind == "real":
@@ -146,7 +146,7 @@ class NmpcGen(DynGen):
         elif src_kind == "predicted":  #: just as-nmpc
             self.load_init_state_nmpc(src_kind="dict", state_dict="predicted")
         else:
-            self.journalist("E", self._c_it, "initialize_olnmpc", "SRC not given")
+            self.journalist("E", self._iteration_count, "initialize_olnmpc", "SRC not given")
             sys.exit()
         dum = self.d_mod(1, self.ncp_tnmpc, _t=self.hi_t)
         dum.create_bounds()
@@ -170,7 +170,7 @@ class NmpcGen(DynGen):
                 elif src_kind == "real":
                     self.load_init_state_gen(dum, src_kind="dict", state_dict="real")
                 else:
-                    self.journalist("E", self._c_it, "initialize_olnmpc", "SRC not given")
+                    self.journalist("E", self._iteration_count, "initialize_olnmpc", "SRC not given")
                     sys.exit()
             else:
                 self.load_init_state_gen(dum, src_kind="mod", ref=dum, fe=1)
@@ -183,7 +183,7 @@ class NmpcGen(DynGen):
                                stop_if_nopt=False,
                                output_file="dummy_ip.log")
             if tst != 0:
-                self.journalist("W", self._c_it, "initialize_olnmpc", "non-optimal dummy")
+                self.journalist("W", self._iteration_count, "initialize_olnmpc", "non-optimal dummy")
                 tst1 = self.solve_dyn(dum,
                              o_tee=True,
                              tol=1e-03,
@@ -207,7 +207,7 @@ class NmpcGen(DynGen):
                 cv_dum = getattr(dum, u)
                 # works only for fe_t index
                 cv_nmpc[finite_elem].set_value(value(cv_dum[1]))
-        self.journalist("I", self._c_it, "initialize_olnmpc", "Done, k_notopt " + str(k_notopt))
+        self.journalist("I", self._iteration_count, "initialize_olnmpc", "Done, k_notopt " + str(k_notopt))
 
     def load_init_state_nmpc(self, src_kind, **kwargs):
         """Loads ref state for set-point
@@ -223,14 +223,14 @@ class NmpcGen(DynGen):
             cp (int): The required collocation point
         """
         # src_kind = kwargs.pop("src_kind", "mod")
-        self.journalist("I", self._c_it, "load_init_state_nmpc", "Load State to nmpc src_kind=" + src_kind)
+        self.journalist("I", self._iteration_count, "load_init_state_nmpc", "Load State to nmpc src_kind=" + src_kind)
         ref = kwargs.pop("ref", None)
         fe = kwargs.pop("fe", self.nfe_tnmpc)
         cp = kwargs.pop("cp", self.ncp_tnmpc)
         if src_kind == "mod":
             if not ref:
-                self.journalist("W", self._c_it, "load_init_state_nmpc", "No model was given")
-                self.journalist("W", self._c_it, "load_init_state_nmpc", "No update on state performed")
+                self.journalist("W", self._iteration_count, "load_init_state_nmpc", "No model was given")
+                self.journalist("W", self._iteration_count, "load_init_state_nmpc", "No update on state performed")
                 sys.exit()
             for x in self.states:
                 xic = getattr(self.olnmpc, x + "_ic")
@@ -263,8 +263,8 @@ class NmpcGen(DynGen):
                         xic[j].value = self.curr_pstate[(x, j)]
                         xvar[(1, 0) + j].set_value(self.curr_pstate[(x, j)])
             else:
-                self.journalist("W", self._c_it, "load_init_state_nmpc", "No dict w/state was specified")
-                self.journalist("W", self._c_it, "load_init_state_nmpc", "No update on state performed")
+                self.journalist("W", self._iteration_count, "load_init_state_nmpc", "No dict w/state was specified")
+                self.journalist("W", self._iteration_count, "load_init_state_nmpc", "No update on state performed")
                 sys.exit()
 
     def compute_QR_nmpc(self, src="plant", n=-1, **kwargs):
@@ -339,7 +339,7 @@ class NmpcGen(DynGen):
             uv[1].set_suffix_value(self.olnmpc.dof_v, 1)
 
     def sens_dot_nmpc(self):
-        self.journalist("I", self._c_it, "sens_dot_nmpc", "Set-up")
+        self.journalist("I", self._iteration_count, "sens_dot_nmpc", "Set-up")
 
         if hasattr(self.olnmpc, "npdp"):
             self.olnmpc.npdp.clear()
@@ -361,7 +361,7 @@ class NmpcGen(DynGen):
 
         self.olnmpc.f_timestamp.display(ostream=sys.stderr)
 
-        self.journalist("I", self._c_it, "sens_dot_nmpc", self.olnmpc.name)
+        self.journalist("I", self._iteration_count, "sens_dot_nmpc", self.olnmpc.name)
 
         results = self.dot_driver.solve(self.olnmpc, tee=True, symbolic_solver_labels=True)
         self.olnmpc.solutions.load_from(results)
@@ -374,10 +374,10 @@ class NmpcGen(DynGen):
         self._dot_timing = k[0]
 
     def sens_k_aug_nmpc(self):
-        self.journalist("I", self._c_it, "sens_k_aug_nmpc", "k_aug sensitivity")
+        self.journalist("I", self._iteration_count, "sens_k_aug_nmpc", "k_aug sensitivity")
         self.olnmpc.ipopt_zL_in.update(self.olnmpc.ipopt_zL_out)
         self.olnmpc.ipopt_zU_in.update(self.olnmpc.ipopt_zU_out)
-        self.journalist("I", self._c_it, "solve_k_aug_nmpc", self.olnmpc.name)
+        self.journalist("I", self._iteration_count, "solve_k_aug_nmpc", self.olnmpc.name)
 
         if hasattr(self.olnmpc, "f_timestamp"):
             self.olnmpc.f_timestamp.clear()
@@ -398,7 +398,7 @@ class NmpcGen(DynGen):
     def stall_strategy(self, strategy, cmv=1e-04, **kwargs):  # Fix the damn stall strategy
         """Suggested three strategies: Change weights, change matrices, change linear algebra"""
         self._stall_iter += 1
-        self.journalist("I", self._c_it, "stall_strategy", "Solver Stalled. " + str(self._stall_iter) + " Times")
+        self.journalist("I", self._iteration_count, "stall_strategy", "Solver Stalled. " + str(self._stall_iter) + " Times")
         if strategy == "increase_weights":
             spf = 0
             ma57_as = "no"
@@ -424,7 +424,7 @@ class NmpcGen(DynGen):
             return 0
         else:
             if self._stall_iter > 10:
-                self.journalist("I", self._c_it, "stall_strategy",
+                self.journalist("I", self._iteration_count, "stall_strategy",
                                  "Max number of tries reached")
                 sys.exit()
             self.stall_strategy("increase_weights")
@@ -441,12 +441,12 @@ class NmpcGen(DynGen):
             self.ref_state = ref_state
         else:
             if not ref_state:
-                self.journalist("W", self._c_it, "find_target_ss", "No reference state was given, using default")
+                self.journalist("W", self._iteration_count, "find_target_ss", "No reference state was given, using default")
             if not self.ref_state:
-                self.journalist("W", self._c_it, "find_target_ss", "No default reference state was given, exit")
+                self.journalist("W", self._iteration_count, "find_target_ss", "No default reference state was given, exit")
                 sys.exit()
 
-        weights = dict.fromkeys(self.ref_state.keys())
+        weights_ref = dict.fromkeys(self.ref_state.keys())
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef, i[0])
             vkey = i[1]
@@ -456,16 +456,11 @@ class NmpcGen(DynGen):
                 val = 1e+06
             else:
                 val = 1/val
-            weights[i] = val
+            weights_ref[i] = val
 
-        if bool(kwargs):
-            pass
-        else:
-            self.journalist("W", self._c_it, "find_target_ss", "Default-weights are being used")
+        weights = kwargs.pop("weights", weights_ref)
 
-        weights = kwargs.pop("weights", weights)
-
-        self.journalist("I", self._c_it, "find_target_ss", "Attempting to find steady state")
+        self.journalist("I", self._iteration_count, "find_target_ss", "Attempting to find steady state")
 
         del self.SteadyRef2
         self.SteadyRef2 = self.d_mod(1, 1, steady=True)
@@ -514,7 +509,7 @@ class NmpcGen(DynGen):
                            format=ProblemFormat.nl,
                            io_options={"symbolic_solver_labels": True})
             # sys.exit(-1)
-        self.journalist("I", self._c_it, "find_target_ss", "Target: solve done")
+        self.journalist("I", self._iteration_count, "find_target_ss", "Target: solve done")
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef2, i[0])
             vkey = i[1]
@@ -543,14 +538,15 @@ class NmpcGen(DynGen):
             self.ref_state = ref_state
         else:
             if not ref_state:
-                self.journalist("W", self._c_it, "change_setpoint", "No reference state was given, using default")
+                self.journalist("W", self._iteration_count, "change_setpoint", "No reference state was given, using default")
             if not self.ref_state:
-                self.journalist("W", self._c_it, "change_setpoint", "No default reference state was given, exit")
+                self.journalist("W", self._iteration_count, "change_setpoint", "No default reference state was given, exit")
                 sys.exit()
-
-        weights = dict.fromkeys(self.ref_state.keys())
+        #: Create a dictionary whose keys are the same as the ref state
+        weights_ref = dict.fromkeys(self.ref_state.keys())
+        model_ref = self.PlantSample  #: I am not sure about this
         for i in self.ref_state.keys():
-            v = getattr(self.SteadyRef, i[0])
+            v = getattr(model_ref, i[0])
             vkey = i[1]
             vss0 = value(v[(1, 1) + vkey])
             val = abs(self.ref_state[i] - vss0)
@@ -558,14 +554,11 @@ class NmpcGen(DynGen):
                 val = 1e+06
             else:
                 val = 1/val
-            weights[i] = val
+            weights_ref[i] = val
 
-        if bool(kwargs):
-            pass
-        else:
-            self.journalist("W", self._c_it, "find_target_ss", "Default-weights are being used")
 
-        weights = kwargs.pop("weights", weights)
+        #: If no weights are passed, use the reference that we have just calculated
+        weights = kwargs.pop("weights", weights_ref)
 
         ofexp = 0.0
         for i in self.ref_state.keys():
@@ -574,7 +567,7 @@ class NmpcGen(DynGen):
             ofexp += weights[i] * (v[(1, 1) + vkey] - self.ref_state[i]) ** 2
 
         self.SteadyRef2.obfun_SteadyRef2.set_value(ofexp)
-        self.solve_dyn(self.SteadyRef2, iter_max=500, stop_if_nopt=True)
+        self.solve_dyn(self.SteadyRef2, iter_max=500, stop_if_nopt=True, **kwargs)
 
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef2, i[0])
@@ -596,8 +589,8 @@ class NmpcGen(DynGen):
                     self.curr_state_offset[(x, j)] = self.curr_pstate[(x, j)] - self.curr_rstate[(x, j)]
 
     def print_r_nmpc(self):
-        self.journalist("I", self._c_it, "print_r_nmpc", "Results at" + os.getcwd())
-        self.journalist("I", self._c_it, "print_r_nmpc", "Results suffix " + self.res_file_suf)
+        self.journalist("I", self._iteration_count, "print_r_nmpc", "Results at" + os.getcwd())
+        self.journalist("I", self._iteration_count, "print_r_nmpc", "Results suffix " + self.res_file_suf)
 
         # print(self.soi_dict)
         for k in self.ref_state.keys():
@@ -677,7 +670,7 @@ class NmpcGen(DynGen):
             var = getattr(self.SteadyRef2, vname)
             #: Assuming the variable is indexed by time
             self.curr_sp[k] = value(var[(1, 1) + vkey])
-        self.journalist("I", self._c_it, "update_soi_sp_nmpc", "Current offsets + Values:")
+        self.journalist("I", self._iteration_count, "update_soi_sp_nmpc", "Current offsets + Values:")
         for k in self.ref_state.keys():
             #: Assuming the variable is indexed by time
             self.curr_off_soi[k] = 100 * abs(self.curr_soi[k] - self.curr_sp[k])/abs(self.curr_sp[k])

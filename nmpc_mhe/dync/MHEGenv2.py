@@ -34,7 +34,7 @@ class MheGen(NmpcGen):
         self.deact_ics = kwargs.pop('del_ics', True)
         self.diag_Q_R = kwargs.pop('diag_QR', True)  #: By default use diagonal matrices for Q and R matrices
         if self.diag_Q_R:
-            self.journalist('W', self._c_it, "Initializing MHE", "The Q_MHE and R_MHE matrices are diagonal")
+            self.journalist('W', self._iteration_count, "Initializing MHE", "The Q_MHE and R_MHE matrices are diagonal")
         # self.u = kwargs.pop('u', [])
 
         self.IgnoreProcessNoise = kwargs.pop('IgnoreProcessNoise', False)
@@ -47,7 +47,7 @@ class MheGen(NmpcGen):
         print("-" * 120)
         nstates = sum(len(self.x_vars[x]) for x in self.x_noisy)
 
-        self.journalist("I", self._c_it, "MHE with \t", str(nstates) + "states")
+        self.journalist("I", self._iteration_count, "MHE with \t", str(nstates) + "states")
         _t_mhe = self.nfe_tmhe * self.hi_t
         self.lsmhe = self.d_mod(self.nfe_tmhe, self.ncp_tmhe, _t=_t_mhe)
         self.lsmhe.name = "LSMHE (Least-Squares MHE)"
@@ -286,7 +286,7 @@ class MheGen(NmpcGen):
         """Initializes the lsmhe in preparation phase
         Args:
             ref (pyomo.core.base.PyomoModel.ConcreteModel): The reference model"""
-        self.journalist("I", self._c_it, "init_lsmhe_prep", "Preparation phase MHE")
+        self.journalist("I", self._iteration_count, "init_lsmhe_prep", "Preparation phase MHE")
         dum = self.dum_mhe
         #: Load current solution
         # self.load_iguess_dyndyn(ref, dum, 1)  # This function can't possibly work
@@ -348,7 +348,7 @@ class MheGen(NmpcGen):
                   con_w = getattr(self.lsmhe, "w_" + u + "c_mhe")  #: Get the constraint-noisy
                   cc.deactivate()
                   con_w.activate()
-        self.journalist("I", self._c_it, "initialize_lsmhe", "Attempting to initialize lsmhe Done")
+        self.journalist("I", self._iteration_count, "initialize_lsmhe", "Attempting to initialize lsmhe Done")
 
     def patch_meas_mhe(self, src, **kwargs):
         """Mechanism to assign a value of y0 to the current mhe from the dynamic model
@@ -374,7 +374,7 @@ class MheGen(NmpcGen):
             meas_dic[i] = lm
 
         if not skip_update:  #: Update the mhe model
-            self.journalist("I", self._c_it, "patch_meas_mhe", "Measurement to:" + str(fe))
+            self.journalist("I", self._iteration_count, "patch_meas_mhe", "Measurement to:" + str(fe))
             y0dest = getattr(self.lsmhe, "yk0_mhe")
             for i in self.y:
                 for j in self.y_vars[i]:
@@ -585,7 +585,7 @@ class MheGen(NmpcGen):
 
 
         if patch_pred_y:
-            self.journalist("I", self._c_it, "init_step_mhe", "Prediction for advanced-step.. Ready")
+            self.journalist("I", self._iteration_count, "init_step_mhe", "Prediction for advanced-step.. Ready")
             self.patch_meas_mhe(tgt, noisy=True)
         self.adjust_nu0_mhe()
         self.adjust_w_mhe()
@@ -710,7 +710,7 @@ class MheGen(NmpcGen):
     def load_covariance_prior(self):
         """Computes the reduced-hessian (inverse of the prior-covariance)
         Reads the result_hessian.txt file that contains the covariance information"""
-        self.journalist("I", self._c_it, "load_covariance_prior", "K_AUG w red_hess")
+        self.journalist("I", self._iteration_count, "load_covariance_prior", "K_AUG w red_hess")
         self.k_aug.options["compute_inv"] = ""
         if hasattr(self.lsmhe, "f_timestamp"):
             self.lsmhe.f_timestamp.clear()
@@ -721,7 +721,7 @@ class MheGen(NmpcGen):
         try:
             self.k_aug.solve(self.lsmhe, tee=True)
         except ApplicationError:
-            self.journalist("E", self._c_it, "load_covariance_prior", "K_AUG failed; no covariance info was loaded")
+            self.journalist("E", self._iteration_count, "load_covariance_prior", "K_AUG failed; no covariance info was loaded")
             self.lsmhe.write_nl(name="failed_covariance.nl")
             return 1
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
@@ -800,7 +800,7 @@ class MheGen(NmpcGen):
                 z0dest[z0] = value(var[(2, 0,) + j])
 
     def update_noise_meas(self, cov_dict):
-        self.journalist("I", self._c_it, "introduce_noise_meas", "Noise introduction")
+        self.journalist("I", self._iteration_count, "introduce_noise_meas", "Noise introduction")
         # f = open("m0.txt", "w")
         # f1 = open("m1.txt", "w")
         for y in self.y:
@@ -819,8 +819,8 @@ class MheGen(NmpcGen):
         # f1.close()
 
     def print_r_mhe(self):
-        self.journalist("I", self._c_it, "print_r_mhe", "Results at" + os.getcwd())
-        self.journalist("I", self._c_it, "print_r_mhe", "Results suffix " + self.res_file_suf)
+        self.journalist("I", self._iteration_count, "print_r_mhe", "Results at" + os.getcwd())
+        self.journalist("I", self._iteration_count, "print_r_mhe", "Results suffix " + self.res_file_suf)
         for x in self.x_noisy:
             elist = []
             rlist = []
@@ -975,7 +975,7 @@ class MheGen(NmpcGen):
 
     def sens_dot_mhe(self):
         """Updates suffixes, solves using the dot_driver"""
-        self.journalist("I", self._c_it, "sens_dot_mhe", "Set-up")
+        self.journalist("I", self._iteration_count, "sens_dot_mhe", "Set-up")
 
         if hasattr(self.lsmhe, "npdp"):
             self.lsmhe.npdp.clear()
@@ -1003,7 +1003,7 @@ class MheGen(NmpcGen):
 
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
 
-        self.journalist("I", self._c_it, "sens_dot_mhe", self.lsmhe.name)
+        self.journalist("I", self._iteration_count, "sens_dot_mhe", self.lsmhe.name)
 
         results = self.dot_driver.solve(self.lsmhe, tee=True, symbolic_solver_labels=True)
         self.lsmhe.solutions.load_from(results)
@@ -1021,10 +1021,10 @@ class MheGen(NmpcGen):
         self._dot_timing = k[0]
 
     def sens_k_aug_mhe(self):
-        self.journalist("I", self._c_it, "sens_k_aug_mhe", "k_aug sensitivity")
+        self.journalist("I", self._iteration_count, "sens_k_aug_mhe", "k_aug sensitivity")
         self.lsmhe.ipopt_zL_in.update(self.lsmhe.ipopt_zL_out)
         self.lsmhe.ipopt_zU_in.update(self.lsmhe.ipopt_zU_out)
-        self.journalist("I", self._c_it, "sens_k_aug_mhe", self.lsmhe.name)
+        self.journalist("I", self._iteration_count, "sens_k_aug_mhe", self.lsmhe.name)
 
         if hasattr(self.lsmhe, "f_timestamp"):
             self.lsmhe.f_timestamp.clear()
@@ -1047,7 +1047,7 @@ class MheGen(NmpcGen):
     def update_state_mhe(self, as_nmpc_mhe_strategy=False):
         # Improvised strategy
         if as_nmpc_mhe_strategy:
-            self.journalist("I", self._c_it, "update_state_mhe", "offset ready for asnmpcmhe")
+            self.journalist("I", self._iteration_count, "update_state_mhe", "offset ready for asnmpcmhe")
             for x in self.states:
                 xvar = getattr(self.lsmhe, x)
                 x0 = getattr(self.olnmpc, x + "_ic")

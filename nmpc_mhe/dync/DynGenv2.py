@@ -14,6 +14,7 @@ import datetime
 from shutil import copyfile
 
 __author__ = "David M Thierry @dthierry"
+
 class LogfileError(RuntimeError):
     """Exception raised when the log file name is not well defined"""
     def __init__(self, arg):
@@ -53,7 +54,7 @@ class DynGen(object):
         self.res_file_nmpc_suf = str()
 
         self.res_file_suf = str(int(time.time()))
-
+        self._reftime = time.time()
 
         # self.hi_t = self._t/self.nfe_t
 
@@ -99,7 +100,7 @@ class DynGen(object):
         self.dyn = object()
         self.l_state = []
         self.l_vals = []
-        self._c_it = 0
+        self._iteration_count = 0
         self.ccl = []
         self.iput = []
         self.sp = []
@@ -136,6 +137,7 @@ class DynGen(object):
 
         self.xp_l = []
         self.xp_key = {}
+
 
 
         with open("ipopt.opt", "w") as f:
@@ -210,7 +212,7 @@ class DynGen(object):
                     f.write(jth)
                     f.write('\t')
             f.close()
-        self.journalist("I", self._c_it, "solve_steady_ref", "labels at " + self.res_file_suf)
+        self.journalist("I", self._iteration_count, "solve_steady_ref", "labels at " + self.res_file_suf)
 
 
     def load_d_s(self, dmod):
@@ -262,7 +264,7 @@ class DynGen(object):
         iter_max = 3000
         max_cpu_time = 1e+06
         linear_solver = "ma57"
-        ma57_pre_alloc = 1.05
+        ma57_pre_alloc = 1.5
         ma57_automatic_scaling = "no"
         ma57_small_pivot_flag = 0
 
@@ -312,10 +314,9 @@ class DynGen(object):
 
         out_file = kwargs.pop("output_file", None)
 
-
         if out_file:
             if type(out_file) != str:
-                self.journalist("E", self._c_it, "solve_dyn", "incorrect_output")
+                self.journalist("E", self._iteration_count, "solve_dyn", "incorrect_output")
                 print("output_file is not str", file=sys.stderr)
                 sys.exit()
 
@@ -333,44 +334,44 @@ class DynGen(object):
         jacRegExp = kwargs.pop("jacobian_regularization_exponent", None)
         if jacRegVal:
             if type(jacRegVal) != float:
-                self.journalist("E", self._c_it, "solve_dyn", "incorrect_output")
+                self.journalist("E", self._iteration_count, "solve_dyn", "incorrect_output")
                 print("jacobian_regularization_value is not float", file=sys.stderr)
 
                 sys.exit()
         if jacRegExp:
             if type(jacRegExp) != float:
-                self.journalist("E", self._c_it, "solve_dyn", "incorrect_output")
+                self.journalist("E", self._iteration_count, "solve_dyn", "incorrect_output")
                 print("jacobian_regularization_exponent is not float", file=sys.stderr)
                 sys.exit()
         if mu_strategy:
             if mu_strategy != "monotone" and mu_strategy != "adaptive":
-                self.journalist("E", self._c_it, "solve_dyn", "incorrect_output(mu_strategy)")
+                self.journalist("E", self._iteration_count, "solve_dyn", "incorrect_output(mu_strategy)")
                 print(mu_strategy)
                 sys.exit()
         if mu_target:
             if type(mu_target) != float:
-                self.journalist("E", self._c_it, "solve_dyn", "incorrect_output")
+                self.journalist("E", self._iteration_count, "solve_dyn", "incorrect_output")
                 print("mu_target is not float", file=sys.stderr)
                 sys.exit()
         if print_level:
             if type(print_level) != int:
-                self.journalist("E", self._c_it, "solve_dyn", "incorrect_output")
+                self.journalist("E", self._iteration_count, "solve_dyn", "incorrect_output")
                 print("print_level is not int", file=sys.stderr)
                 sys.exit()
         if ma57_pivtol:
             if type(ma57_pivtol) != float:
-                self.journalist("E", self._c_it, "solve_dyn", "incorrect_output")
+                self.journalist("E", self._iteration_count, "solve_dyn", "incorrect_output")
                 print("ma57_pivtol is not float", file=sys.stderr)
                 sys.exit()
         if bound_push:
             if type(bound_push) != float:
-                self.journalist("E", self._c_it, "solve_dyn", "incorrect_output")
+                self.journalist("E", self._iteration_count, "solve_dyn", "incorrect_output")
                 print("bound_push is not float", file=sys.stderr)
                 sys.exit()
             
         name = mod.name
 
-        self.journalist("I", self._c_it, "Solving with IPOPT\t", name)
+        self.journalist("I", self._iteration_count, "Solving with IPOPT\t", name)
 
         with open("ipopt.opt", "w") as f:
             f.write("print_info_string\tyes\n")
@@ -412,7 +413,6 @@ class DynGen(object):
             if bound_push:
                 f.write("bound_push\t" + str(bound_push) + "\n")
 
-
             # f.write("\ncheck_derivatives_for_naninf yes\n")
             f.close()
             if halt_on_ampl_error:
@@ -445,22 +445,23 @@ class DynGen(object):
 
         if keepsolve:
             self.write_solfile(d, solve=False)  #: solve false otherwise it'll call sol_dyn again
-
+        wantparams = kwargs.pop("wantparams", False)
+        if wantparams:
+            self.param_writer(d)
 
         # Append to the logger
         if tag:
             with open("log_ipopt_" + tag + "_" + self.res_file_suf + ".txt", "a") as global_log:
                 with open(out_file, "r") as filelog:
-                    global_log.write("--\t" + str(self._c_it) + "\t" + str(datetime.datetime.now()) + "\t" + "-"*50)
+                    global_log.write("--\t" + str(self._iteration_count) + "\t" + str(datetime.datetime.now()) + "\t" + "-"*50)
                     for line in filelog:
                         global_log.write(line)
                     filelog.close()
                 global_log.close()
 
-
         if (results.solver.status == SolverStatus.ok) and \
                 (results.solver.termination_condition == TerminationCondition.optimal):
-            self.journalist("I", self._c_it, "solve_dyn", " Model solved to optimality")
+            self.journalist("I", self._iteration_count, "solve_dyn", " Model solved to optimality")
             d.solutions.load_from(results)
             self._stall_iter = 0
             if want_stime and rep_timing:
@@ -472,9 +473,9 @@ class DynGen(object):
             return 0
         else:
             if stop_if_nopt:
-                self.journalist("E", self._c_it, "solve_dyn", "Not-optimal. Stoping")
+                self.journalist("E", self._iteration_count, "solve_dyn", "Not-optimal. Stoping")
                 sys.exit()
-            self.journalist("W", self._c_it, "solve_dyn", "Not-optimal.")
+            self.journalist("W", self._iteration_count, "solve_dyn", "Not-optimal.")
             return 1
 
     def cycleSamPlant(self, plant_step=False):
@@ -483,9 +484,12 @@ class DynGen(object):
             None
         Return
             None"""
+
         print("-" * 120)
-        print("I[[cycleSamPlant]] Cycling initial state.")
-        print("-" * 120)
+        print("I[[cycleSamPlant]] Cycling initial state. Iteration timing(s):", end="\t")
+        newtime = time.time()
+        print(str(newtime - self._reftime))
+        self._reftime = newtime
         for x in self.states:
             x_ic = getattr(self.PlantSample, x + "_ic")
             v_tgt = getattr(self.PlantSample, x)
@@ -495,7 +499,7 @@ class DynGen(object):
                 x_ic[ks].value = value(v_tgt[(1, self.ncp_t) + ks])
                 v_tgt[(1, 0) + ks].set_value(value(v_tgt[(1, self.ncp_t) + ks]))
         if plant_step:
-            self._c_it += 1
+            self._iteration_count += 1
 
     def load_iguess_dyndyn(self, src, tgt, fe, fe_src='d'):
         """Loads the solution of the src state model into the tgt, i.e. src-->tgt
@@ -591,12 +595,14 @@ class DynGen(object):
         Returns:
             None"""
         iter = str(iter)
-        print("-" * 120)
+        print("-==-" * 15)
+
         if flag == 'W':
             print(flag + iter + "[[" + phase + "]]" + message + ".", file=sys.stderr)
         # print to file warning
         elif flag == 'E':
-            print(flag)
+            print("Fatal error", file=sys.stderr)
+            print(flag + iter + "[[" + phase + "]]" + message + "." + "-" * 20)
         else:
             print(flag + iter + "[[" + phase + "]]" + message + "." + "-" * 20)
         # print("-" * 120)
@@ -626,7 +632,7 @@ class DynGen(object):
                 if tst_val < 0:
                     print("error", tst_val, x, ks)
                 x_ic[ks].value = value(v_tgt[(1, self.ncp_t) + ks]) + sigma
-        self._c_it += 1
+        self._iteration_count += 1
 
     def create_predictor(self):
         self.PlantPred = self.d_mod(1, self.ncp_t, _t=self.hi_t)
@@ -646,12 +652,12 @@ class DynGen(object):
             fe_src = "s"
         else:
             fe_src = "d"
-        self.journalist("I", self._c_it, "predictor_step", "Predictor step")
+        self.journalist("I", self._iteration_count, "predictor_step", "Predictor step")
         self.load_iguess_dyndyn(ref, self.PlantPred, fe, fe_src=fe_src)  #: Load the initial guess
         self.load_init_state_gen(self.PlantPred, src_kind="dict", state_dict=state_dict)  #: Load the initial state
         self.plant_uinject(self.PlantPred, src_kind="dict")  #: Load the current control
         self.solve_dyn(self.PlantPred, stop_if_nopt=True)
-        self.journalist("I", self._c_it, "predictor_step", "Predictor step - Success")
+        self.journalist("I", self._iteration_count, "predictor_step", "Predictor step - Success")
         sinopt = False
 
 
@@ -665,7 +671,7 @@ class DynGen(object):
             src (pyomo.core.base.PyomoModel.ConcreteModel): Source model
             src_fe (int): Finite element from the source model"""
 
-        self.journalist("I", self._c_it, "plant_input", "Continuation_plant, src_kind=" + src_kind)
+        self.journalist("I", self._iteration_count, "plant_input", "Continuation_plant, src_kind=" + src_kind)
         #: Inputs
         target = {}
         current = {}
@@ -680,7 +686,7 @@ class DynGen(object):
                     plant_var = getattr(d_mod, u)
                     target[u] = value(src_var[src_fe])
                     current[u] = value(plant_var[1])
-                    self.journalist("I", self._c_it,
+                    self.journalist("I", self._iteration_count,
                                      "plant_input",
                                      "Target {:f}, Current {:f}, n_steps {:d}".format(target[u], current[u],
                                                                                       ncont_steps))
@@ -691,7 +697,7 @@ class DynGen(object):
                 plant_var = getattr(d_mod, u)
                 target[u] = self.curr_u[u]
                 current[u] = value(plant_var[1])
-                self.journalist("I", self._c_it,
+                self.journalist("I", self._iteration_count,
                                  "plant_input",
                                  "Target {:f}, Current {:f}, n_steps {:d}".format(target[u], current[u],
                                                                                   ncont_steps))
@@ -790,7 +796,7 @@ class DynGen(object):
             cp (int): The required collocation point
         """
         # src_kind = kwargs.pop("src_kind", "mod")
-        self.journalist("I", self._c_it, "load_init_state_gen", "Load State to nmpc src_kind=" + src_kind)
+        self.journalist("I", self._iteration_count, "load_init_state_gen", "Load State to nmpc src_kind=" + src_kind)
         ref = kwargs.pop("ref", None)
 
         if src_kind == "mod":
@@ -801,8 +807,8 @@ class DynGen(object):
             fe = kwargs.pop("fe", nfe)
             cp = kwargs.pop("cp", ncp)
             if not ref:
-                self.journalist("W", self._c_it, "load_init_state_gen", "No model was given")
-                self.journalist("W", self._c_it, "load_init_state_gen", "No update on state performed")
+                self.journalist("W", self._iteration_count, "load_init_state_gen", "No model was given")
+                self.journalist("W", self._iteration_count, "load_init_state_gen", "No update on state performed")
                 return
             for x in self.states:
                 xic = getattr(dmod, x + "_ic")
@@ -836,8 +842,8 @@ class DynGen(object):
                         xic[j].value = self.curr_pstate[(x, j)]
                         xvar[(1, 0) + j].set_value(self.curr_pstate[(x, j)])
             else:
-                self.journalist("W", self._c_it, "load_init_state_gen", "No dict w/state was specified")
-                self.journalist("W", self._c_it, "load_init_state_gen", "No update on state performed")
+                self.journalist("W", self._iteration_count, "load_init_state_gen", "No dict w/state was specified")
+                self.journalist("W", self._iteration_count, "load_init_state_gen", "No update on state performed")
                 return
 
     def make_noisy(self, cov_dict, conf_level=2):
@@ -922,7 +928,7 @@ class DynGen(object):
         # self.lsmhe.pprint(filename="algeb_mod.txt")
 
     def gradients_tool(self):
-        self.journalist("E", self._c_it, "GradientsTool", "Begin")
+        self.journalist("E", self._iteration_count, "GradientsTool", "Begin")
         src = self.PlantSample
         src.dum_objfun = Objective(expr=1, sense=minimize)
         self.PlantSample.var_order = Suffix(direction=Suffix.EXPORT)
@@ -1137,8 +1143,8 @@ class DynGen(object):
                     break  #: Single index (perhaps)
 
     def print_r_dyn(self):
-        self.journalist("I", self._c_it, "print_r_dyn", "Results at" + os.getcwd())
-        self.journalist("I", self._c_it, "print_r_dyn", "Results suffix " + self.res_file_suf)
+        self.journalist("I", self._iteration_count, "print_r_dyn", "Results at" + os.getcwd())
+        self.journalist("I", self._iteration_count, "print_r_dyn", "Results suffix " + self.res_file_suf)
         with open("res_dyn_" + self.res_file_suf + ".txt", "a") as f:
             for x in self.states:
                 for j in self.state_vars[x]:
@@ -1165,8 +1171,7 @@ class DynGen(object):
                 if is_exe(exe_file):
                     return exe_file
 
-    @staticmethod
-    def param_writer(mod, filename):
+    def param_writer(self, mod):
         """Writes the current mutable parameters to a dict for reloading them later"""
         # with open(filename, "w") as tgt:
         #     tgt.write("# Params\n\n")
@@ -1185,6 +1190,9 @@ class DynGen(object):
         #                 tgt.write(pn + "\t" + str(pv) + "\n")
         #     tgt.close()
         # method 2
+        filename = mod.name.replace(" ", "") + \
+                   "_" + self.res_file_suf + "_" + \
+                   str(self._iteration_count) + ".json"
         params = dict()
         for p in mod.component_objects(Param):
             if p._mutable:
@@ -1198,6 +1206,10 @@ class DynGen(object):
         with open(filename, "w") as f:
             json.dump(params, f)
             f.close()
+        path = os.getcwd()
+        f = path + "/" + filename
+        self.journalist("I", self._iteration_count, "param_writer", "name:\t\n\t" + filename)
+        self.journalist("I", self._iteration_count, "param_writer", "path:\t\n\t" + f)
 
     @staticmethod
     def param_reader(mod, filename):
@@ -1214,9 +1226,10 @@ class DynGen(object):
 
     def write_solfile(self, mod, solve=True, **kwargs):
         """Attempts to write the sol file from a particular run"""
-        import random
-        hash = random.getrandbits(16)
-        filename = mod.name.replace(" ", "") + "_" + self.res_file_suf + "_" + str(hash) + ".sol"
+
+        filename = mod.name.replace(" ", "") + \
+                   "_" + self.res_file_suf + "_" + \
+                   str(self._iteration_count) + ".sol"
         path = os.getcwd()
         f = path + "/" + filename
         if solve:
@@ -1225,8 +1238,8 @@ class DynGen(object):
                 raise SolfileError("Solution was not optimal")
         solf = self.ipopt._soln_file
         copyfile(solf, f)
-        self.journalist("I", self._c_it, "write_solfile", "name:\t\n\t" + filename)
-        self.journalist("I", self._c_it, "write_solfile", "path:\t\n\t" + f)
+        self.journalist("I", self._iteration_count, "write_solfile", "name:\t\n\t" + filename)
+        self.journalist("I", self._iteration_count, "write_solfile", "path:\t\n\t" + f)
 
     def load_solfile(self, mod, solfilename):
         """Attempts to read the solfile and load it into the corresponding mod"""
@@ -1234,9 +1247,15 @@ class DynGen(object):
         os.remove("dummy.nl")
         smap = mod.solutions.symbol_map[smap_id]
         reader = ReaderFactory(ResultsFormat.sol)
-        self.journalist("I", self._c_it, "load_solfile", "name:\t\n\t" + solfilename)
+        self.journalist("I", self._iteration_count, "load_solfile", "name:\t\n\t" + solfilename)
         results = reader(solfilename)
         results._smap = smap
         mod.solutions.load_from(results)
+        
+    def set_iteration_count(self, iteration_count=0):
+        """Change the iteration count"""
+        self._iteration_count = iteration_count
+        self.journalist("I", self._iteration_count, "set_iteration_count",
+                        "The iteration count has changed")
 
 

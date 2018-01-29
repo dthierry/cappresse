@@ -117,13 +117,15 @@ def main():
     # e.init_step_mhe()
     #
     e.param_reader(e.lsmhe, "gimmemyparams.json")
-
+    keepsolve = True
     e.solve_dyn(e.lsmhe,
                 skip_update=False,
                 max_cpu_time=600,
-                ma57_pre_alloc=5, tag="lsmhe", keepfiles=True, keepsolve=True,
-                loadsolve=True, solfile="LSMHE(Least-SquaresMHE)_1516998809_26038.sol")  #: Pre-loaded mhe solve
-    e.param_writer(e.lsmhe, "gimmemyparams.json")
+                ma57_pre_alloc=5, tag="lsmhe", keepfiles=True,
+                loadsolve=True,
+                solfile="LSMHE(Least-SquaresMHE)_1516998809_26038.sol",
+                keepsolve=keepsolve)  #: Pre-loaded mhe solve
+    e.param_writer(e.lsmhe)
     # e.write_solfile(e.lsmhe, ma57_pre_alloc=5)
 
     sys.exit()
