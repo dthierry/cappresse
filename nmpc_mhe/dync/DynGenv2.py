@@ -444,10 +444,10 @@ class DynGen(object):
             stop_if_nopt = 1
 
         if keepsolve:
-            self.write_solfile(d, solve=False)  #: solve false otherwise it'll call sol_dyn again
+            self.write_solfile(d, tag, solve=False)  #: solve false otherwise it'll call sol_dyn again
         wantparams = kwargs.pop("wantparams", False)
         if wantparams:
-            self.param_writer(d)
+            self.param_writer(d, tag)
 
         # Append to the logger
         if tag:
@@ -1171,7 +1171,7 @@ class DynGen(object):
                 if is_exe(exe_file):
                     return exe_file
 
-    def param_writer(self, mod):
+    def param_writer(self, mod, tag):
         """Writes the current mutable parameters to a dict for reloading them later"""
         # with open(filename, "w") as tgt:
         #     tgt.write("# Params\n\n")
@@ -1190,7 +1190,7 @@ class DynGen(object):
         #                 tgt.write(pn + "\t" + str(pv) + "\n")
         #     tgt.close()
         # method 2
-        filename = mod.name.replace(" ", "") + \
+        filename = tag.replace(" ", "") + \
                    "_" + self.res_file_suf + "_" + \
                    str(self._iteration_count) + ".json"
         params = dict()
@@ -1224,10 +1224,10 @@ class DynGen(object):
                         key = (pn + "," + str(k))
                         p[k].value = params[key]
 
-    def write_solfile(self, mod, solve=True, **kwargs):
+    def write_solfile(self, mod, tag, solve=True, **kwargs):
         """Attempts to write the sol file from a particular run"""
 
-        filename = mod.name.replace(" ", "") + \
+        filename = tag.replace(" ", "") + \
                    "_" + self.res_file_suf + "_" + \
                    str(self._iteration_count) + ".sol"
         path = os.getcwd()

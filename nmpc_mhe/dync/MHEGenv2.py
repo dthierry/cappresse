@@ -706,6 +706,8 @@ class MheGen(NmpcGen):
             self.lsmhe.obfun_dum_mhe.deactivate()
         if not self.lsmhe.obfun_mhe.active:
             self.lsmhe.obfun_mhe.activate()
+        if not self.lsmhe.hyk_c_mhe.active:
+            self.lsmhe.hyk_c_mhe.activate()
 
     def load_covariance_prior(self):
         """Computes the reduced-hessian (inverse of the prior-covariance)

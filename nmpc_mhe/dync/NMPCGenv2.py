@@ -54,7 +54,7 @@ class NmpcGen(DynGen):
                         "With {:d} fe and {:d} cp".format(self.nfe_tnmpc, self.ncp_tnmpc))
         _tnmpc = self.hi_t * self.nfe_tnmpc
         self.olnmpc = self.d_mod(self.nfe_tnmpc, self.ncp_tnmpc, _t=_tnmpc)
-        self.olnmpc.name = "\tolnmpc (Open-Loop NMPC)"
+        self.olnmpc.name = "olnmpc (Open-Loop NMPC)"
         self.olnmpc.create_bounds()
 
         for u in self.u:
