@@ -137,6 +137,7 @@ class DynGen(object):
 
         self.xp_l = []
         self.xp_key = {}
+        self.WhatHappensNext = 0.0
 
 
 
@@ -439,10 +440,20 @@ class DynGen(object):
                                       tee=o_tee,
                                       symbolic_solver_labels=True,
                                       report_timing=rep_timing,
-                                      keepfiles=keepfiles)
+                                      keepfiles=keepfiles, load_solutions=False)
         except (ApplicationError, ValueError):
             stop_if_nopt = 1
 
+        if tag == "plant":  #: If this is the plant, don't load the solutions if there is a failure
+            print(results.solver.status)
+            print(results.solver.termination_condition)
+            if results.solver.status != SolverStatus.ok or \
+                    results.solver.termination_condition != TerminationCondition.optimal:
+                pass
+            else:
+                d.solutions.load_from(results)
+        else:
+            d.solutions.load_from(results)
         if keepsolve:
             self.write_solfile(d, tag, solve=False)  #: solve false otherwise it'll call sol_dyn again
         wantparams = kwargs.pop("wantparams", False)
@@ -459,10 +470,12 @@ class DynGen(object):
                     filelog.close()
                 global_log.close()
 
-        if (results.solver.status == SolverStatus.ok) and \
-                (results.solver.termination_condition == TerminationCondition.optimal):
+
+
+        if results.solver.status == SolverStatus.ok and \
+                results.solver.termination_condition == TerminationCondition.optimal:
             self.journalist("I", self._iteration_count, "solve_dyn", " Model solved to optimality")
-            d.solutions.load_from(results)
+            # d.solutions.load_from(results)
             self._stall_iter = 0
             if want_stime and rep_timing:
                 self.ip_time = self.ipopt._solver_time_x
@@ -1154,6 +1167,9 @@ class DynGen(object):
                     f.write('\t')
             f.write('\n')
             f.close()
+        with open("res_noiselvl_" + self.res_file_suf + ".txt", "a") as f:
+            f.write(str(self.WhatHappensNext))
+            f.close()
 
     @staticmethod
     def which(str_program):
@@ -1258,4 +1274,19 @@ class DynGen(object):
         self.journalist("I", self._iteration_count, "set_iteration_count",
                         "The iteration count has changed")
 
-
+    def noisy_plant_manager(self, sigma=0.01, action="apply", update_level=False):
+        """A simple way to introduce noise to the plant"""
+        #: Notice that this is one possible way to introduce it
+        if update_level:
+            self.WhatHappensNext = np.random.normal(0, sigma)
+        for state in self.states:
+            x_ic = getattr(self.PlantSample, state + "_ic")
+            for key in x_ic.keys():
+                if action == "apply":
+                    x_ic[key].value += x_ic[key].value * self.WhatHappensNext
+                elif action == "remove":
+                    x_ic[key].value -= x_ic[key].value * self.WhatHappensNext
+                else:
+                    pass
+        if action == "remove":
+            self.journalist("I", self._iteration_count, "noisy_plant_manager", "Noise removed")

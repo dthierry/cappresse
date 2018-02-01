@@ -58,7 +58,7 @@ def main():
                nfe_tnmpc=nfe_mhe, ncp_tnmpc=1,
                ref_state=ref_state, u_bounds=u_bounds,
                nfe_t=5, ncp_t=1,
-               k_aug_executable="/home/dav0/k2/KKT_matrix/src/k_aug/k_aug"
+               k_aug_executable="/home/dav0/k_aug/src/k_aug/k_aug"
                )
 
     e.load_solfile(e.SteadyRef, "ref_ss.sol")  #: Loads solfile snap
@@ -122,6 +122,7 @@ def main():
                 skip_update=False,
                 max_cpu_time=600,
                 ma57_pre_alloc=5, tag="lsmhe")  #: Pre-loaded mhe solve
+    print(e.WhatHappensNext)
 
     e.check_active_bound_noisy()
     e.load_covariance_prior()
@@ -151,17 +152,21 @@ def main():
 
         if i == 200:
             ref_state = {("c_capture", ((),)): 0.63}
-            e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True)
+            e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
             e.new_weights_olnmpc(10000, 1e+06)
         elif i == 400:
             ref_state = {("c_capture", ((),)): 0.5}
-            e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True)
+            e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
             e.new_weights_olnmpc(10000, 1e+06)
 
-        e.solve_dyn(e.PlantSample, stop_if_nopt=True, tag="plant", keepsolve=keepsolve, wantparams=wantparams)
-        e.PlantSample.hi_t.display()
+        # e.noisy_plant_manager(sigma=0.01, action="apply", update_level=True)
+        stat = e.solve_dyn(e.PlantSample, stop_if_nopt=True, tag="plant", keepsolve=keepsolve, wantparams=wantparams)
+        if stat == 1:
+            e.noisy_plant_manager(action="remove")
+            e.solve_dyn(e.PlantSample, stop_if_nopt=True, tag="plant", keepsolve=keepsolve,
+                        wantparams=wantparams)  #: Try again (without noise)
         e.update_state_real()  # update the current state
         e.update_soi_sp_nmpc()
         #
@@ -223,11 +228,7 @@ def main():
         #
         e.cycleSamPlant(plant_step=True)
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
-        whatHappensNext = npm(0, 0.01)
-        for state in e.states:
-            x_ic = getattr(e.PlantSample, state + "_ic")
-            for key in x_ic.keys():
-                x_ic[key].value += x_ic[key].value * whatHappensNext  # one percent perturbation
+        e.noisy_plant_manager(sigma=0.01, action="apply", update_level=True)
 
 
 if __name__ == "__main__":
