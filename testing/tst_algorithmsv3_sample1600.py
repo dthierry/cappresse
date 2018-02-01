@@ -150,12 +150,12 @@ def main():
 
         if i == 200:
             ref_state = {("c_capture", ((),)): 0.63}
-            e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True)
+            e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
             e.new_weights_olnmpc(10000, 1e+06)
         elif i == 400:
             ref_state = {("c_capture", ((),)): 0.5}
-            e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True)
+            e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
             e.new_weights_olnmpc(10000, 1e+06)
 
