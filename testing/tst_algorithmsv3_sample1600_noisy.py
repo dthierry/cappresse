@@ -138,7 +138,7 @@ def main():
     e.create_nmpc()
     e.update_targets_nmpc()
     e.compute_QR_nmpc(n=-1)
-    e.new_weights_olnmpc(1e+05, 1e+04)
+    e.new_weights_olnmpc(1e+04, 1e+03)
     e.solve_dyn(e.PlantSample, stop_if_nopt=True)
     # isnap = [i*50 for i in range(1, 25)]
     isnap = [i for i in range(1, 30)]
@@ -154,12 +154,12 @@ def main():
             ref_state = {("c_capture", ((),)): 0.63}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
-            e.new_weights_olnmpc(1+05, 1e+04)
+            e.new_weights_olnmpc(1+04, 1e+03)
         elif i == 400:
             ref_state = {("c_capture", ((),)): 0.5}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
-            e.new_weights_olnmpc(1+05, 1e+04)
+            e.new_weights_olnmpc(1+04, 1e+03)
 
         # e.noisy_plant_manager(sigma=0.01, action="apply", update_level=True)
         stat = e.solve_dyn(e.PlantSample, stop_if_nopt=False, tag="plant", keepsolve=keepsolve, wantparams=wantparams)
