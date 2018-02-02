@@ -136,7 +136,7 @@ def main():
     e.create_nmpc()
     e.update_targets_nmpc()
     e.compute_QR_nmpc(n=-1)
-    e.new_weights_olnmpc(10000, 1e+06)
+    e.new_weights_olnmpc(1e-04, 1e+06)
     e.solve_dyn(e.PlantSample, stop_if_nopt=True)
     # isnap = [i*50 for i in range(1, 25)]
     isnap = [i for i in range(1, 30)]

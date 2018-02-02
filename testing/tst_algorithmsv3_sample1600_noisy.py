@@ -107,14 +107,7 @@ def main():
     e.set_covariance_u(u_cov)
     e.create_rh_sfx()  #: Reduced hessian computation
 
-    # dum = e.d_mod(1, 6, _t=e.hi_t)
-    # e.PlantSample.display(filename="schwer0.txt")
-    # e.load_iguess_single(e.PlantSample, dum, src_fe=1, tgt_fe=1)
-    # dum.display(filename="schwer1.txt")
-    # e.load_init_state_gen(dum, src_kind="mod", ref=e.PlantSample, fe=1)
-    # e.init_step_mhe(dum, e.nfe_t)
-    # e.solve_dyn(dum)
-    # dum.display(filename="schwer2.txt")
+
     e.init_lsmhe_prep(e.PlantSample)
     e.shift_mhe()
     e.init_step_mhe()
@@ -122,7 +115,6 @@ def main():
                 skip_update=False,
                 max_cpu_time=600,
                 ma57_pre_alloc=5, tag="lsmhe")  #: Pre-loaded mhe solve
-    print(e.WhatHappensNext)
 
     e.check_active_bound_noisy()
     e.load_covariance_prior()
@@ -138,10 +130,10 @@ def main():
     e.create_nmpc()
     e.update_targets_nmpc()
     e.compute_QR_nmpc(n=-1)
-    e.new_weights_olnmpc(1e+04, 1e+03)
+    e.new_weights_olnmpc(1e-02, 1e+06)
     e.solve_dyn(e.PlantSample, stop_if_nopt=True)
     # isnap = [i*50 for i in range(1, 25)]
-    isnap = [i for i in range(1, 30)]
+    isnap = [i*25 for i in range(2, 30)]
     for i in range(1, 600):
         if i in isnap:
             keepsolve=True
@@ -154,12 +146,12 @@ def main():
             ref_state = {("c_capture", ((),)): 0.63}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
-            e.new_weights_olnmpc(1+04, 1e+03)
+            e.new_weights_olnmpc(1e-02, 1e+06)
         elif i == 400:
             ref_state = {("c_capture", ((),)): 0.5}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
-            e.new_weights_olnmpc(1+04, 1e+03)
+            e.new_weights_olnmpc(1e-02, 1e+06)
 
         # e.noisy_plant_manager(sigma=0.01, action="apply", update_level=True)
         stat = e.solve_dyn(e.PlantSample, stop_if_nopt=False, tag="plant", keepsolve=keepsolve, wantparams=wantparams)
@@ -214,7 +206,7 @@ def main():
         e.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
         stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300,
                                 jacobian_regularization_value=1e-04, tag="olnmpc",
-                                keepsolve = keepsolve, wantparams = wantparams)
+                                keepsolve=keepsolve, wantparams=wantparams)
 
         if stat_nmpc != 0:
             e.olnmpc.write_nl(name="bad.nl")

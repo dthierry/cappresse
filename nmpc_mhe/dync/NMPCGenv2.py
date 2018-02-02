@@ -99,8 +99,8 @@ class NmpcGen(DynGen):
         self.olnmpc.xmpc_ref_nmpc = Param(self.olnmpc.xmpcS_nmpc, initialize=0.0, mutable=True)
         self.olnmpc.Q_nmpc = Param(self.olnmpc.xmpcS_nmpc, initialize=1, mutable=True)  #: Control-weight
         # (diagonal Matrix)
-        self.olnmpc.Q_w_nmpc = Param(self.olnmpc.fe_t, initialize=1e-4, mutable=True)
-        self.olnmpc.R_w_nmpc = Param(self.olnmpc.fe_t, initialize=1e2, mutable=True)
+        self.olnmpc.Q_w_nmpc = Param(self.olnmpc.fe_t, initialize=1e-04, mutable=True)
+        self.olnmpc.R_w_nmpc = Param(self.olnmpc.fe_t, initialize=1e+02, mutable=True)
 
         self.olnmpc.xQ_expr_nmpc = Expression(expr=sum(
             sum(self.olnmpc.Q_w_nmpc[fe] *
@@ -309,19 +309,37 @@ class NmpcGen(DynGen):
                 k += 1
 
     def new_weights_olnmpc(self, state_weight, control_weight):
-        if type(state_weight) == float:
-            for fe in self.olnmpc.fe_t:
-                self.olnmpc.Q_w_nmpc[fe].value = state_weight
-        elif type(state_weight) == dict:
+        """Change the weights associated with the control objective function"""
+        # if type(state_weight) == float:
+        #     for fe in self.olnmpc.fe_t:
+        #         self.olnmpc.Q_w_nmpc[fe].value = state_weight
+        #     self.olnmpc.Q_w_nmpc.display()
+        #     print("float")
+        #     sys.exit()
+        if type(state_weight) == dict:
             for fe in self.olnmpc.fe_t:
                 self.olnmpc.Q_w_nmpc[fe].value = state_weight[fe]
-
-        if type(control_weight) == float:
+            # self.olnmpc.Q_w_nmpc.display()
+            # print("dict")
+            # sys.exit()
+        else:
             for fe in self.olnmpc.fe_t:
-                self.olnmpc.R_w_nmpc[fe].value = control_weight
-        elif type(control_weight) == dict:
+                self.olnmpc.Q_w_nmpc[fe].value = state_weight
+
+
+        # if type(control_weight) == float:
+            # for fe in self.olnmpc.fe_t:
+            #     self.olnmpc.R_w_nmpc[fe].value = control_weight
+        if type(control_weight) == dict:
             for fe in self.olnmpc.fe_t:
                 self.olnmpc.R_w_nmpc[fe].value = control_weight[fe]
+        else:
+            for fe in self.olnmpc.fe_t:
+                self.olnmpc.R_w_nmpc[fe].value = control_weight
+
+        # with open("your_weight.txt", "w") as f:
+        #     self.olnmpc.R_w_nmpc.pprint(ostream=f)
+        #     f.close()
 
     def create_suffixes_nmpc(self):
         """Creates the required suffixes for the olnmpc problem"""
