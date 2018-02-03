@@ -130,7 +130,7 @@ def main():
     e.create_nmpc()
     e.update_targets_nmpc()
     e.compute_QR_nmpc(n=-1)
-    e.new_weights_olnmpc(1e-01, 1e+05)
+    e.new_weights_olnmpc(1e-01, 1e+06)
     e.solve_dyn(e.PlantSample, stop_if_nopt=True)
     # isnap = [i*50 for i in range(1, 25)]
     isnap = [i*25 for i in range(2, 30)]
@@ -146,12 +146,12 @@ def main():
             ref_state = {("c_capture", ((),)): 0.63}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
-            e.new_weights_olnmpc(1e-01, 1e+05)
+            e.new_weights_olnmpc(1e-01, 1e+06)
         elif i == 400:
             ref_state = {("c_capture", ((),)): 0.5}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
-            e.new_weights_olnmpc(1e-01, 1e+05)
+            e.new_weights_olnmpc(1e-01, 1e+06)
 
         # e.noisy_plant_manager(sigma=0.01, action="apply", update_level=True)
         stat = e.solve_dyn(e.PlantSample, stop_if_nopt=False, tag="plant", keepsolve=keepsolve, wantparams=wantparams)
@@ -220,7 +220,7 @@ def main():
         #
         e.cycleSamPlant(plant_step=True)
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
-        e.noisy_plant_manager(sigma=0.005, action="apply", update_level=True)
+        e.noisy_plant_manager(sigma=0.001, action="apply", update_level=True)
 
 
 if __name__ == "__main__":
