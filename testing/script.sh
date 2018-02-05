@@ -1,8 +1,8 @@
 #!/bin/bash
-START_SESSION=7
-NUMBER_RUNS=9
+START_SESSION=15
+END_SESSION=19
 
-for ((i=$START_SESSION; i<$NUMBER_RUNS; i++))
+for ((i=$START_SESSION; i<$END_SESSION; i++))
 	do
 		mkdir ./run$i
 		cd ./run$i
@@ -17,13 +17,13 @@ for ((i=$START_SESSION; i<$NUMBER_RUNS; i++))
 
 	done
 
-for ((i=$START_SESSION; i<$NUMBER_RUNS; i++))
+for ((i=$START_SESSION; i<$END_SESSION; i++))
 	do
 		tmux new -s dav_$i -d
 		tmux send-keys -t dav_$i "cd ./run$i" C-m
 		tmux send-keys -t dav_$i "cd ./nmpc_mhe_q" C-m
 		tmux send-keys -t dav_$i "source ./dav_$i/bin/activate" C-m
-		tmux send-keys -t dav_$i "cd ./testing/ && python tst_algv3_s1600_noisyv2.py" C-m 
+		tmux send-keys -t dav_$i "cd ./testing/ && python tst_algv3_s1600_n3.py" C-m 
 
 	done
 
