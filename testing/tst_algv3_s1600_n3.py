@@ -159,7 +159,7 @@ def main():
         if j >= 80:  #: in order to avoid eval errors
             if cw_u > 1e+04:
                   cw_u -= 0.5e+05  #: gradually decrease weight u
-            e.new_weights_olnmpc(1e-04, cw_w)
+            e.new_weights_olnmpc(1e-04, cw_u)
 
 
         # e.noisy_plant_manager(sigma=0.01, action="apply", update_level=True)
