@@ -23,6 +23,10 @@ class SolfileError(Exception):
     """Exception raised when the sol file solve didn't go okay"""
     def __init__(self, arg):
         self.args = arg
+class DynSolWeAreDone(RuntimeError):
+    """Exception raised we wave our hands in desperation"""
+    def __init__(self, arg):
+        self.args = arg
 
 class DynGen(object):
     """Default class for the Dynamic model"""
@@ -487,7 +491,10 @@ class DynGen(object):
         else:
             if stop_if_nopt:
                 self.journalist("E", self._iteration_count, "solve_dyn", "Not-optimal. Stoping")
-                sys.exit()
+                self.journalist("E", self._iteration_count, "solve_dyn",
+                                "Problem\t" + d.name + "\t" + str(self._iteration_count))
+                raise DynSolWeAreDone("Ipopt: we are done :(")
+                # sys.exit()
             self.journalist("W", self._iteration_count, "solve_dyn", "Not-optimal.")
             return 1
 
@@ -1169,6 +1176,7 @@ class DynGen(object):
             f.close()
         with open("res_noiselvl_" + self.res_file_suf + ".txt", "a") as f:
             f.write(str(self.WhatHappensNext))
+            f.write('\n')
             f.close()
 
     @staticmethod

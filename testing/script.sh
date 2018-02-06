@@ -23,7 +23,7 @@ for ((i=$START_SESSION; i<$END_SESSION; i++))
 		tmux send-keys -t dav_$i "cd ./run$i" C-m
 		tmux send-keys -t dav_$i "cd ./nmpc_mhe_q" C-m
 		tmux send-keys -t dav_$i "source ./dav_$i/bin/activate" C-m
-		tmux send-keys -t dav_$i "cd ./testing/ && python tst_algv3_s1600_n3.py" C-m 
-
+		tmux send-keys -t dav_$i "cd ./testing/" C-m
+		tmux send-keys -t dav_$i "python tst_algv3_s1600_n4.py && date" C-m
 	done
 

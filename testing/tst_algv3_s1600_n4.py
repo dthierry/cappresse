@@ -12,11 +12,7 @@ import sys, os
 import itertools, sys
 from numpy.random import normal as npm
 
-"""We try a different (longer) sampling time in order to solve a lesser amount of problems
-    with a noisy plant, laddie"
-    at the 80th iteration after a sp change we decrease the control weight by some amount
-    so far no success has been found 308 iter max
-"""
+""" """
 
 def main():
 
@@ -159,10 +155,10 @@ def main():
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
             e.new_weights_olnmpc(1e-04, 1e+06)
-        if j >= 80:  #: in order to avoid eval errors
-            if cw_u > 1e+04:
-                  cw_u -= 0.5e+05  #: gradually decrease weight u
-            e.new_weights_olnmpc(1e-04, cw_u)
+        # if j >= 80:  #: in order to avoid eval errors
+        #     if cw_u > 1e+04:
+        #           cw_u -= 0.5e+05  #: gradually decrease weight u
+        #     e.new_weights_olnmpc(1e-04, cw_u)
 
 
         # e.noisy_plant_manager(sigma=0.01, action="apply", update_level=True)
