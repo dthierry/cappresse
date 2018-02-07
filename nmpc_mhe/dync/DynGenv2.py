@@ -42,6 +42,7 @@ class DynGen(object):
         # self.k_aug_executable = None
         self.k_aug_executable = kwargs.get('k_aug_executable', None)
         self.ipopt_executable = kwargs.get('ipopt_executable', None)
+        self.dot_driver_executable = kwargs.get('dot_driver_executable', None)
 
         self.hi_t = hi_t
 
@@ -92,7 +93,7 @@ class DynGen(object):
         self.k_aug_sens = SolverFactory("k_aug",
                                         executable=self.k_aug_executable)
         self.dot_driver = SolverFactory("dot_driver",
-                                        executable="/home/dav0/k2/KKT_matrix/src/kmatrix/dot_driver/dot_driver")
+                                        executable=self.dot_driver_executable)
 
         # self.k_aug.options["eig_rh"] = ""
         self.asl_ipopt.options["halt_on_ampl_error"] = "yes"

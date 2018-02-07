@@ -584,7 +584,7 @@ class MheGen(NmpcGen):
 
 
 
-        if patch_pred_y:
+        if patch_pred_y:  #: patch the measurement associated with the solution of the dummy model to the mhe
             self.journalist("I", self._iteration_count, "init_step_mhe", "Prediction for advanced-step.. Ready")
             self.patch_meas_mhe(tgt, noisy=True)
         self.adjust_nu0_mhe()
@@ -1055,8 +1055,8 @@ class MheGen(NmpcGen):
                 x0 = getattr(self.olnmpc, x + "_ic")
                 for j in self.state_vars[x]:
                     # self.curr_state_offset[(x, j)] = self.curr_estate[(x, j)] - value(xvar[self.nfe_t, self.ncp_t, j])
-                    self.curr_state_offset[(x, j)] = value(x0[j] )- value(xvar[self.nfe_tmhe, self.ncp_tmhe, j])
-                    print("state !", self.curr_state_offset[(x, j)])
+                    self.curr_state_offset[(x, j)] = value(x0[j] ) - value(xvar[self.nfe_tmhe, self.ncp_tmhe, j])
+                    # print("state !", self.curr_state_offset[(x, j)])
 
         for x in self.states:
             xvar = getattr(self.lsmhe, x)
