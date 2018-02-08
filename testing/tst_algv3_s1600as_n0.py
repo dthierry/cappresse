@@ -157,10 +157,6 @@ def main():
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
             e.new_weights_olnmpc(1e-04, 1e+06)
-        # if j >= 80:  #: in order to avoid eval errors
-        #     if cw_u > 1e+04:
-        #           cw_u -= 0.5e+05  #: gradually decrease weight u
-        #     e.new_weights_olnmpc(1e-04, cw_u)
 
 
         # e.noisy_plant_manager(sigma=0.01, action="apply", update_level=True)
@@ -173,23 +169,25 @@ def main():
         e.update_soi_sp_nmpc()
         #
         e.update_noise_meas(m_cov)
-        e.load_input_mhe("mod", src=e.PlantSample)  #: The inputs must coincide
 
-        e.compute_y_offset()  # compute the offset for dot_sens
-        if i > 1:
-            e.sens_dot_mhe()
-        e.patch_meas_mhe(e.PlantSample, noisy=False)  #: Get the measurement
-        if i > 1:
-            e.sens_dot_nmpc()
-
+        # e.load_input_mhe("mod", src=e.PlantSample)  #: The inputs must coincide
+        e.compute_y_offset()  #: Get the offset for y
         #: !!!!
         #: Do dot sens
         #: !!!!
-        e.update_state_mhe(as_nmpc_mhe_strategy=True)
+        #: Note that any change in the model at this point is irrelevant for sens_update
+        if i > 1:
+            e.sens_dot_mhe()  #: Do sensitivity update for mhe
+        e.update_state_mhe(as_nmpc_mhe_strategy=True)  #: Get offset for x
+        if i > 1:
+            e.sens_dot_nmpc()
+        e.update_u(e.olnmpc)  #: Get the resulting input
 
-        e.shift_mhe()
+        e.patch_meas_mhe(e.PlantSample, noisy=False)  #: Override the predicted measurement
+        e.shift_mhe()  #: Shift everything
         e.shift_measurement_input_mhe()
-        e.init_step_mhe(patch_pred_y=True)  # Initialize next time-slot
+        e.load_input_mhe("dict")  #: Get the input
+        e.init_step_mhe(patch_pred_y=True)  # Initialize next time-slot and predict next y
         #
         stat = e.solve_dyn(e.lsmhe,
                          skip_update=False, iter_max=500,
@@ -207,6 +205,8 @@ def main():
                 sys.exit()
         e.sens_k_aug_mhe()  # sensitivity matrix for mhe
         e.update_state_mhe()  #: get the state from mhe
+
+        #: At this point computing and loading the Covariance is not goint to affect the sens update of MHE
 
         # Prior-Covariance stuff
         e.check_active_bound_noisy()
@@ -237,8 +237,6 @@ def main():
                 sys.exit()
 
         e.sens_k_aug_nmpc()  # sensitivity matrix for nmpc
-
-        e.update_u(e.olnmpc)  #: This guy needs to move
 
         e.print_r_nmpc()
         #

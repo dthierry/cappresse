@@ -518,10 +518,10 @@ class MheGen(NmpcGen):
                 usrc = getattr(src, u)
                 utrg = getattr(self.lsmhe, u)
                 utrg[fe].value = value(usrc[1])
-        elif src_kind == "self.dict":
+        elif src_kind == "dict":
             for u in self.u:
                 utrg = getattr(self.lsmhe, u)
-                utrg[fe].value = value(self.curr_u[u])
+                utrg[fe].value = self.curr_u[u]
 
     def init_step_mhe(self, patch_pred_y=False, **kwargs):
         """Takes the last state-estimate from the mhe to perform an open-loop simulation
@@ -531,7 +531,7 @@ class MheGen(NmpcGen):
         tgt = self.dum_mhe
         src = self.lsmhe
         fe_t = getattr(src, "fe_t")
-        l = max(fe_t)
+        l = max(fe_t)  #: Maximum fe value
         i = kwargs.pop("fe", l)
         #: Load initial guess to tgt
         for vs in src.component_objects(Var, active=True):
@@ -964,7 +964,8 @@ class MheGen(NmpcGen):
             f.write('\n')
             f.close()
 
-    def compute_y_offset(self, noisy=True):
+    def compute_y_offset(self, noisy=False):
+        """Gets the offset of prediction and real measurement for asMHE"""
         mhe_y = getattr(self.lsmhe, "yk0_mhe")
         for y in self.y:
             plant_y = getattr(self.PlantSample, y)
