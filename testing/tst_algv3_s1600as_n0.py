@@ -176,12 +176,32 @@ def main():
         #: Do dot sens
         #: !!!!
         #: Note that any change in the model at this point is irrelevant for sens_update
+        with open("u_predicted.txt", "w") as f:
+            for u in e.u:
+                src_var = getattr(e.olnmpc, u)
+                src_var.display(ostream=f)
+            f.close()
+        with open("x_predicted.txt", "w") as f:
+            for x in e.states:
+                src_var = getattr(e.lsmhe, x)
+                src_var.display(ostream=f)
+            f.close()
         if i > 1:
             e.sens_dot_mhe()  #: Do sensitivity update for mhe
         e.update_state_mhe(as_nmpc_mhe_strategy=True)  #: Get offset for x
+        # with open("x_corrected.txt", "w") as f:
+        #     for x in e.states:
+        #         src_var = getattr(e.lsmhe, x)
+        #         src_var.display(ostream=f)
+        #     f.close()
         if i > 1:
             e.sens_dot_nmpc()
         e.update_u(e.olnmpc)  #: Get the resulting input
+        # with open("u_corrected.txt", "w") as f:
+        #     for u in e.u:
+        #         src_var = getattr(e.olnmpc, u)
+        #         src_var.display(ostream=f)
+        #     f.close()
 
         e.patch_meas_mhe(e.PlantSample, noisy=False)  #: Override the predicted measurement
         e.shift_mhe()  #: Shift everything

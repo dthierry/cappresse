@@ -24,7 +24,7 @@ class SolfileError(Exception):
     def __init__(self, arg):
         self.args = arg
 class DynSolWeAreDone(RuntimeError):
-    """Exception raised we wave our hands in desperation"""
+    """Exception raised when wave our hands in desperation"""
     def __init__(self, arg):
         self.args = arg
 
@@ -712,7 +712,7 @@ class DynGen(object):
                                      "Target {:f}, Current {:f}, n_steps {:d}".format(target[u], current[u],
                                                                                       ncont_steps))
             else:
-                pass  #error
+                raise ValueError("Unexpeted src_kind %s" % src_kind)
         else:
             for u in self.u:
                 plant_var = getattr(d_mod, u)
@@ -1296,6 +1296,6 @@ class DynGen(object):
                 elif action == "remove":
                     x_ic[key].value -= x_ic[key].value * self.WhatHappensNext
                 else:
-                    pass
+                    raise ValueError("Unexpected action %s" % action)
         if action == "remove":
             self.journalist("I", self._iteration_count, "noisy_plant_manager", "Noise removed")

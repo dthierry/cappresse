@@ -147,7 +147,7 @@ class NmpcGen(DynGen):
             self.load_init_state_nmpc(src_kind="dict", state_dict="predicted")
         else:
             self.journalist("E", self._iteration_count, "initialize_olnmpc", "SRC not given")
-            sys.exit()
+            raise ValueError("Unexpected src_kind %s" % src_kind)
         dum = self.d_mod(1, self.ncp_tnmpc, _t=self.hi_t)
         dum.create_bounds()
         #: Load current solution
@@ -265,7 +265,7 @@ class NmpcGen(DynGen):
             else:
                 self.journalist("W", self._iteration_count, "load_init_state_nmpc", "No dict w/state was specified")
                 self.journalist("W", self._iteration_count, "load_init_state_nmpc", "No update on state performed")
-                sys.exit()
+                raise ValueError("Unexpeted state_dict %s" % state_dict)
 
     def compute_QR_nmpc(self, src="plant", n=-1, **kwargs):
         """Using the current state & control targets, computes the Qk and Rk matrices (diagonal)

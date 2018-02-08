@@ -522,6 +522,9 @@ class MheGen(NmpcGen):
             for u in self.u:
                 utrg = getattr(self.lsmhe, u)
                 utrg[fe].value = self.curr_u[u]
+        else:
+            raise ValueError("Either use mod or dict %s" % src_kind)
+
 
     def init_step_mhe(self, patch_pred_y=False, **kwargs):
         """Takes the last state-estimate from the mhe to perform an open-loop simulation
