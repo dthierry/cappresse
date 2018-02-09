@@ -159,7 +159,7 @@ def main():
 
         stat = e.solve_dyn(e.PlantSample, stop_if_nopt=False, tag="plant", keepsolve=keepsolve, wantparams=wantparams)
         if stat == 1:
-            e.noisy_plant_manager(action="remove")
+            # e.noisy_plant_manager(action="remove")
             e.solve_dyn(e.PlantSample, stop_if_nopt=True, tag="plant", keepsolve=keepsolve,
                         wantparams=wantparams)  #: Try again (without noise)
         e.update_state_real()  # update the current state
@@ -236,7 +236,7 @@ def main():
         #
         e.cycleSamPlant(plant_step=True)
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
-        e.noisy_plant_manager(sigma=0.001, action="apply", update_level=True)
+        # e.noisy_plant_manager(sigma=0.001, action="apply", update_level=True)
         j += 1
 
 

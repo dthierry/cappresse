@@ -174,11 +174,11 @@ def main():
         #: Do dot sens
         #: !!!!
         #: Note that any change in the model at this point is irrelevant for sens_update
-        if i > 1:
-            e.sens_dot_mhe()  #: Do sensitivity update for mhe
+        # if i > 1:
+        #     e.sens_dot_mhe()  #: Do sensitivity update for mhe
         e.update_state_mhe(as_nmpc_mhe_strategy=True)  #: Get offset for x
-        if i > 1:
-            e.sens_dot_nmpc()
+        # if i > 1:
+        #     e.sens_dot_nmpc()
         e.update_u(e.olnmpc)  #: Get the resulting input
 
         e.patch_meas_mhe(e.PlantSample, noisy=False)  #: Override the predicted measurement
@@ -201,7 +201,7 @@ def main():
                              linear_scaling_on_demand=True, tag="lsmhe")
             if stat != 0:
                 sys.exit()
-        e.sens_k_aug_mhe()  # sensitivity matrix for mhe
+        # e.sens_k_aug_mhe()  # sensitivity matrix for mhe
         e.update_state_mhe()  #: get the state from mhe
 
         #: At this point computing and loading the Covariance is not goint to affect the sens update of MHE
@@ -230,7 +230,7 @@ def main():
             if stat != 0:
                 sys.exit()
 
-        e.sens_k_aug_nmpc()  # sensitivity matrix for nmpc
+        # e.sens_k_aug_nmpc()  # sensitivity matrix for nmpc
 
         e.print_r_nmpc()
         #
