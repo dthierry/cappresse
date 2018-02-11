@@ -1,7 +1,7 @@
 #!/bin/bash
-ROUND=6
-START_SESSION=1
-END_SESSION=3
+ROUND=7
+START_SESSION=0
+END_SESSION=2
 
 for ((i=$START_SESSION; i<$END_SESSION; i++))
         do
@@ -25,7 +25,12 @@ for ((i=$START_SESSION; i<$END_SESSION; i++))
                 tmux send-keys -t d$ROUND\_$i "cd ./nmpc_mhe_q" C-m
                 tmux send-keys -t d$ROUND\_$i "source ./d$ROUND\_$i/bin/activate" C-m
                 tmux send-keys -t d$ROUND\_$i "cd ./testing/" C-m
-                tmux send-keys -t d$ROUND\_$i "python tst_algv3_s1600as_n0.py && date" C-m
+                if [ $i -eq 0 ]
+                then
+                    tmux send-keys -t d$ROUND\_$i "python tst_algv3_s1600_n4_101.py && date" C-m
+                else
+                    tmux send-keys -t d$ROUND\_$i "python tst_algv3_s1600_n4_100.py && date" C-m
+                fi
         done
 
 
