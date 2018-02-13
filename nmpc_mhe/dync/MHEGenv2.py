@@ -533,9 +533,9 @@ class MheGen(NmpcGen):
             patch_y (bool): If true, patch the measurements as well"""
         tgt = self.dum_mhe
         src = self.lsmhe
-        fe_t = getattr(src, "fe_t")
-        l = max(fe_t)  #: Maximum fe value
-        i = kwargs.pop("fe", l)
+        # fe_t = getattr(src, "fe_t")
+        # l = max(fe_t)  #: Maximum fe value
+        fe_tgt = kwargs.pop("fe", self.nfe_tmhe)
         #: Load initial guess to tgt
         for vs in src.component_objects(Var, active=True):
             if vs.getname()[-4:] == "_mhe":
@@ -560,22 +560,22 @@ class MheGen(NmpcGen):
                     kj = ks[2:]
                     if vs.getname() in self.states:  #: States start at 0
                         for j in range(0, self.ncp_tmhe + 1):
-                            vd[(1, j) + kj].set_value(value(vs[(i, j) + kj]))
+                            vd[(1, j) + kj].set_value(value(vs[(fe_tgt, j) + kj]))
                     else:
                         for j in range(1, self.ncp_tmhe + 1):
-                            vd[(1, j) + kj].set_value(value(vs[(i, j) + kj]))
+                            vd[(1, j) + kj].set_value(value(vs[(fe_tgt, j) + kj]))
         #: Set values for inputs
         for u in self.u:  #: This should update the inputs
             usrc = getattr(src, u)
             utgt = getattr(tgt, u)
-            utgt[1] = (value(usrc[i]))
+            utgt[1].value = (value(usrc[fe_tgt]))
         #: Set values for initial states
         for x in self.states:
             pn = x + "_ic"
             p = getattr(tgt, pn)
             vs = getattr(self.lsmhe, x)
             for ks in p.keys():
-                p[ks].value = value(vs[(i, self.ncp_tmhe) + (ks,)])
+                p[ks].value = value(vs[(fe_tgt, self.ncp_tmhe) + (ks,)])
         #: Solve
         test = self.solve_dyn(tgt, o_tee=False, stop_if_nopt=False, max_cpu_time=300,
                             jacobian_regularization_value=1e-04,
@@ -583,6 +583,8 @@ class MheGen(NmpcGen):
                             halt_on_ampl_error=False,
                             output_file="init_mhe.txt")
         #: Load solution as a guess to lsmhe
+        if test != 0:
+            self.journalist("I", self._iteration_count, "init_step_mhe", "Failed prediction for next step")
         self.load_iguess_dyndyn(tgt, self.lsmhe, self.nfe_tmhe)
 
 

@@ -10,7 +10,7 @@ from pyomo.opt import TerminationCondition
 from snapshots.snap_shot import snap
 import sys, os
 import itertools, sys
-from numpy.random import normal as npm
+
 
 """ """
 
@@ -179,11 +179,14 @@ def main():
         e.update_state_mhe(as_nmpc_mhe_strategy=True)  #: Get offset for x
         if i > 1:
             e.sens_dot_nmpc()
-        e.update_u(e.olnmpc)  #: Get the resulting input
+        e.update_u(e.olnmpc)  #: Get the resulting input for k+1
 
-        e.patch_meas_mhe(e.PlantSample, noisy=False)  #: Override the predicted measurement
+        e.patch_meas_mhe(e.PlantSample, noisy=False)  #: Override the predicted measurement (correct k)
         e.shift_mhe()  #: Shift everything
         e.shift_measurement_input_mhe()
+
+
+
         e.load_input_mhe("dict")  #: Get the input
         e.init_step_mhe(patch_pred_y=True)  # Initialize next time-slot and predict next y
         #
@@ -231,7 +234,6 @@ def main():
                 sys.exit()
 
         e.sens_k_aug_nmpc()  # sensitivity matrix for nmpc
-
         e.print_r_nmpc()
         #
         e.cycleSamPlant(plant_step=True)

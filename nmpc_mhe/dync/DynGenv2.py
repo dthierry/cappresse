@@ -15,18 +15,23 @@ from shutil import copyfile
 
 __author__ = "David M Thierry @dthierry"
 
+
 class LogfileError(RuntimeError):
     """Exception raised when the log file name is not well defined"""
     def __init__(self, arg):
         self.args = arg
+
+
 class SolfileError(Exception):
     """Exception raised when the sol file solve didn't go okay"""
     def __init__(self, arg):
         self.args = arg
+
+
 class DynSolWeAreDone(RuntimeError):
     """Exception raised when wave our hands in desperation"""
-    def __init__(self, arg):
-        self.args = arg
+    def __init__(self, *args, **kwargs):
+        pass
 
 class DynGen(object):
     """Default class for the Dynamic model"""
