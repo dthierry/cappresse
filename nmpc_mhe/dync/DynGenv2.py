@@ -718,7 +718,7 @@ class DynGen(object):
                                                                                       ncont_steps))
             else:
                 raise ValueError("Unexpeted src_kind %s" % src_kind)
-        else:
+        elif src_kind == "dict":
             for u in self.u:
                 plant_var = getattr(d_mod, u)
                 target[u] = self.curr_u[u]
@@ -727,6 +727,8 @@ class DynGen(object):
                                  "plant_input",
                                  "Target {:f}, Current {:f}, n_steps {:d}".format(target[u], current[u],
                                                                                   ncont_steps))
+        else:
+            sys.exit(-1)
         tn = sum(target[u] for u in self.u)**(1/len(self.u))
         cn = sum(current[u] for u in self.u)**(1/len(self.u))
         pgap = abs((tn-cn)/cn)
