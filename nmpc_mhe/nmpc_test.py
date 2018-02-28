@@ -108,7 +108,7 @@ for i in range(1, 1000):
 
 
     e.update_noise_meas(e.d1, m_cov)
-    e.load_input_mhe("mod", src=e.d1, fe=e.nfe_t)  #: The inputs must coincide
+    e.patch_input_mhe("mod", src=e.d1, fe=e.nfe_t)  #: The inputs must coincide
 
 
 

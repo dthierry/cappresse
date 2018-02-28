@@ -230,7 +230,7 @@ for i in range(1, 15):
     if i == 3:
         e.d1.display(filename="plant.txt")
     e.update_noise_meas(e.d1, m_cov)
-    e.load_input_mhe("mod", src=e.d1, fe=e.nfe_t)  #: The inputs must coincide
+    e.patch_input_mhe("mod", src=e.d1, fe=e.nfe_t)  #: The inputs must coincide
     some_val = value(e.lsmhe.u1[e.nfe_t]) - value(e.d1.u1[1])
     print(some_val, "Value of the offset")
     e.patch_meas_mhe(e.nfe_t, src=e.d1, noisy=True)  #: Get the measurement

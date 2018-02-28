@@ -27,8 +27,8 @@ def main():
     nfet = 10
     ncpx = 3
     nfex = 5
-    tfe = [i for i in range(1, nfe_mhe + 1)]
-    lfe = [i for i in range(1, nfex + 1)]
+    tfe = [i for i in range(0, nfe_mhe)]
+    lfe = [i for i in range(0, nfex)]
     lcp = [i for i in range(1, ncpx + 1)]
     lc = ['c', 'h', 'n']
 
@@ -57,8 +57,7 @@ def main():
                nfe_tnmpc=nfe_mhe, ncp_tnmpc=1,
                ref_state=ref_state, u_bounds=u_bounds,
                nfe_t=5, ncp_t=1,
-               k_aug_executable="/home/dav0/k_aug/src/k_aug/k_aug",
-               dot_driver_executable="/home/dav0/k_aug/src/k_aug/dot_driver/dot_driver"
+               k_aug_executable="/home/dav0/k_aug/src/k_aug/k_aug"
                )
 
     e.load_solfile(e.SteadyRef, "ref_ss.sol")  #: Loads solfile snap
@@ -93,7 +92,7 @@ def main():
     #         m_cov[("yb", j), ("yb", j), i] = 1e-04
 
     u_cov = {}
-    for i in [i for i in range(1, nfe_mhe+1)]:
+    for i in [i for i in range(0, nfe_mhe)]:
         u_cov["u1", i] = 162.183495794 * 0.005
 
     m_cov = {}
@@ -128,10 +127,9 @@ def main():
 
     #: Create NMPC
     e.create_nmpc()
-    e.create_suffixes_nmpc()
     e.update_targets_nmpc()
     e.compute_QR_nmpc(n=-1)
-    e.new_weights_olnmpc(1e-04, 1e+01)
+    e.new_weights_olnmpc(1e-04, 1e+06)
     e.solve_dyn(e.PlantSample, stop_if_nopt=True)
     # isnap = [i*50 for i in range(1, 25)]
     isnap = [i*25 for i in range(2, 30)]
@@ -144,19 +142,26 @@ def main():
         else:
             keepsolve=False
             wantparams=False
+
         if i == 200:
             j = 1
             ref_state = {("c_capture", ((),)): 0.63}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
-            e.new_weights_olnmpc(1e-04, 1e+01)
+            e.new_weights_olnmpc(1e-04, 1e+06)
         elif i == 400:
             j = 1
             ref_state = {("c_capture", ((),)): 0.5}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
-            e.new_weights_olnmpc(1e-04, 1e+01)
+            e.new_weights_olnmpc(1e-04, 1e+06)
+        # if j >= 80:  #: in order to avoid eval errors
+        #     if cw_u > 1e+04:
+        #           cw_u -= 0.5e+05  #: gradually decrease weight u
+        #     e.new_weights_olnmpc(1e-04, cw_u)
 
+
+        # e.noisy_plant_manager(sigma=0.01, action="apply", update_level=True)
         stat = e.solve_dyn(e.PlantSample, stop_if_nopt=False, tag="plant", keepsolve=keepsolve, wantparams=wantparams)
         if stat == 1:
             e.noisy_plant_manager(action="remove")
@@ -165,73 +170,60 @@ def main():
         e.update_state_real()  # update the current state
         e.update_soi_sp_nmpc()
         #
-        e.update_noise_meas(m_cov) #: the noise it is not being added
-
-        # e.load_input_mhe("mod", src=e.PlantSample)  #: The inputs must coincide
-        e.compute_y_offset()  #: Get the offset for y
-
-        #: !!!!
-        #: Do dot sens
-        #: !!!!
-        #: Note that any change in the model at this point is irrelevant for sens_update
-        if i > 1:
-            e.sens_dot_mhe()  #: Do sensitivity update for mhe
-        e.update_state_mhe(as_nmpc_mhe_strategy=True)  #: Get offset for x
-        if i > 1:
-            e.sens_dot_nmpc()
-        e.update_u(e.olnmpc)  #: Get the resulting input
-
-        e.patch_meas_mhe(e.PlantSample, noisy=False)  #: Override the predicted measurement
-        e.shift_mhe()  #: Shift everything
-        e.shift_measurement_input_mhe()
-        e.patch_input_mhe("dict")  #: Get the input
-        e.init_step_mhe(patch_pred_y=True)  # Initialize next time-slot and predict next y
+        e.update_noise_meas(m_cov)
+        e.patch_input_mhe("mod", src=e.PlantSample)  #: The inputs must coincide
+        #
+        e.patch_meas_mhe(e.PlantSample, noisy=True)  #: Get the measurement
+        e.compute_y_offset()
+        #
+        e.init_step_mhe()  # Initialize next time-slot
         #
         stat = e.solve_dyn(e.lsmhe,
                          skip_update=False, iter_max=500,
                          jacobian_regularization_value=1e-04,
                          max_cpu_time=600, tag="lsmhe", keepsolve=keepsolve, wantparams=wantparams)
-        if stat == 1:  #: Try again
-            e.lsmhe.write_nl(name="bad_mhe.nl")
+        # e.lsmhe.write_nl(name="failed_mhe1.nl")
+        # e.lsmhe.hi_t.display()
+        # e.lsmhe.report_zL()
+        if stat == 1:
             stat = e.solve_dyn(e.lsmhe,
                              skip_update=True,
-                             max_cpu_time=600,
+                             iter_max=250,
                              stop_if_nopt=True,
                              jacobian_regularization_value=1e-02,
                              linear_scaling_on_demand=True, tag="lsmhe")
             if stat != 0:
+                e.lsmhe.write_nl(name="bad_mhe.nl")
                 sys.exit()
-        e.sens_k_aug_mhe()  # sensitivity matrix for mhe
-        e.update_state_mhe()  #: get the state from mhe
-
-        #: At this point computing and loading the Covariance is not goint to affect the sens update of MHE
-
-        # Prior-Covariance stuff
+        e.update_state_mhe()
+        # # Prior-Covariance stuff
         e.check_active_bound_noisy()
         e.load_covariance_prior()
         e.set_state_covariance()
         e.regen_objective_fun()
-        # Update prior-state
+        # # Update prior-state
         e.set_prior_state_from_prior_mhe()
         #
         e.print_r_mhe()
         e.print_r_dyn()
         #
+        e.shift_mhe()
+        e.shift_measurement_input_mhe()
+
         e.initialize_olnmpc(e.PlantSample, "estimated")
         e.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
         stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300,
                                 jacobian_regularization_value=1e-04, tag="olnmpc",
                                 keepsolve=keepsolve, wantparams=wantparams)
+
         if stat_nmpc != 0:
             e.olnmpc.write_nl(name="bad.nl")
-            e.solve_dyn(e.olnmpc, skip_update=False,
-                        max_cpu_time=600, jacobian_regularization_value=1e-04, linear_scaling_on_demand=True,
-                        tag="olnmpc")
+            e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300, jacobian_regularization_value=1e-04, tag="olnmpc")
             if stat != 0:
+                e.lsmhe.write_nl(name="bad_mhe.nl")
                 sys.exit()
 
-        e.sens_k_aug_nmpc()  # sensitivity matrix for nmpc
-
+        e.update_u(e.olnmpc)
         e.print_r_nmpc()
         #
         e.cycleSamPlant(plant_step=True)
