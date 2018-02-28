@@ -50,8 +50,8 @@ def main():
                nfe_tnmpc=nfe_mhe, ncp_tnmpc=1,
                ref_state=ref_state, u_bounds=u_bounds,
                nfe_t=5, ncp_t=1,
-               k_aug_executable="/home/dav0/k2/KKT_matrix/src/k_aug/k_aug",
-               dot_driver_executable="/home/dav0/k2/KKT_matrix/src/k_aug/dot_driver/dot_driver"
+               k_aug_executable="/home/dav0/k_aug/src/k_aug/k_aug",
+               dot_driver_executable="/home/dav0/k_aug/src/k_aug/dot_driver/dot_driver"
                )
 
     e.load_solfile(e.SteadyRef, "ref_ss.sol")  #: Loads solfile snap
