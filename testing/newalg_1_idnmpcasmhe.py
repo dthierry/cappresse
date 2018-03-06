@@ -169,7 +169,8 @@ def main():
             e.sens_dot_mhe()  #: Do sensitivity update for mhe
         e.update_state_mhe(as_nmpc_mhe_strategy=True)  #: Get offset for x
 
-
+        e.print_r_mhe()
+        e.print_r_dyn()
 
         e.preparation_phase_mhe(as_strategy=True)
 
@@ -199,8 +200,6 @@ def main():
         #: At this point computing and loading the Covariance is not going to affect the sens update of MHE
         e.prior_phase()
         #
-        e.print_r_mhe()
-        e.print_r_dyn()
         #
         e.preparation_phase_nmpc(as_strategy=True, make_prediction=False)
         # e.initialize_olnmpc(e.PlantSample, "estimated")

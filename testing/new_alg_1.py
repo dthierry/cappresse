@@ -171,6 +171,9 @@ def main():
             e.sens_dot_nmpc()
         e.update_u(e.olnmpc)  #: Get the resulting input for k+1
 
+        e.print_r_mhe()
+        e.print_r_dyn()
+
         e.preparation_phase_mhe(as_strategy=True)
 
         # e.patch_meas_mhe(e.PlantSample, noisy=False)  #: Override the predicted measurement (correct k)
@@ -199,8 +202,7 @@ def main():
         #: At this point computing and loading the Covariance is not going to affect the sens update of MHE
         e.prior_phase()
         #
-        e.print_r_mhe()
-        e.print_r_dyn()
+
         #
         e.preparation_phase_nmpc(as_strategy=True, make_prediction=False)
         # e.initialize_olnmpc(e.PlantSample, "estimated")
