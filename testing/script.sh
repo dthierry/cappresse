@@ -7,7 +7,7 @@ for ((i=$START_SESSION; i<$END_SESSION; i++))
         do
                 mkdir ./run$i
                 cd ./run$i
-                git clone https://github.com/dthierry/nmpc_mhe_q.git -b fe0_aspatch
+                git clone https://github.com/dthierry/nmpc_mhe_q.git -b fe0as_patch
                 cd ./nmpc_mhe_q/
                 virtualenv d$ROUND\_$i
                 source ./d$ROUND\_$i/bin/activate
@@ -26,13 +26,13 @@ for ((i=$START_SESSION; i<$END_SESSION; i++))
                 tmux send-keys -t d$ROUND\_$i "source ./d$ROUND\_$i/bin/activate" C-m
                 tmux send-keys -t d$ROUND\_$i "cd ./testing/" C-m
                 case "$i" in
-                    0) tmux send-keys -t d$ROUND\_$i "python full_asas.py && date" C-m
+                    0) tmux send-keys -t d$ROUND\_$i "python full_asas_v1.py && date" C-m
                     ;;
-                    1) tmux send-keys -t d$ROUND\_$i "python full_asas.py && date" C-m
+                    1) tmux send-keys -t d$ROUND\_$i "python full_asas_v1.py && date" C-m
                     ;;
-                    2) tmux send-keys -t d$ROUND\_$i "python full_asas.py && date" C-m
+                    2) tmux send-keys -t d$ROUND\_$i "python full_asas_v1.py && date" C-m
                     ;;
-                    3) tmux send-keys -t d$ROUND\_$i "python full_asas.py && date" C-m
+                    3) tmux send-keys -t d$ROUND\_$i "python full_asas_v1.py && date" C-m
                     ;;
                 esac
 #                if [ $i -eq 0 ]

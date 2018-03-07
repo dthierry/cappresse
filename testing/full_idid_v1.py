@@ -9,7 +9,7 @@ import itertools, sys
 """Testing the new preparation phases with ideal strategies"""
 
 def main():
-    u_weight = 1E-04
+    u_weight = 1E-06
     states = ["Hgc", "Nsc", "Hsc", "Hge", "Nse", "Hse"]
     x_noisy = ["Hgc", "Nsc", "Hsc", "Hge", "Nse", "Hse"]
     u = ["u1"]

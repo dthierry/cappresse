@@ -6,10 +6,11 @@ from nmpc_mhe.dync.MHEGenv2 import MheGen
 from sample_mods.bfb.nob5_hi_t import bfb_dae
 import itertools, sys
 
-"""Testing the new preparation phases with ideal strategies"""
+"""Testing the new preparation phases
+reduced control weight from its original value of 1E-04"""
 
 def main():
-    u_weight = 1E-04
+    u_weight = 1E-06
     states = ["Hgc", "Nsc", "Hsc", "Hge", "Nse", "Hse"]
     x_noisy = ["Hgc", "Nsc", "Hsc", "Hge", "Nse", "Hse"]
     u = ["u1"]
@@ -98,7 +99,6 @@ def main():
     e.set_covariance_u(u_cov)
     e.create_rh_sfx()  #: Reduced hessian computation
 
-
     e.init_lsmhe_prep(e.PlantSample)
     e.shift_mhe()
     e.init_step_mhe()
@@ -153,21 +153,41 @@ def main():
             e.noisy_plant_manager(action="remove")
             e.solve_dyn(e.PlantSample, stop_if_nopt=True, tag="plant", keepsolve=keepsolve,
                         wantparams=wantparams)  #: Try again (without noise)
-
         e.update_state_real()  # update the current state
         e.update_soi_sp_nmpc()
-        e.update_noise_meas(m_cov)  #: the noise it is not being added
+        #
+        e.update_noise_meas(m_cov) #: the noise it is not being added
+
+        # e.load_input_mhe("mod", src=e.PlantSample)  #: The inputs must coincide
         e.update_measurement()
         e.compute_y_offset()  #: Get the offset for y
 
+        #: !!!!
+        #: Do dot sens
+        #: !!!!
+        #: Note that any change in the model at this point is irrelevant for sens_update
+        if i > 1:
+            e.sens_dot_mhe()  #: Do sensitivity update for mhe
+        e.update_state_mhe(as_nmpc_mhe_strategy=True)  #: Get offset for x
+        if i > 1:
+            e.sens_dot_nmpc()
+        e.update_u(e.olnmpc)  #: Get the resulting input for k+1
 
-        e.preparation_phase_mhe(as_strategy=False)
+        e.print_r_mhe()
+        e.print_r_dyn()
 
+        e.preparation_phase_mhe(as_strategy=True)
+
+        # e.patch_meas_mhe(e.PlantSample, noisy=False)  #: Override the predicted measurement (correct k)
+        # e.shift_mhe()  #: Shift everything
+        # e.shift_measurement_input_mhe()
+        # e.patch_input_mhe("dict")  #: Get the input
+        # e.init_step_mhe(patch_pred_y=True)  # Initialize next time-slot and predict next y
+        #
         stat = e.solve_dyn(e.lsmhe,
                          skip_update=False, iter_max=500,
                          jacobian_regularization_value=1e-04,
                          max_cpu_time=600, tag="lsmhe", keepsolve=keepsolve, wantparams=wantparams)
-
         if stat == 1:  #: Try again
             e.lsmhe.write_nl(name="bad_mhe.nl")
             stat = e.solve_dyn(e.lsmhe,
@@ -178,14 +198,15 @@ def main():
                              linear_scaling_on_demand=True, tag="lsmhe")
             if stat != 0:
                 sys.exit()
+        e.sens_k_aug_mhe()  # sensitivity matrix for mhe
         e.update_state_mhe()  #: get the state from mhe
+
         #: At this point computing and loading the Covariance is not going to affect the sens update of MHE
         e.prior_phase()
         #
-        e.print_r_mhe()
-        e.print_r_dyn()
+
         #
-        e.preparation_phase_nmpc(as_strategy=False, make_prediction=False)
+        e.preparation_phase_nmpc(as_strategy=True, make_prediction=False)
         # e.initialize_olnmpc(e.PlantSample, "estimated")
         # e.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
         stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300,
@@ -199,8 +220,7 @@ def main():
             if stat != 0:
                 sys.exit()
 
-        e.update_u(e.olnmpc)  #: Get the resulting input for k+1
-
+        e.sens_k_aug_nmpc()  # sensitivity matrix for nmpc
         e.print_r_nmpc()
         #
         e.cycleSamPlant(plant_step=True)
