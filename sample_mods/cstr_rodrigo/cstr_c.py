@@ -10,19 +10,27 @@ from pyomo.core.kernel.numvalue import value
 from pyomo.core.base import Constraint, sqrt, exp, log
 
 
+def assert_num_vars_eq(model):
+    # type: (pyomo.core.base.ConcreteModel) -> AnyWithNone
+    pass
+    
+
 class cstr_rodrigo_dae(ConcreteModel):
     def __init__(self, nfe_t, ncp_t, **kwargs):
         self.nfe_t = nfe_t
         self.ncp_t = ncp_t
         self.scheme = kwargs.pop('scheme', 'LAGRANGE-RADAU')
         ConcreteModel.__init__(self)
-        steady = kwargs.pop('steady', False)
+        self.steady = kwargs.pop('steady', False)
         _t = kwargs.pop('_t', 1.0)
 
         ncstr = kwargs.pop('n_cstr', 1)
         self.ncstr = Set(initialize=[i for i in range(0, ncstr)])
 
-        self.t = ContinuousSet(bounds=(0, _t))
+        if self.steady:
+            self.t = Set(initialize=[1])
+        else:
+            self.t = ContinuousSet(bounds=(0, _t))
 
         self.Cainb = Param(default=1.0)
         self.Tinb = Param(default=1.0)
@@ -53,9 +61,18 @@ class cstr_rodrigo_dae(ConcreteModel):
         self.kdef = Constraint(self.t, self.ncstr)
 
         #: These guys have to be zero at the steady-state (steady).
-        self.Cadot = DerivativeVar(self.Ca)
-        self.Tdot = DerivativeVar(self.T)
-        self.Tjdot = DerivativeVar(self.Tj)
+        zero0 = dict.fromkeys(self.t * self.ncstr)
+        for key in zero0.keys():
+            zero0[key] = 0.0
+        if self.steady:
+            self.Cadot = zero0
+            self.Tdot = zero0
+            self.Tjdot = zero0
+        else:
+            self.Cadot = DerivativeVar(self.Ca)
+            self.Tdot = DerivativeVar(self.T)
+            self.Tjdot = DerivativeVar(self.Tj)
+
         #: These guys as well (steady).
         self.Ca_ic = Param(self.ncstr, default=1.9193793974995963E-02)
         self.T_ic = Param(self.ncstr, default=3.8400724261199036E+02)
@@ -66,46 +83,52 @@ class cstr_rodrigo_dae(ConcreteModel):
         self.ODE_Tj = Constraint(self.t, self.ncstr)
 
         #: No need of these guys at steady.
-        self.Ca_icc = Constraint(self.ncstr)
-        self.T_icc = Constraint(self.ncstr)
-        self.Tj_icc = Constraint(self.ncstr)
+        if self.steady:
+            self.Ca_icc = None
+            self.T_icc = None
+            self.Tj_icc = None
+        else:
+            self.Ca_icc = Constraint(self.ncstr)
+            self.T_icc = Constraint(self.ncstr)
+            self.Tj_icc = Constraint(self.ncstr)
 
         def _rule_k(m, i, n):
             if i == 0:
                 return Constraint.Skip
             else:
-                return self.k[i, n] == self.k0 * exp(-self.Er / self.T[i, n])
+                return m.k[i, n] == m.k0 * exp(-m.Er / m.T[i, n])
 
         def _rule_ca(m, i, n):
             if i == 0:
                 return Constraint.Skip
             else:
-                return self.Cadot[i, n] == (self.F[i] / self.V) * ((self.Cainb - self.Ca[i, n]) - 2 * self.k[i, n] * self.Ca[i, n] ** 2)
+                rule = m.Cadot[i, n] == (m.F[i] / m.V) * ((m.Cainb - m.Ca[i, n]) - 2 * m.k[i, n] * m.Ca[i, n] ** 2)
+                return rule
 
         def _rule_t(m, i, n):
             if i == 0:
                 return Constraint.Skip
             else:
-                return self.Tdot[i, n] == (self.F[i] / self.V) * ((self.Tinb - self.T[i, n]) +
-                                                         2.0 * self.dH / (self.rho * self.Cp) * self.k[i, n] * self.Ca[i, n] ** 2 -
-                                                         self.UA / (self.V * self.rho * self.Cp) * (self.T[i, n] - self.Tj[i, n]))
+                return m.Tdot[i, n] == (m.F[i] / m.V) * ((m.Tinb - m.T[i, n]) +
+                                                         2.0 * m.dH / (m.rho * m.Cp) * m.k[i, n] * m.Ca[i, n] ** 2 -
+                                                         m.UA / (m.V * m.rho * m.Cp) * (m.T[i, n] - m.Tj[i, n]))
 
         def _rule_tj(m, i, n):
             if i == 0:
                 return Constraint.Skip
             else:
-                return self.Tjdot[i, n] == \
-                       (self.Fw[i] / self.Vw) * (
-                                   (self.Tjinb - self.Tj[i, n]) + self.UA / (self.Vw * self.rhow * self.Cpw) * (self.T[i, n] - self.Tj[i, n]))
+                return m.Tjdot[i, n] == \
+                       (m.Fw[i] / m.Vw) * (
+                                   (m.Tjinb - m.Tj[i, n]) + m.UA / (m.Vw * m.rhow * m.Cpw) * (m.T[i, n] - m.Tj[i, n]))
 
         def _rule_ca0(m, n):
-            return self.Ca[0, n] == self.Ca_ic[n]
+            return m.Ca[0, n] == m.Ca_ic[n]
 
         def _rule_t0(m, n):
-            return self.T[0, n] == self.T_ic[n]
+            return m.T[0, n] == m.T_ic[n]
 
         def _rule_tj0(m, n):
-            return self.Tj[0, n] == self.Tj_ic[n]
+            return m.Tj[0, n] == m.Tj_ic[n]
 
         # let Ca0 := 1.9193793974995963E-02 ;
         # let T0  := 3.8400724261199036E+02 ;
@@ -115,10 +138,24 @@ class cstr_rodrigo_dae(ConcreteModel):
         self.ODE_ca.rule = lambda m, i, n: _rule_ca(m, i, n)
         self.ODE_T.rule = lambda m, i, n: _rule_t(m, i, n)
         self.ODE_Tj.rule = lambda m, i, n: _rule_tj(m, i, n)
-        self.Ca_icc.rule = lambda m, n: _rule_ca0(m, n)
-        self.T_icc.rule = lambda m, n: _rule_t0(m, n)
-        self.Tj_icc.rule = lambda m, n: _rule_tj0(m, n)
 
+        if self.steady:
+            pass
+        else:
+            self.Ca_icc.rule = lambda m, n: _rule_ca0(m, n)
+            self.T_icc.rule = lambda m, n: _rule_t0(m, n)
+            self.Tj_icc.rule = lambda m, n: _rule_tj0(m, n)
+            self.Ca_icc.reconstruct()
+            self.T_icc.reconstruct()
+            self.Tj_icc.reconstruct()
+
+        self.kdef.reconstruct()
+        self.ODE_ca.reconstruct()
+        self.ODE_T.reconstruct()
+        self.ODE_Tj.reconstruct()
+
+
+        # Declare at framework level
         self.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
         self.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
         self.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
@@ -137,13 +174,10 @@ class cstr_rodrigo_dae(ConcreteModel):
         pass
 
     def discretize(self):
-        self.discretizer.apply_to(self, nfe=self.nfe_t, ncp=self.ncp_t, scheme=self.scheme)
-
-
-def main():
-    mod = cstr_rodrigo_dae(2, 3)
-    print(type(mod))
-    mod.pprint()
+        if self.steady:
+            print("Already discretized")
+        else:
+            self.discretizer.apply_to(self, nfe=self.nfe_t, ncp=self.ncp_t, scheme=self.scheme)
 
 
 #
@@ -187,16 +221,11 @@ def fe_cp(time_set, t):
             fe = j
             break
         j += 1
-
     h = time_set.get_finite_elements()[1] - time_set.get_finite_elements()[0]
     tauh = [i * h for i in time_set.get_discretization_info()['tau_points']]
-    # print("tau", tauh)
-    # print("h", h)
-    # print(time_set.get_discretization_info())
-    j = 0 #: This bloody line, watch out for LEGENDRE
+    j = 0  #: Watch out for LEGENDRE
     cp = None
     for i in tauh:
-        # print(i + fe_l)
         if round(i + fe_l, 6) == t:
             cp = j
             break
@@ -204,5 +233,14 @@ def fe_cp(time_set, t):
     return (fe, cp)
 
 
+def main():
+    mod = cstr_rodrigo_dae(2, 3)
+    mod.discretize()
+    mod.pprint()
+    return mod
+
+
 if __name__ == '__main__':
-    main()
+    m = main()
+    ip = SolverFactory('ipopt')
+    ip.solve(m, tee=True)
