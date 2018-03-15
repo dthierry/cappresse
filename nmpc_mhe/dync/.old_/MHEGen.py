@@ -33,6 +33,7 @@ class MheGen(NmpcGen):
         self.deact_ics = kwargs.pop('del_ics', True)
         self.diag_Q_R = kwargs.pop('diag_QR', True)  #: By default use diagonal matrices for Q and R matrices
         self.u = kwargs.pop('u', [])
+        self.IgnoreProcessNoise = kwargs.pop('IgnoreProcessNoise', False)
 
 
         print("-" * 120)
@@ -40,10 +41,10 @@ class MheGen(NmpcGen):
         print("-" * 120)
         nstates = sum(len(self.x_vars[x]) for x in self.x_noisy)
 
-        self.journalizer("I", self._c_it, "MHE with ", str(nstates) + "states")
+        self.journalizer("I", self._c_it, "MHE with \t", str(nstates) + "states")
 
         self.lsmhe = self.d_mod(self.nfe_t, self.ncp_t, _t=self._t)
-        self.lsmhe.name = "lsmhe (Least-Squares MHE)"
+        self.lsmhe.name = "LSMHE (Least-Squares MHE)"
         self.lsmhe.create_bounds()
         #: create x_pi constraint
 
@@ -62,7 +63,8 @@ class MheGen(NmpcGen):
 
         self.lsmhe.xkNk_mhe = Set(initialize=[i for i in range(0, len(self.xkN_l))])  #: Create set of noisy_states
         self.lsmhe.x_0_mhe = Param(self.lsmhe.xkNk_mhe, initialize=0.0, mutable=True)  #: Prior-state
-        self.lsmhe.wk_mhe = Var(self.lsmhe.fe_t, self.lsmhe.xkNk_mhe, initialize=0.0)  #: Model disturbance
+        self.lsmhe.wk_mhe = Param(self.lsmhe.fe_t, self.lsmhe.xkNk_mhe, initialize=0.0) \
+            if self.IgnoreProcessNoise else Var(self.lsmhe.fe_t, self.lsmhe.xkNk_mhe, initialize=0.0)  #: Model disturbance
         self.lsmhe.PikN_mhe = Param(self.lsmhe.xkNk_mhe, self.lsmhe.xkNk_mhe,
                                 initialize=lambda m, i, ii: 1. if i == ii else 0.0, mutable=True)  #: Prior-Covariance
         self.lsmhe.Q_mhe = Param(range(1, self.nfe_t), self.lsmhe.xkNk_mhe, initialize=1, mutable=True) if self.diag_Q_R\
@@ -100,6 +102,8 @@ class MheGen(NmpcGen):
                              initialize=lambda mod, t, i, ii: 1.0 if i == ii else 0.0, mutable=True)
         f = open("file_cv.txt", "w")
         f.close()
+
+        #: Constraints for the input noise
         for u in self.u:
             # cv = getattr(self.lsmhe, u)  #: Get the param
             # c_val = [value(cv[i]) for i in cv.keys()]  #: Current value
@@ -137,9 +141,9 @@ class MheGen(NmpcGen):
             for i in self.states:
                 if i in self.x_noisy:
                     ic_con = getattr(self.lsmhe, i + "_icc")
-                    for k in ic_con.keys():
-                        if k[2:] in self.x_vars[i]:
-                            ic_con[k].deactivate()
+                    for k in self.x_vars[i]:
+                        ic_con[k].deactivate()
+
         #: Put the noise in the continuation equations (finite-element)
         j = 0
         self.lsmhe.noisy_cont = ConstraintList()
@@ -149,7 +153,6 @@ class MheGen(NmpcGen):
             # self.lsmhe.del_component(cp_con)
             for k in self.x_vars[i]:  #: This should keep the same order
                 for t in range(1, self.nfe_t):
-                    # pass
                     self.lsmhe.noisy_cont.add(cp_exp[t, k] == self.lsmhe.wk_mhe[t, j])
                     # self.lsmhe.noisy_cont.add(cp_exp[t, k] == 0.0)
                 j += 1
@@ -157,7 +160,7 @@ class MheGen(NmpcGen):
         self.lsmhe.noisy_cont.deactivate()
 
         #: Expressions for the objective function (least-squares)
-        self.lsmhe.Q_e_mhe = Expression(
+        self.lsmhe.Q_e_mhe = 0.0 if self.IgnoreProcessNoise else Expression(
             expr=0.5 * sum(
                 sum(
                     self.lsmhe.Q_mhe[i, k] * self.lsmhe.wk_mhe[i, k]**2 for k in self.lsmhe.xkNk_mhe)
@@ -181,21 +184,28 @@ class MheGen(NmpcGen):
                 expr_u_obf += self.lsmhe.U_mhe[i, u] * var_w[i] ** 2
 
         self.lsmhe.U_e_mhe = Expression(expr=0.5 * expr_u_obf)  # how about this
-        with open("file_cv.txt", "a") as f:
-            self.lsmhe.U_e_mhe.pprint(ostream=f)
-            f.close()
+        # with open("file_cv.txt", "a") as f:
+        #     self.lsmhe.U_e_mhe.pprint(ostream=f)
+        #     f.close()
 
         self.lsmhe.Arrival_e_mhe = Expression(
             expr=0.5 * sum((self.xkN_l[j] - self.lsmhe.x_0_mhe[j]) *
                      sum(self.lsmhe.PikN_mhe[j, k] * (self.xkN_l[k] - self.lsmhe.x_0_mhe[k]) for k in self.lsmhe.xkNk_mhe)
                      for j in self.lsmhe.xkNk_mhe))
 
+        self.lsmhe.Arrival_dummy_e_mhe = Expression(
+            expr=100000.0 * sum((self.xkN_l[j] - self.lsmhe.x_0_mhe[j]) ** 2 for j in self.lsmhe.xkNk_mhe))
 
         self.lsmhe.obfun_dum_mhe_deb = Objective(sense=minimize,
                                              expr=1.0)
         self.lsmhe.obfun_dum_mhe = Objective(sense=minimize,
-                                             expr=self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.U_e_mhe)
+                                             expr=self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.U_e_mhe) # no arrival
         self.lsmhe.obfun_dum_mhe.deactivate()
+
+        self.lsmhe.obfun_mhe_first = Objective(sense=minimize,
+                                         expr=self.lsmhe.Arrival_dummy_e_mhe)
+        self.lsmhe.obfun_mhe_first.deactivate()
+
 
         self.lsmhe.obfun_mhe = Objective(sense=minimize,
                                          expr=self.lsmhe.Arrival_e_mhe + self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.U_e_mhe)
@@ -252,11 +262,11 @@ class MheGen(NmpcGen):
                         print(i)
                         self.xreal_W[(i, fe)].append(value(xs[k]))
 
-    def init_lsmhe_prep(self, ref):
+    def init_lsmhe_prep(self, ref, update=True):
         """Initializes the lsmhe in preparation phase
         Args:
             ref (pyomo.core.base.PyomoModel.ConcreteModel): The reference model"""
-        self.journalizer("I", self._c_it, "initialize_lsmhe", "Attempting to initialize lsmhe")
+        self.journalizer("I", self._c_it, "initialize_lsmhe", "Preparation phase MHE")
         dum = self.d_mod(1, self.ncp_t, _t=self.hi_t)
         dum.name = "Dummy I"
         #: Load current solution
@@ -279,27 +289,48 @@ class MheGen(NmpcGen):
                         p[ks].value = value(vs[(1, self.ncp_t) + (ks,)])
             self.patch_meas_mhe(finite_elem, src=self.d1)
             #: Solve
-            self.solve_d(dum, o_tee=False)
+            self.solve_d(dum, o_tee=True)
             #: Patch
             self.load_d_d(dum, self.lsmhe, finite_elem)
             self.load_input_mhe("mod", src=dum, fe=finite_elem)
-        tst = self.solve_d(self.lsmhe, o_tee=False, skip_update=False)
+        # self.lsmhe.pprint(filename="mhe.txt")
+        self.d1.pprint(filename="d1.txt")
+        self.lsmhe.name = "Preparation MHE"   #: Pretty much simulation
+        tst = self.solve_d(self.lsmhe, o_tee=True, skip_update=False, max_cpu_time=600,
+                           jacobian_regularization_value=1e-06,
+                           jacobian_regularization_exponent=2.,
+                           halt_on_ampl_error=True,
+                           output_file="prep_mhe.txt",
+                           mu_strategy="adaptive")
+        # with open("cons_0.txt", "w") as f:
+        #     for con in self.lsmhe.component_objects(Constraint, active=True):
+        #         con.pprint(ostream=f)
+        #     for obj in self.lsmhe.component_objects(Objective, active=True):
+        #         obj.pprint(ostream=f)
+        #     f.close()
         if tst != 0:
+            self.lsmhe.write_nl(name="failed_mhe.nl")
             sys.exit()
-        for i in self.x_noisy:
-            cp_con = getattr(self.lsmhe, "cp_" + i)
-            cp_con.deactivate()
-        self.lsmhe.noisy_cont.activate()
+        self.lsmhe.name = "LSMHE (Least-Squares MHE)"
+        if update:
+              for i in self.x_noisy:  # only deactivate the relevant noisy-state continuity conditions
+                  cp_con = getattr(self.lsmhe, "cp_" + i)
+                  for ii in self.x_vars[i]:
+                      for t in range(1, self.nfe_t):
+                          cp_con[(t,) + ii].deactivate()
 
-        self.lsmhe.obfun_dum_mhe_deb.deactivate()
-        self.lsmhe.obfun_dum_mhe.activate()
+              self.lsmhe.noisy_cont.activate()  # activate new noisy-state continuity conditions
 
-        self.lsmhe.hyk_c_mhe.activate()
-        for u in self.u:
-            cc = getattr(self.lsmhe, u + "_c")  #: Get the constraint for input
-            con_w = getattr(self.lsmhe, "w_" + u + "c_mhe")  #: Get the constraint-noisy
-            cc.deactivate()
-            con_w.activate()
+              self.lsmhe.obfun_dum_mhe_deb.deactivate()
+
+              self.lsmhe.obfun_dum_mhe.activate()
+              # self.deact_icc_mhe()
+              self.lsmhe.hyk_c_mhe.activate()
+              for u in self.u:
+                  cc = getattr(self.lsmhe, u + "_c")  #: Get the constraint for input
+                  con_w = getattr(self.lsmhe, "w_" + u + "c_mhe")  #: Get the constraint-noisy
+                  cc.deactivate()
+                  con_w.activate()
 
         # if self.deact_ics:
         #     for i in self.states:
@@ -357,7 +388,10 @@ class MheGen(NmpcGen):
                 for k in self.x_vars[x]:
                     x1pvar_val = value(x_var[(i+1, 0), k])
                     x1var_val = value(x_var[(i, self.ncp_t), k])
-                    self.lsmhe.wk_mhe[i, j].set_value(x1pvar_val - x1var_val)
+                    if self.IgnoreProcessNoise:
+                        pass
+                    else:
+                        self.lsmhe.wk_mhe[i, j].set_value(x1pvar_val - x1var_val)
                     j += 1
 
     def set_covariance_meas(self, cov_dict):
@@ -493,6 +527,7 @@ class MheGen(NmpcGen):
                     else:
                         for j in range(1, self.ncp_t + 1):
                             vd[(1, j) + kj].set_value(value(vs[(i, j) + kj]))
+
         for u in self.u:  #: This should update the inputs
             usrc = getattr(src, u)
             utgt = getattr(tgt, u)
@@ -503,8 +538,17 @@ class MheGen(NmpcGen):
             vs = getattr(self.lsmhe, x)
             for ks in p.iterkeys():
                 p[ks].value = value(vs[(i, self.ncp_t) + (ks,)])
-        self.solve_d(tgt, o_tee=False, stop_if_nopt=True)
+
+        test = self.solve_d(tgt, o_tee=False, stop_if_nopt=False, max_cpu_time=300,
+                            jacobian_regularization_value=1e-04,
+                            jacobian_regularization_exponent=2.,
+                            halt_on_ampl_error=False,
+                            output_file="init_mhe.txt")
+        # if test != 0:
+        #     self.lsmhe.write_nl(name="failed_mhe.nl")
         self.load_d_d(tgt, self.lsmhe, self.nfe_t)
+
+
 
         if patch_pred_y:
             self.journalizer("I", self._c_it, "init_step_mhe", "Prediction for advanced-step.. Ready")
@@ -597,22 +641,23 @@ class MheGen(NmpcGen):
     def deact_icc_mhe(self):
         """Deactivates the icc constraints in the mhe problem"""
         if self.deact_ics:
-            for i in self.states:
+            for i in self.x_noisy:
                 try:
-                    icccon = getattr(self.lsmhe, i + "_icc")
-                    self.lsmhe.del_component(icccon)
+                    ic_con = getattr(self.lsmhe, i + "_icc")
+                    for k in self.x_vars[i]:
+                        ic_con[k].deactivate()
+                    # self.lsmhe.del_component(ic_con[k])
                 except AttributeError:
                     continue
 
 
         #: Maybe only for a subset of the states
         else:
-            for i in self.states:
-                if i in self.x_noisy:
-                    ic_con = getattr(self.lsmhe, i + "_icc")
-                    for k in ic_con.keys():
-                        if k[2:] in self.x_vars[i]:
-                            ic_con[k].deactivate()
+            for i in self.x_noisy:
+                # if i in self.x_noisy:
+                ic_con = getattr(self.lsmhe, i + "_icc")
+                for k in self.x_vars[i]:
+                        ic_con[k].deactivate()
 
     def regen_objective_fun(self):
         """Given the exclusion list, regenerate the expression for the arrival cost"""
@@ -621,7 +666,8 @@ class MheGen(NmpcGen):
                                                          (self.xkN_l[k] - self.lsmhe.x_0_mhe[k]) for k in
                                                          self.lsmhe.xkNk_mhe if self.xkN_nexcl[k])
                                                      for j in self.lsmhe.xkNk_mhe if self.xkN_nexcl[j]))
-        self.lsmhe.obfun_mhe.set_value(self.lsmhe.Arrival_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.R_e_mhe)
+        self.lsmhe.obfun_mhe.set_value(self.lsmhe.Arrival_e_mhe + self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.U_e_mhe)
+
         if self.lsmhe.obfun_dum_mhe.active:
             self.lsmhe.obfun_dum_mhe.deactivate()
         if not self.lsmhe.obfun_mhe.active:
@@ -975,7 +1021,6 @@ class MheGen(NmpcGen):
             xvar = getattr(self.lsmhe, x)
             for j in self.state_vars[x]:
                 self.curr_estate[(x, j)] = value(xvar[self.nfe_t, self.ncp_t, j])
-
 
 
     def method_for_mhe_simulation_step(self):

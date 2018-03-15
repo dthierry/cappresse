@@ -9,7 +9,8 @@ from pyomo.core.base import ConstraintList
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
 from pyomo.core.base import value
 import numpy as np
-import sys, time
+import sys, time, re
+from pyutilib.common._exceptions import ApplicationError
 
 __author__ = "David M Thierry @dthierry"
 
@@ -28,7 +29,7 @@ class DynGen(object):
         self.d_mod = kwargs.pop('d_mod', None)
 
         self.nfe_t = kwargs.pop('nfe_t', 5)
-        self.ncp_t = kwargs.pop('nfe_t', 3)
+        self.ncp_t = kwargs.pop('ncp_t', 3)
 
         self._t = kwargs.pop('_t', 100)
         self.states = kwargs.pop('states', [])
@@ -54,7 +55,7 @@ class DynGen(object):
         # self.k_aug.options["eig_rh"] = ""
         self.asl_ipopt.options["halt_on_ampl_error"] = "yes"
 
-        self.ipopt.options["print_user_options"] = "yes"
+        # self.ipopt.options["print_user_options"] = "yes"
         # self.k_aug.options["deb_kkt"] = ""
 
         self.ss.ofun = Objective(expr=1, sense=minimize)
@@ -117,9 +118,10 @@ class DynGen(object):
             f.write("max_iter 100\n")
             f.write("mu_init 1e-08\n")
             f.write("bound_push 1e-08\n")
+            f.write("print_info_string yes\n")
             f.close()
-        ip = SolverFactory("asl:ipopt")
-        ip.options["halt_on_ampl_error"] = "yes"
+        ip = SolverFactory("ipopt")
+        # ip.options["halt_on_ampl_error"] = "yes"
         ip.options["print_user_options"] = "yes"
         ip.options["linear_solver"] = "ma57"
         results = ip.solve(self.ss, tee=True, symbolic_solver_labels=True, report_timing=True)
@@ -202,7 +204,7 @@ class DynGen(object):
             int: 0 if success 1 otw"""
         d = mod
         mu_init = 0.1
-        iter_max = 100
+        iter_max = 3000
         max_cpu_time = 1e+06
         linear_solver = "ma57"
         ma57_pre_alloc = 1.05
@@ -243,18 +245,48 @@ class DynGen(object):
         tol = kwargs.pop("tol", None)
         mu_init = kwargs.pop("mu_init", None)
         out_file = kwargs.pop("output_file", None)
+        linear_scaling_on_demand = kwargs.pop("linear_scaling_on_demand", None)
+        mu_strategy = kwargs.pop("mu_strategy", None)
+        perturb_always_cd = kwargs.pop("perturb_always_cd", None)
+        mu_target = kwargs.pop("mu_target", None)
+        print_level = kwargs.pop("print_level", None)
+        print_user_options = kwargs.pop("print_user_options", True)
+
+
         if out_file:
             if type(out_file) != str:
                 self.journalizer("E", self._c_it, "solve_d", "incorrect_output")
                 print("output_file is not str", file=sys.stderr)
                 sys.exit()
         jacRegVal = kwargs.pop("jacobian_regularization_value", None)
+        jacRegExp = kwargs.pop("jacobian_regularization_exponent", None)
         if jacRegVal:
             if type(jacRegVal) != float:
                 self.journalizer("E", self._c_it, "solve_d", "incorrect_output")
                 print("jacobian_regularization_value is not float", file=sys.stderr)
 
                 sys.exit()
+        if jacRegExp:
+            if type(jacRegExp) != float:
+                self.journalizer("E", self._c_it, "solve_d", "incorrect_output")
+                print("jacobian_regularization_exponent is not float", file=sys.stderr)
+                sys.exit()
+        if mu_strategy:
+            if mu_strategy != "monotone" and mu_strategy != "adaptive":
+                self.journalizer("E", self._c_it, "solve_d", "incorrect_output(mu_strategy)")
+                print(mu_strategy)
+                sys.exit()
+        if mu_target:
+            if type(mu_target) != float:
+                self.journalizer("E", self._c_it, "solve_d", "incorrect_output")
+                print("mu_target is not float", file=sys.stderr)
+                sys.exit()
+        if print_level:
+            if type(print_level) != int:
+                self.journalizer("E", self._c_it, "solve_d", "incorrect_output")
+                print("print_level is not int", file=sys.stderr)
+                sys.exit()
+            
 
         name = mod.name
 
@@ -279,8 +311,25 @@ class DynGen(object):
                 f.write("mu_init\t" + str(mu_init) + "\n")
             if out_file:
                 f.write("output_file\t" + out_file + "\n")
+            if linear_scaling_on_demand:
+                f.write("linear_scaling_on_demand\tyes\n")
             if jacRegVal:
                 f.write("jacobian_regularization_value\t" + str(jacRegVal) + "\n")
+            if jacRegExp:
+                f.write("jacobian_regularization_exponent\t" + str(jacRegExp) + "\n")
+            if mu_strategy:
+                f.write("mu_strategy\t" + mu_strategy + "\n")
+            if perturb_always_cd:
+                f.write("perturb_always_cd\t" + "yes" + "\n")
+            if mu_target:
+                f.write("mu_target\t" + str(mu_target) + "\n")
+            if print_level:
+                f.write("print_level\t" + str(print_level) + "\n")
+            if print_user_options:
+                f.write("print_user_options\t" + "yes" + "\n")
+
+
+            # f.write("\ncheck_derivatives_for_naninf yes\n")
             f.close()
             if halt_on_ampl_error:
                 solver_ip = self.asl_ipopt
@@ -322,7 +371,7 @@ class DynGen(object):
                 if type(ks) != tuple:
                     ks = (ks,)
                 x_ic[ks].value = value(v_tgt[(1, self.ncp_t) + ks])
-                v_tgt[(1, self.ncp_t) + ks].set_value(value(v_tgt[(1, self.ncp_t) + ks]))
+                v_tgt[(1, 0) + ks].set_value(value(v_tgt[(1, self.ncp_t) + ks]))
         if plant_step:
             self._c_it += 1
 
@@ -416,9 +465,13 @@ class DynGen(object):
         print("-" * 120)
         if flag == 'W':
             print(flag + iter + "[[" + phase + "]]" + message + ".", file=sys.stderr)
+            # print to file warning
+        elif flag == 'E':
+            print(flag + iter + "[[" + phase + "]]" + message + ".", file=sys.stderr)
         else:
             print(flag + iter + "[[" + phase + "]]" + message + "." + "-" * 20)
-        print("-" * 120)
+            # print to file error
+        #print("-" * 120)
 
     # NMPC or just dyn?
     def cycle_ics_noisy(self, sigma_bar=0.0001):
@@ -471,7 +524,7 @@ class DynGen(object):
         self.plant_input_gen(self.d2, src_kind="dict")  #: Load the current control
         self.solve_d(self.d2, stop_if_nopt=True)
         self.journalizer("I", self._c_it, "predictor_step", "Predictor step - Success")
-
+        sinopt = False
     def plant_input_gen(self, d_mod, src_kind, nsteps=5, **kwargs):
         """Attempt to solve the dynamic model with some source model input
         Args:
@@ -487,6 +540,7 @@ class DynGen(object):
         target = {}
         current = {}
         ncont_steps = nsteps
+        sinopt = False
         if src_kind == "mod":
             src = kwargs.pop("src", None)
             if src:
@@ -517,14 +571,27 @@ class DynGen(object):
                 plant_var[1].value += (target[u]-current[u])/ncont_steps
                 print("Continuation :Current {:s}\t{:f}".format(u, value(plant_var[1])))
             if i == ncont_steps:
-                self.solve_d(d_mod, o_tee=False, stop_if_nopt=True)
+                sinopt = True
+                tstv = self.solve_d(d_mod, o_tee=True, stop_if_nopt=False, print_level=2, max_cpu_time=600, print_user_options=False)
             else:
-                tstv = self.solve_d(d_mod, o_tee=False, stop_if_nopt=False)
+                tstv = self.solve_d(d_mod, o_tee=True, stop_if_nopt=False, print_level=2, max_cpu_time=600, print_user_options=False)
                 if tstv != 0:
-                    for x in self.states:
-                        x_ic = getattr(self.d1, x + "_ic")
-                        for ks in x_ic.keys():
-                            print(ks, value(x_ic[ks]))
+                    try:
+                        self.solve_d(d_mod, o_tee=True,
+                                     max_cpu_time = 600,
+                                     halt_on_ampl_error = True,
+                                     mu_strategy = "adaptive",
+                                     perturb_always_cd = True,
+                                     tol = 1e-03,
+                                     ma57_automatic_scaling = "yes",
+                                     output_file = "failed_homotopy_d1.txt",
+                                     stop_if_nopt=sinopt)
+                    except ApplicationError:
+                        print("Ipopt FAIL", file=sys.stderr)
+                        self.d1.write_nl()
+                        self.d1.snap_shot(filename="baddie.py")
+                        self.d1.report_zL(filename="bad_bounds")
+                        sys.exit()
 
     def update_u(self, src, **kwargs):
         """Update the current control(input) vector
@@ -580,8 +647,9 @@ class DynGen(object):
                 xvar = getattr(dmod, x)
                 xsrc = getattr(ref, x)
                 for j in self.state_vars[x]:
-                    xic[j].value = value(xsrc[(fe, cp) + j])
-                    xvar[(1, 0) + j].set_value(value(xsrc[(fe, cp) + j]))
+                    val_src = value(xsrc[(fe, cp) + j])
+                    xic[j].value = val_src
+                    xvar[(1, 0) + j].set_value(val_src)
         else:
             state_dict = kwargs.pop("state_dict", None)
             if state_dict == "real":  #: Load from the real state dict
@@ -661,3 +729,215 @@ class DynGen(object):
             v_i = self.xp_key[vni]
             self.d1.w_pnoisy[v_i].setlb(-conf_level * cov_dict[vni])
             self.d1.w_pnoisy[v_i].setub(conf_level * cov_dict[vni])
+
+
+    def deb_alg_sys_dyn(self, ddt=False):
+        """Debugging the algebraic system"""
+        # Fix differential states
+        # Deactivate ODEs de_
+        # Deactivate FE cont cp_
+        # Deactivate IC _icc
+        # Deactivate coll dvar_t_
+
+        # Deactivate hyk
+        for i in self.states:
+            if ddt:
+                x = getattr(self.d1, "d" + i + "_dt")
+            else:
+                x = getattr(self.d1, i)
+            x.fix()
+            # cp_con = getattr(self.d1, "cp_" + i)
+            # cp_con.deactivate()
+            de_con = getattr(self.d1, "de_" + i)
+            de_con.deactivate()
+            icc_con = getattr(self.d1, i + "_icc")
+            icc_con.deactivate()
+            dvar_con = getattr(self.d1, "dvar_t_" + i)
+            dvar_con.deactivate()
+
+
+        # self.lsmhe.pprint(filename="algeb_mod.txt")
+
+    def GradientsTool(self):
+        self.journalizer("E", self._c_it, "GradientsTool", "Begin")
+        src = self.d1
+        src.dum_objfun = Objective(expr=1, sense=minimize)
+        self.d1.var_order = Suffix(direction=Suffix.EXPORT)
+        self.d1.con_order = Suffix(direction=Suffix.EXPORT)
+
+
+
+        src.pprint(filename="first.txt")
+        #: Fix/Deactivate irrelevant stuff
+        for var in src.component_objects(Var, active=True):
+            if not var.is_indexed():
+                var.fix()
+            for index in var.keys():
+                if type(index) != tuple:
+                    var.fix()
+                    continue
+                try:
+                    if index[1] == self.ncp_t:
+                        continue
+                    var[index].fix()
+                except IndexError:
+                    var.fix()
+                    print("Variable not indexed by time", var.name, file=sys.stderr)
+        for con in src.component_objects(Constraint, active=True):
+            if not con.is_indexed():
+                con.deactivate()
+            for index in con.keys():
+                if type(index) != tuple:
+                    con.deactivate()
+                    continue
+                try:
+                    if index[1] == self.ncp_t:
+                        continue
+                    con[index].deactivate()
+                except IndexError:
+                    con.deactivate()
+                    print("Constraint not indexed by time", con.name, file=sys.stderr)
+
+        for i in self.states:  #: deactivate collocation related equations
+            # con = getattr(src, "cp_" + i)  #: continuation
+            # con.deactivate()
+            con = getattr(src, "dvar_t_" + i)  #: derivative vars
+            con.deactivate()
+            con = getattr(src, i + "_icc")  #: initial-conditions
+            con.deactivate()
+            var = getattr(src, "d" + i + "_dt")
+            var.fix()
+            var = getattr(src, i)
+            var.fix()  #: left with the av
+            con = getattr(src, "de_" + i)  #: initial-conditions
+            con.deactivate()
+        # colcount = 0
+        # for i in src.component_data_objects(Var, active=True):
+        #     if i.is_fixed():
+        #         continue
+        #     print(i)
+        #     colcount += 1
+        #     i.set_suffix_value(src.var_order, colcount)
+        # print(colcount)
+
+
+        self.d1.write_nl(name="dgy.nl")
+        sfxdict = dict()
+        self.parse_rc("dgy.row", sfxdict)
+        colcount = 1
+        for ob in sfxdict.keys():
+            con = getattr(src, sfxdict[ob][0])
+            con[sfxdict[ob][1]].set_suffix_value(src.con_order, colcount)
+            colcount += 1
+
+        sfxdict = dict()
+        self.parse_rc("dgy.col", sfxdict)
+        colcount = 1
+        for ob in sfxdict.keys():
+            var = getattr(src, sfxdict[ob][0])
+            var[sfxdict[ob][1]].set_suffix_value(src.var_order, colcount)
+            colcount += 1
+        print("Colcount\t",str(colcount), file=sys.stderr)
+        src.write_nl(name="dgy.nl")
+        #: Now dgx
+        for var in src.component_objects(Var):
+            var.fix()  #: Fix everything
+        for i in self.states:
+            var = getattr(src, i)
+            for index in var.keys():
+                try:
+                    if index[1] == self.ncp_t:
+                        var[index].unfix()
+                except IndexError:
+                    print("Something whent wrong :(\t", var.name, file=sys.stderr)
+
+        self.d1.write_nl(name="dgx.nl")
+        
+        sfxdict = dict()
+        self.parse_rc("dgx.col", sfxdict)
+        colcount = 1
+        for ob in sfxdict.keys():
+            var = getattr(src, sfxdict[ob][0])
+            var[sfxdict[ob][1]].set_suffix_value(src.var_order, colcount)
+            colcount += 1
+        src.write_nl(name="dgx.nl")
+
+        #: Now dfy
+        for var in src.component_objects(Var):
+            var.unfix()
+        for var in src.component_objects(Var):
+            if not var.is_indexed():
+                var.fix()
+            for index in var.keys():
+                if type(index) != tuple:
+                    var.fix()
+                    continue
+                try:
+                    if index[1] == self.ncp_t:
+                        continue
+                    var[index].fix()
+                except IndexError:
+                    var.fix()
+                    print("Variable not indexed by time", var.name, file=sys.stderr)
+
+        for con in src.component_objects(Constraint):
+            con.deactivate()  #: deactivate everything
+
+        for i in self.states:  #: deactivate collocation related terms
+            var = getattr(src, "d" + i + "_dt")
+            var.fix()
+            var = getattr(src, i)
+            var.fix()  #: left with the av
+            con = getattr(src, "de_" + i)
+            for index in con.keys():
+                if index[1] == self.ncp_t:
+                    con[index].activate()
+        self.d1.reconstruct()
+        # self.d1.write_nl(name="dfy.nl")
+        
+        sfxdict = dict()
+        self.parse_rc("dgx.col", sfxdict)
+        colcount = 1
+        for ob in sfxdict.keys():
+            col = getattr(src, "de_" + sfxdict[ob][0])
+            col[sfxdict[ob][1]].set_suffix_value(src.con_order, colcount)
+            colcount += 1
+        src.write_nl(name="dfy.nl")
+
+        #: Now dfx
+        for var in src.component_objects(Var):
+            var.fix()  #: Fix everything
+
+        for i in self.states:
+            var = getattr(src, i)
+            for index in var.keys():
+                try:
+                    if index[1] == self.ncp_t:
+                        var[index].unfix()
+                except IndexError:
+                    print("Something whent wrong :(\t", var.name, file=sys.stderr)
+            # var.pprint()
+        self.d1.reconstruct()
+        src.pprint(filename="second.txt")
+        self.d1.write_nl(name="dfx.nl")
+
+
+    @staticmethod
+    def parse_rc(file, dsfx):
+
+        f = open(file, "r")
+        lines = f.readlines()
+        for l in lines:
+            i = re.split('\[|\]', l.strip())
+            index = list()
+            if len(i) < 2:
+                continue
+            for k in i[1].split(','):
+                try:
+                    k = int(k)
+                except ValueError:
+                    pass
+                index.append(k)
+            index = tuple(index)
+            dsfx[l] = [i[0], index]
+        f.close()
