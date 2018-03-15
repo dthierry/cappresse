@@ -2,12 +2,14 @@
 # -*- coding: utf-8 -*-
 from __future__ import division
 from __future__ import print_function
-from pyomo.core.base import ConcreteModel
 from pyomo.environ import *
+from pyomo.core.base import ConcreteModel
 from pyomo.dae import *
-from pyomo.opt import SolverFactory
+from pyomo.opt import SolverFactory, TerminationCondition
 from pyomo.core.kernel.numvalue import value
-from pyomo.core.base import Constraint, sqrt, exp, log
+from pyomo.core.base import Constraint, Set, Param, Var, Suffix
+from pyomo.core.kernel import sqrt, exp, log
+
 
 
 def assert_num_vars_eq(model):
@@ -17,24 +19,25 @@ def assert_num_vars_eq(model):
 
 class cstr_rodrigo_dae(ConcreteModel):
     def __init__(self, nfe_t, ncp_t, **kwargs):
-        self.nfe_t = nfe_t
+        #: type: (int, int, dict)
+        #: if steady == True fallback to steady-state computation
+        self.nfe_t = nfe_t  #:
         self.ncp_t = ncp_t
         self.scheme = kwargs.pop('scheme', 'LAGRANGE-RADAU')
-        ConcreteModel.__init__(self)
         self.steady = kwargs.pop('steady', False)
-        _t = kwargs.pop('_t', 1.0)
-
+        self._t = kwargs.pop('_t', 1.0)
         ncstr = kwargs.pop('n_cstr', 1)
+        ConcreteModel.__init__(self)
         self.ncstr = Set(initialize=[i for i in range(0, ncstr)])
 
         if self.steady:
             self.t = Set(initialize=[1])
         else:
-            self.t = ContinuousSet(bounds=(0, _t))
+            self.t = ContinuousSet(bounds=(0, self._t))
 
         self.Cainb = Param(default=1.0)
-        self.Tinb = Param(default=1.0)
-        self.Tjinb = Param(default=1.0)
+        self.Tinb = Param(default=275.0)
+        self.Tjinb = Param(default=250.0)
 
         self.V = Param(initialize=100)
         self.UA = Param(initialize=20000 * 60)
@@ -53,11 +56,11 @@ class cstr_rodrigo_dae(ConcreteModel):
         self.Fw = Param(self.t, mutable=True, default=3.0000000000000000E+01)
 
         # States
-        self.Ca = Var(self.t, self.ncstr, initialize=1.0)
-        self.T = Var(self.t, self.ncstr, initialize=1.0)
-        self.Tj = Var(self.t, self.ncstr, initialize=1.0)
+        self.Ca = Var(self.t, self.ncstr, initialize=1.60659680385930765667001907104350E-02)
+        self.T = Var(self.t, self.ncstr, initialize=3.92336059452774350120307644829154E+02)
+        self.Tj = Var(self.t, self.ncstr, initialize=3.77995395658401662331016268581152E+02)
 
-        self.k = Var(self.t, self.ncstr)
+        self.k = Var(self.t, self.ncstr, initialize=4.70706140E+02)
         self.kdef = Constraint(self.t, self.ncstr)
 
         #: These guys have to be zero at the steady-state (steady).
@@ -69,14 +72,17 @@ class cstr_rodrigo_dae(ConcreteModel):
             self.Tdot = zero0
             self.Tjdot = zero0
         else:
-            self.Cadot = DerivativeVar(self.Ca)
-            self.Tdot = DerivativeVar(self.T)
-            self.Tjdot = DerivativeVar(self.Tj)
-
+            self.Cadot = DerivativeVar(self.Ca, initialize=-3.58709135E+01)
+            self.Tdot = DerivativeVar(self.T, initialize=5.19191848E+03)
+            self.Tjdot = DerivativeVar(self.Tj, initialize=-9.70467399E+02)
         #: These guys as well (steady).
         self.Ca_ic = Param(self.ncstr, default=1.9193793974995963E-02)
         self.T_ic = Param(self.ncstr, default=3.8400724261199036E+02)
         self.Tj_ic = Param(self.ncstr, default=3.7127352272578315E+02)
+
+        # m.Ca_ic = Param(m.ncstr, default=1.9193793974995963E-02)
+        # m.T_ic = Param(m.ncstr, default=3.8400724261199036E+02)
+        # m.Tj_ic = Param(m.ncstr, default=3.7127352272578315E+02)
 
         self.ODE_ca = Constraint(self.t, self.ncstr)
         self.ODE_T = Constraint(self.t, self.ncstr)
@@ -102,24 +108,23 @@ class cstr_rodrigo_dae(ConcreteModel):
             if i == 0:
                 return Constraint.Skip
             else:
-                rule = m.Cadot[i, n] == (m.F[i] / m.V) * ((m.Cainb - m.Ca[i, n]) - 2 * m.k[i, n] * m.Ca[i, n] ** 2)
+                rule = m.Cadot[i, n] == (m.F[i] / m.V) * (m.Cainb - m.Ca[i, n]) - 2 * m.k[i, n] * m.Ca[i, n] ** 2
                 return rule
 
         def _rule_t(m, i, n):
             if i == 0:
                 return Constraint.Skip
             else:
-                return m.Tdot[i, n] == (m.F[i] / m.V) * ((m.Tinb - m.T[i, n]) +
-                                                         2.0 * m.dH / (m.rho * m.Cp) * m.k[i, n] * m.Ca[i, n] ** 2 -
-                                                         m.UA / (m.V * m.rho * m.Cp) * (m.T[i, n] - m.Tj[i, n]))
+                return m.Tdot[i, n] == (m.F[i] / m.V) * (m.Tinb - m.T[i, n]) + \
+                2.0 * m.dH / (m.rho * m.Cp) * m.k[i, n] * m.Ca[i, n] ** 2 -\
+                m.UA / (m.V * m.rho * m.Cp) * (m.T[i, n] - m.Tj[i, n])
 
         def _rule_tj(m, i, n):
             if i == 0:
                 return Constraint.Skip
             else:
                 return m.Tjdot[i, n] == \
-                       (m.Fw[i] / m.Vw) * (
-                                   (m.Tjinb - m.Tj[i, n]) + m.UA / (m.Vw * m.rhow * m.Cpw) * (m.T[i, n] - m.Tj[i, n]))
+                       (m.Fw[i] / m.Vw) * (m.Tjinb - m.Tj[i, n]) + m.UA / (m.Vw * m.rhow * m.Cpw) * (m.T[i, n] - m.Tj[i, n])
 
         def _rule_ca0(m, n):
             return m.Ca[0, n] == m.Ca_ic[n]
@@ -165,20 +170,26 @@ class cstr_rodrigo_dae(ConcreteModel):
         self.discretizer = TransformationFactory('dae.collocation')
 
     def create_bounds(self):
-        pass
+        for k in self.Ca.keys():
+            self.Ca[k].setlb(0.00E+00)
+        for k in self.T.keys():
+            self.T[k].setlb(2.0E+02)
+        for k in self.Tj.keys():
+            self.Tj[k].setlb(2.0E+02)
 
     def write_nl(self):
         pass
 
     def clear_bounds(self):
-        pass
+        for var in self.component_data_objects(Var):
+            var.setlb(None)
+            var.setub(None)
 
     def discretize(self):
         if self.steady:
             print("Already discretized")
         else:
             self.discretizer.apply_to(self, nfe=self.nfe_t, ncp=self.ncp_t, scheme=self.scheme)
-
 
 #
 # def activate_bounds():
@@ -234,13 +245,31 @@ def fe_cp(time_set, t):
 
 
 def main():
-    mod = cstr_rodrigo_dae(2, 3)
+    mod = cstr_rodrigo_dae(10, 3)
     mod.discretize()
-    mod.pprint()
     return mod
 
 
 if __name__ == '__main__':
     m = main()
     ip = SolverFactory('ipopt')
+    ip.options["OF_start_with_resto"] = "yes"
     ip.solve(m, tee=True)
+    # m.display()
+    m.create_bounds()
+    ip.options["OF_start_with_resto"] = "yes"
+    ip.solve(m, tee=True)
+    m.clear_bounds()
+    res = ip.solve(m, tee=True, keepfiles=True)
+    from sys import exit
+    exit()
+    #: Get the current solution file
+    if res.solver.termination_condition != TerminationCondition.optimal:
+        pass
+    else:
+        solfile = ip._soln_file
+        from shutil import copyfile
+        from os import getcwd
+        print(getcwd())
+        file = getcwd() + "/" + "cstr_rodri.sol"
+        copyfile(solfile, file)
