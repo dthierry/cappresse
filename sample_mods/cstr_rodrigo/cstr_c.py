@@ -76,9 +76,9 @@ class cstr_rodrigo_dae(ConcreteModel):
             self.Tdot = DerivativeVar(self.T, initialize=5.19191848E+03)
             self.Tjdot = DerivativeVar(self.Tj, initialize=-9.70467399E+02)
         #: These guys as well (steady).
-        self.Ca_ic = Param(self.ncstr, default=1.9193793974995963E-02)
-        self.T_ic = Param(self.ncstr, default=3.8400724261199036E+02)
-        self.Tj_ic = Param(self.ncstr, default=3.7127352272578315E+02)
+        self.Ca_ic = Param(self.ncstr, default=1.9193793974995963E-02, mutable=True)
+        self.T_ic = Param(self.ncstr, default=3.8400724261199036E+02, mutable=True)
+        self.Tj_ic = Param(self.ncstr, default=3.7127352272578315E+02, mutable=True)
 
         # m.Ca_ic = Param(m.ncstr, default=1.9193793974995963E-02)
         # m.T_ic = Param(m.ncstr, default=3.8400724261199036E+02)
@@ -161,11 +161,11 @@ class cstr_rodrigo_dae(ConcreteModel):
 
 
         # Declare at framework level
-        self.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
-        self.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
-        self.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
-        self.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
-        self.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+        # self.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+        # self.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+        # self.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+        # self.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+        # self.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
 
         self.discretizer = TransformationFactory('dae.collocation')
 
