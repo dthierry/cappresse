@@ -4,18 +4,18 @@ from __future__ import print_function
 from __future__ import division
 
 from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix, maximize
-from pyomo.core.base import ConstraintList, ConcreteModel
-from pyomo.core.kernel.numvalue import value
+from pyomo.core.base import ConstraintList, ConcreteModel, TransformationFactory
+from pyomo.core.kernel.numvalue import value as value
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition, ReaderFactory, ResultsFormat
 import numpy as np
 import sys, time, re, os
 from pyutilib.common._exceptions import ApplicationError
 import datetime
 from shutil import copyfile
-from typing import TypeVar
 from nmpc_mhe.aux.utils import t_ij
 
-__author__ = "David M Thierry @dthierry"
+__author__ = "David Thierry @dthierry" #: March 2018
+
 
 
 class LogfileError(RuntimeError):
@@ -49,7 +49,7 @@ class UnexpectedOption(RuntimeError):
 # PyomoConcrete = ConcreteModel
 
 
-def load_iguess_dyndyn(src, tgt, fe_src, fe_tgt):
+def load_iguess(src, tgt, fe_src, fe_tgt):
     # type: (ConcreteModel, ConcreteModel, int, int) -> None
     """Loads the current values of the src model into the tgt model, i.e. src-->tgt.
     This will assume that the time set is always at the beginning.
@@ -63,32 +63,85 @@ def load_iguess_dyndyn(src, tgt, fe_src, fe_tgt):
     Returns:
         None:
     """
+    uniform_mode = True
+    steady = False
+    if src.name == "unknown" or None:
+        pass
+    elif src.name == "SteadyRef":
+        #: If we use a steay-state model we have to change the strategy
+        print("Steady!")
+        fe_src = 1
+        steady = True
+    fe0_src = getattr(src, "nfe_t")
+    fe0_tgt = getattr(tgt, "nfe_t")
+    print("fetgt", fe0_tgt, fe_tgt)
+    if fe_src > fe0_src - 1:
+        if steady:
+            pass
+        else:
+            raise KeyError("Finite element beyond maximum: src")
+    if fe_tgt > fe0_tgt - 1:
+        raise KeyError("Finite element beyond maximum: tgt")
+
     cp_src = getattr(src, "ncp_t")
     cp_tgt = getattr(tgt, "ncp_t")
     #: Continuous time set
     tS_src = getattr(src, "t")
     tS_tgt = getattr(tgt, "t")
+    print(cp_tgt)
 
     if cp_src != cp_tgt:
         print("These variables do not have the same number of Collocation points (ncp_t)")
-        raise UnexpectedOption("These variables do not have the same number of Collocation points (ncp_t)")
-    cp = cp_src  #: THIS ALSO NEEDS TO BE CHANGED AS WELL
+        # raise UnexpectedOption("These variables do not have the same number of Collocation points (ncp_t)")
+        uniform_mode = False
 
-    for vs in src.component_objects(Var, active=True):
-        if tS_src not in vs._implicit_subsets:
-            continue
-        vd = getattr(tgt, vs.getname())
-        remaining_set = vs._implicit_subsets[1]
-        for j in range(2, len(vs._implicit_subsets)):
-            remaining_set *= vs._implicit_subsets[j]
-        for index in remaining_set:
-            for j in range(0, cp_src + 1):
-                t_src = t_ij(tS_src, fe_src, j)
-                t_tgt = t_ij(tS_tgt, fe_tgt, j)
+    if steady:
+        for vs in src.component_objects(Var, active=True):
+            if tS_src not in vs._implicit_subsets:
+                continue
+            vd = getattr(tgt, vs.getname())
+            vd.pprint()
+            remaining_set = vs._implicit_subsets[1]
+            for j in range(2, len(vs._implicit_subsets)):
+                remaining_set *= vs._implicit_subsets[j]
+            for index in remaining_set:
+                for j in range(0, cp_tgt + 1):
+                    # t_src = 1
+                    t_tgt = t_ij(tS_tgt, fe_tgt, j)
+                    print(t_tgt)
+                    index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
+                    vd[(t_tgt,) + index].set_value(value(vs[(1,) + index]))
+    elif uniform_mode:
+        for vs in src.component_objects(Var, active=True):
+            if tS_src not in vs._implicit_subsets:
+                continue
+            vd = getattr(tgt, vs.getname())
+            remaining_set = vs._implicit_subsets[1]
+            for j in range(2, len(vs._implicit_subsets)):
+                remaining_set *= vs._implicit_subsets[j]
+            for index in remaining_set:
+                for j in range(0, cp_src + 1):
+                    t_src = t_ij(tS_src, fe_src, j)
+                    t_tgt = t_ij(tS_tgt, fe_tgt, j)
 
-                index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
-                vd[(t_tgt,) + index].set_value(value(vs[(t_src,) + index]))
-                print(vd.getname(), t_tgt, value(vd[(t_tgt,) + index]))
+                    index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
+                    vd[(t_tgt,) + index].set_value(value(vs[(t_src,) + index]))
+                    print(vd.getname(), t_tgt, value(vd[(t_tgt,) + index]))
+    else:
+        for vs in src.component_objects(Var, active=True):
+            if tS_src not in vs._implicit_subsets:
+                continue
+            vd = getattr(tgt, vs.getname())
+            remaining_set = vs._implicit_subsets[1]
+            for j in range(2, len(vs._implicit_subsets)):
+                remaining_set *= vs._implicit_subsets[j]
+            for index in remaining_set:
+                for j in range(0, cp_tgt + 1):
+                    t_src = t_ij(tS_src, fe_src, cp_src)  #: only patch the last value
+                    t_tgt = t_ij(tS_tgt, fe_tgt, j)
+                    index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
+                    #: Better idea: interpolate
+                    vd[(t_tgt,) + index].set_value(value(vs[(t_src,) + index]))
 
 
 class DynGen_DAE(object):
@@ -127,11 +180,15 @@ class DynGen_DAE(object):
 
         # self.hi_t = self._t/self.nfe_t
 
+
         self.SteadyRef = self.d_mod(1, 1, steady=True)
         self.SteadyRef2 = object()
         self.PlantSample = self.d_mod(1, self.ncp_t, _t=self.hi_t)
-
         augment_model(self.PlantSample)  #: Augment suffixes for the model.
+        # self.PlantSample.discretize()
+
+        discretizer = TransformationFactory('dae.collocation')
+        discretizer.apply_to(self.PlantSample, nfe=1, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
 
         self.PlantPred = None
         self.SteadyRef.name = "SteadyRef"
@@ -269,14 +326,14 @@ class DynGen_DAE(object):
             for j in self.state_vars[x]:
                 self.curr_state_offset[(x, j)] = 0.0
                 self.curr_state_noise[(x, j)] = 0.0
-                self.curr_estate[(x, j)] = value(xvar[0, 1, j])
-                self.curr_rstate[(x, j)] = value(xvar[0, 1, j])
+                self.curr_estate[(x, j)] = value(xvar[1, j])  #: for SteadyRef the relevant time index starts at 1
+                self.curr_rstate[(x, j)] = value(xvar[1, j])
                 # print(self.curr_rstate[(x, j)])
-                self.curr_state_target[(x, j)] = value(xvar[0, 1, j])
+                self.curr_state_target[(x, j)] = value(xvar[1, j])
         for u in self.u:
             uvar = getattr(self.SteadyRef, u)
-            self.curr_u_target[u] = value(uvar[0])
-            self.curr_u[u] = value(uvar[0])
+            self.curr_u_target[u] = value(uvar[1])
+            self.curr_u[u] = value(uvar[1])
         with open("res_dyn_label_" + self.res_file_suf + ".txt", "w") as f:
             for x in self.states:
                 for j in self.state_vars[x]:
@@ -286,43 +343,6 @@ class DynGen_DAE(object):
                     f.write('\t')
             f.close()
         self.journalist("I", self._iteration_count, "solve_steady_ref", "labels at " + self.res_file_suf)
-
-    def load_d_s(self, dmod):
-        """Loads the solution of the steady state model into the dynamic
-        Args:
-            dmod (pyomo.core.base.PyomoModel.ConcreteModel): Target model
-        Return:
-            None"""
-        s = self.SteadyRef
-        d = dmod
-        # load values from steady-ref
-        for vs in s.component_objects(Var, active=True):
-            vd = getattr(d, vs.getname())
-            if vs.is_indexed():
-                if len(vs.keys()) > 1:
-                    for ks in vs.keys():
-                        kj = ks[2:]
-                        for j in range(1, self.ncp_t + 1):
-                            vd[(0, j) + kj].set_value(value(vs[ks]))
-                else:
-                    for ks in vs.keys():
-                        for kd in vd.keys():
-                            vd[kd].set_value(value(vs[ks]))
-        for x in self.states:
-            try:
-                dv = getattr(dmod, "d" + x + "_dt")
-            except AttributeError:  # delete this
-                continue
-            for i in dv.keys():
-                dv[i].set_value(0.0)
-        for i in self.states:
-            pn = i + "_ic"
-            p = getattr(d, pn)
-            vs = getattr(s, i)
-            vd0 = getattr(d, i)
-            for ks in p.keys():
-                p[ks].value = value(vs[(1,) + (ks,)])
-                vd0[(0,) + (ks,)].set_value(value(vs[(1,) + (ks,)]))
 
     def solve_dyn(self, mod, keepsolve=False, **kwargs):
         """Solves a given dynamic model
@@ -512,8 +532,8 @@ class DynGen_DAE(object):
             stop_if_nopt = 1
 
         if tag == "plant":  #: If this is the plant, don't load the solutions if there is a failure
-            print(results.solver.status)
-            print(results.solver.termination_condition)
+            # print(results.solver.status)
+            # print(results.solver.termination_condition)
             if results.solver.status != SolverStatus.ok or \
                     results.solver.termination_condition != TerminationCondition.optimal:
                 pass
@@ -597,20 +617,21 @@ class DynGen_DAE(object):
         self.dyn = self.d_mod(self.nfe_t, self.ncp_t, _t=self._t)
         self.dyn.name = "full_dyn"
         augment_model(self.dyn)
-        self.load_d_s(self.dyn)
-        self.dyn.discretize()
-        for i in self.dyn.component_data_objects(Var):
-            i.set_value(1.0)
+        # self.load_d_s(self.dyn)
+        load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
+        discretizer = TransformationFactory('dae.collocation')
+        discretizer.apply_to(self.dyn, nfe=self.nfe_t, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
+
         if initialize:
-            self.PlantSample.discretize()
-            self.dyn.display(filename="dyn0")
-            self.load_d_s(self.PlantSample)
+            # self.load_d_s(self.PlantSample)
+            load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
             for i in range(0, self.nfe_t):
-                self.solve_dyn(self.PlantSample, mu_init=1e-08, iter_max=10, o_tee=False)
+                self.solve_dyn(self.PlantSample, mu_init=1e-08, iter_max=10, o_tee=True)
                 self.cycleSamPlant()
-                load_iguess_dyndyn(self.PlantSample, self.dyn, 0, i)
+                print(i, "Current finite element")
+                print(self.dyn.nfe_t)
+                load_iguess(self.PlantSample, self.dyn, 0, i)
             print("I[[create_dyn]] Dynamic (full) model initialized.")
-            self.dyn.display(filename="dyn1")
 
     @staticmethod
     def journalist(flag, iter, phase, message):
@@ -635,41 +656,16 @@ class DynGen_DAE(object):
             print(flag + iter + "[[" + phase + "]]" + message + "." + "-" * 20)
         # print("-" * 120)
 
-    # NMPC or just dyn?
-    def cycleSamPlant_noisy(self, sigma_bar=0.0001):
-        """Patches the initial conditions with the last result from the simulation with noise.
-        Args:
-            sigma_bar (float): The variance.
-        Return
-            None"""
-        print("-" * 120)
-        print("I[[cycleSamPlant]] Cycling initial state -- NOISY.")
-        print("-" * 120)
-        s = np.random.normal(0, sigma_bar)
-        for x in self.states:
-            x_ic = getattr(self.PlantSample, x + "_ic")
-            v_tgt = getattr(self.PlantSample, x)
-            for ks in x_ic.keys():
-                if type(ks) != tuple:
-                    ks = (ks,)
-                x_ic[ks].value = value(v_tgt[(0, self.ncp_t) + ks])
-                sigma = value(v_tgt[(0, self.ncp_t) + ks]) * s
-
-                self.curr_state_noise[(x, ks)] = sigma
-                tst_val = value(v_tgt[(0, self.ncp_t) + ks]) + sigma
-                if tst_val < 0:
-                    print("error", tst_val, x, ks)
-                x_ic[ks].value = value(v_tgt[(0, self.ncp_t) + ks]) + sigma
-        self._iteration_count += 1
-
     def create_predictor(self):
         self.PlantPred = self.d_mod(1, self.ncp_t, _t=self.hi_t)
         self.PlantPred.name = "Dynamic Predictor"
+        discretizer = TransformationFactory('dae.collocation')
+        discretizer.apply_to(self.PlantPred, nfe=1, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
 
     def predictor_step(self, ref, state_dict, **kwargs):
         """Predicted-state computation by forward simulation.
         Args:
-            ref (pyomo.core.base.PyomoModel.ConcreteModel): Reference model (mostly for initialization)
+            ref (ConcreteModel): Reference model (mostly for initialization)
             state_dict (str): Source of state. For nmpc = real, mhe = estimated
 
         It always loads the input from the input dictionary"""
@@ -680,7 +676,7 @@ class DynGen_DAE(object):
         else:
             fe_src = "d"
         self.journalist("I", self._iteration_count, "predictor_step", "Predictor step")
-        load_iguess_dyndyn(ref, self.PlantPred, fe, fe_src=fe_src)  #: Load the initial guess
+        load_iguess(ref, self.PlantPred, fe, 0)  #: Load the initial guess
         self.load_init_state_gen(self.PlantPred, src_kind="dict", state_dict=state_dict)  #: Load the initial state
         self.plant_uinject(self.PlantPred, src_kind="dict")  #: Load the current control
         self.solve_dyn(self.PlantPred, stop_if_nopt=True)
@@ -696,7 +692,7 @@ class DynGen_DAE(object):
         Keyword Args:
             src (pyomo.core.base.PyomoModel.ConcreteModel): Source model
             src_fe (int): Finite element from the source model"""
-
+        from pyomo.core.kernel.numvalue import value
         self.journalist("I", self._iteration_count, "plant_input", "Continuation_plant, src_kind=" + src_kind)
         #: Inputs
         target = {}
@@ -802,8 +798,9 @@ class DynGen_DAE(object):
     def update_state_real(self):
         for x in self.states:
             xvar = getattr(self.PlantSample, x)
+            t = t_ij(self.PlantSample.t, 0, self.ncp_t)
             for j in self.state_vars[x]:
-                self.curr_rstate[(x, j)] = value(xvar[0, self.ncp_t, j])
+                self.curr_rstate[(x, j)] = value(xvar[t, j])
 
     def update_state_predicted(self, src="estimated"):
         """Make a prediction for the next state"""
@@ -813,7 +810,8 @@ class DynGen_DAE(object):
         else:
             print(self.PlantPred)
             self.create_predictor()
-            self.load_d_s(self.PlantPred)
+            # self.load_d_s(self.PlantPred)
+            load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
         # print(type(self.PlantPred))
         if src == "estimated":
             self.load_init_state_gen(self.PlantPred, src_kind="dict", state_dict="estimated")  #: Load the initial state
@@ -828,8 +826,9 @@ class DynGen_DAE(object):
                               linear_scaling_on_demand=True, tag="lsmhe")
         for x in self.states:
             xvar = getattr(self.PlantSample, x)
+            t = t_ij(self.PlantSample.t, 0, self.ncp_t)
             for j in self.state_vars[x]:
-                self.curr_pstate[(x, j)] = value(xvar[0, self.ncp_t, j])
+                self.curr_pstate[(x, j)] = value(xvar[t, j])
 
     def load_init_state_gen(self, dmod, src_kind="mod", **kwargs):
         """Loads ref state for a forward simulation.
@@ -865,7 +864,7 @@ class DynGen_DAE(object):
                 for j in self.state_vars[x]:
                     val_src = value(xsrc[(fe, cp) + j])
                     xic[j].value = val_src
-                    xvar[(0, 0) + j].set_value(val_src)
+                    xvar[(0,) + j].set_value(val_src)
         else:
             state_dict = kwargs.pop("state_dict", None)
             if state_dict == "real":  #: Load from the real state dict
@@ -874,270 +873,28 @@ class DynGen_DAE(object):
                     xvar = getattr(dmod, x)
                     for j in self.state_vars[x]:
                         xic[j].value = self.curr_rstate[(x, j)]
-                        xvar[(0, 0) + j].set_value(self.curr_rstate[(x, j)])
+                        xvar[(0,) + j].set_value(self.curr_rstate[(x, j)])
             elif state_dict == "estimated":  #: Load from the estimated state dict
                 for x in self.states:
                     xic = getattr(dmod, x + "_ic")
                     xvar = getattr(dmod, x)
                     for j in self.state_vars[x]:
                         xic[j].value = self.curr_estate[(x, j)]
-                        xvar[(0, 0) + j].set_value(self.curr_estate[(x, j)])
+                        xvar[(0,) + j].set_value(self.curr_estate[(x, j)])
             elif state_dict == "predicted":  #: Load from the estimated state dict
                 for x in self.states:
                     xic = getattr(dmod, x + "_ic")
                     xvar = getattr(dmod, x)
                     for j in self.state_vars[x]:
                         xic[j].value = self.curr_pstate[(x, j)]
-                        xvar[(0, 0) + j].set_value(self.curr_pstate[(x, j)])
+                        xvar[(0,) + j].set_value(self.curr_pstate[(x, j)])
             else:
                 self.journalist("W", self._iteration_count, "load_init_state_gen", "No dict w/state was specified")
                 self.journalist("W", self._iteration_count, "load_init_state_gen", "No update on state performed")
                 return
 
-    def make_noisy(self, cov_dict, conf_level=2):
-        """Contrived noise introduction for the plant"""
-        self.PlantSample.name = "Noisy plant (d1)"
-        k = 0
-        for x in self.states:
-            s = getattr(self.PlantSample, x)  #: state
-            xicc = getattr(self.PlantSample, x + "_icc")
-            xicc.deactivate()
-            for j in self.state_vars[x]:
-                self.xp_l.append(s[(0, 0) + j])
-                self.xp_key[(x, j)] = k
-                k += 1
-
-        self.PlantSample.xS_pnoisy = Set(
-            initialize=[i for i in range(0, len(self.xp_l))])  #: Create set of noisy_states
-        self.PlantSample.w_pnoisy = Var(self.PlantSample.xS_pnoisy, initialize=0.0)  #: Model disturbance
-        self.PlantSample.Q_pnoisy = Param(self.PlantSample.xS_pnoisy, initialize=1, mutable=True)
-        self.PlantSample.obj_fun_noisy = Objective(sense=maximize,
-                                                   expr=0.5 *
-                                                        sum(self.PlantSample.Q_pnoisy[k] * self.PlantSample.w_pnoisy[
-                                                            k] ** 2 for k in self.PlantSample.xS_pnoisy)
-                                                   )
-        self.PlantSample.ics_noisy = ConstraintList()
-
-        k = 0
-        for x in self.states:
-            s = getattr(self.PlantSample, x)  #: state
-            xic = getattr(self.PlantSample, x + "_ic")
-            for j in self.state_vars[x]:
-                expr = s[(0, 1) + j] == xic[j] + self.PlantSample.w_pnoisy[k]
-                self.PlantSample.ics_noisy.add(expr)
-                k += 1
-
-        for key in cov_dict:
-            vni = key
-            v_i = self.xp_key[vni]
-            self.PlantSample.Q_pnoisy[v_i].value = cov_dict[vni]
-            self.PlantSample.w_pnoisy[v_i].setlb(-conf_level * cov_dict[vni])
-            self.PlantSample.w_pnoisy[v_i].setub(conf_level * cov_dict[vni])
-
-        with open("debug.txt", "w") as f:
-            self.PlantSample.Q_pnoisy.display(ostream=f)
-            self.PlantSample.obj_fun_noisy.pprint(ostream=f)
-            self.PlantSample.ics_noisy.pprint(ostream=f)
-            self.PlantSample.w_pnoisy.display(ostream=f)
-
-    def randomize_noize(self, cov_dict):
-        conf_level = np.random.randint(1, high=4)
-        print("Confidence level", conf_level)
-        for key in cov_dict:
-            vni = key
-            v_i = self.xp_key[vni]
-            self.PlantSample.w_pnoisy[v_i].setlb(-conf_level * cov_dict[vni])
-            self.PlantSample.w_pnoisy[v_i].setub(conf_level * cov_dict[vni])
-
-    def deb_alg_sys_dyn(self, ddt=False):
-        """Debugging the algebraic system"""
-        # Fix differential states
-        # Deactivate ODEs de_
-        # Deactivate FE cont cp_
-        # Deactivate IC _icc
-        # Deactivate coll dvar_t_
-
-        # Deactivate hyk
-        for i in self.states:
-            if ddt:
-                x = getattr(self.PlantSample, "d" + i + "_dt")
-            else:
-                x = getattr(self.PlantSample, i)
-            x.fix()
-            # cp_con = getattr(self.PlantSample, "cp_" + i)
-            # cp_con.deactivate()
-            de_con = getattr(self.PlantSample, "de_" + i)
-            de_con.deactivate()
-            icc_con = getattr(self.PlantSample, i + "_icc")
-            icc_con.deactivate()
-            dvar_con = getattr(self.PlantSample, "dvar_t_" + i)
-            dvar_con.deactivate()
-
-        # self.lsmhe.pprint(filename="algeb_mod.txt")
-
-    def gradients_tool(self):
-        self.journalist("E", self._iteration_count, "GradientsTool", "Begin")
-        src = self.PlantSample
-        src.dum_objfun = Objective(expr=1, sense=minimize)
-        self.PlantSample.var_order = Suffix(direction=Suffix.EXPORT)
-        self.PlantSample.con_order = Suffix(direction=Suffix.EXPORT)
-
-        src.pprint(filename="first.txt")
-        #: Fix/Deactivate irrelevant stuff
-        for var in src.component_objects(Var, active=True):
-            if not var.is_indexed():
-                var.fix()
-            for index in var.keys():
-                if type(index) != tuple:
-                    var.fix()
-                    continue
-                try:
-                    if index[1] == self.ncp_t:
-                        continue
-                    var[index].fix()
-                except IndexError:
-                    var.fix()
-                    print("Variable not indexed by time", var.name, file=sys.stderr)
-        for con in src.component_objects(Constraint, active=True):
-            if not con.is_indexed():
-                con.deactivate()
-            for index in con.keys():
-                if type(index) != tuple:
-                    con.deactivate()
-                    continue
-                try:
-                    if index[1] == self.ncp_t:
-                        continue
-                    con[index].deactivate()
-                except IndexError:
-                    con.deactivate()
-                    print("Constraint not indexed by time", con.name, file=sys.stderr)
-
-        for i in self.states:  #: deactivate collocation related equations
-            # con = getattr(src, "cp_" + i)  #: continuation
-            # con.deactivate()
-            con = getattr(src, "dvar_t_" + i)  #: derivative vars
-            con.deactivate()
-            con = getattr(src, i + "_icc")  #: initial-conditions
-            con.deactivate()
-            var = getattr(src, "d" + i + "_dt")
-            var.fix()
-            var = getattr(src, i)
-            var.fix()  #: left with the av
-            con = getattr(src, "de_" + i)  #: initial-conditions
-            con.deactivate()
-        # colcount = 0
-        # for i in src.component_data_objects(Var, active=True):
-        #     if i.is_fixed():
-        #         continue
-        #     print(i)
-        #     colcount += 1
-        #     i.set_suffix_value(src.var_order, colcount)
-        # print(colcount)
-
-        self.PlantSample.write_nl(name="dgy.nl")
-        sfxdict = dict()
-        self.parse_rc("dgy.row", sfxdict)
-        colcount = 1
-        for ob in sfxdict.keys():
-            con = getattr(src, sfxdict[ob][0])
-            con[sfxdict[ob][1]].set_suffix_value(src.con_order, colcount)
-            colcount += 1
-
-        sfxdict = dict()
-        self.parse_rc("dgy.col", sfxdict)
-        colcount = 1
-        for ob in sfxdict.keys():
-            var = getattr(src, sfxdict[ob][0])
-            var[sfxdict[ob][1]].set_suffix_value(src.var_order, colcount)
-            colcount += 1
-        print("Colcount\t", str(colcount), file=sys.stderr)
-        src.write_nl(name="dgy.nl")
-        #: Now dgx
-        for var in src.component_objects(Var):
-            var.fix()  #: Fix everything
-        for i in self.states:
-            var = getattr(src, i)
-            for index in var.keys():
-                try:
-                    if index[1] == self.ncp_t:
-                        var[index].unfix()
-                except IndexError:
-                    print("Something whent wrong :(\t", var.name, file=sys.stderr)
-
-        self.PlantSample.write_nl(name="dgx.nl")
-
-        sfxdict = dict()
-        self.parse_rc("dgx.col", sfxdict)
-        colcount = 1
-        for ob in sfxdict.keys():
-            var = getattr(src, sfxdict[ob][0])
-            var[sfxdict[ob][1]].set_suffix_value(src.var_order, colcount)
-            colcount += 1
-        src.write_nl(name="dgx.nl")
-
-        #: Now dfy
-        for var in src.component_objects(Var):
-            var.unfix()
-        for var in src.component_objects(Var):
-            if not var.is_indexed():
-                var.fix()
-            for index in var.keys():
-                if type(index) != tuple:
-                    var.fix()
-                    continue
-                try:
-                    if index[1] == self.ncp_t:
-                        continue
-                    var[index].fix()
-                except IndexError:
-                    var.fix()
-                    print("Variable not indexed by time", var.name, file=sys.stderr)
-
-        for con in src.component_objects(Constraint):
-            con.deactivate()  #: deactivate everything
-
-        for i in self.states:  #: deactivate collocation related terms
-            var = getattr(src, "d" + i + "_dt")
-            var.fix()
-            var = getattr(src, i)
-            var.fix()  #: left with the av
-            con = getattr(src, "de_" + i)
-            for index in con.keys():
-                if index[1] == self.ncp_t:
-                    con[index].activate()
-        self.PlantSample.reconstruct()
-        # self.PlantSample.write_nl(name="dfy.nl")
-
-        sfxdict = dict()
-        self.parse_rc("dgx.col", sfxdict)
-        colcount = 1
-        for ob in sfxdict.keys():
-            col = getattr(src, "de_" + sfxdict[ob][0])
-            col[sfxdict[ob][1]].set_suffix_value(src.con_order, colcount)
-            colcount += 1
-        src.write_nl(name="dfy.nl")
-
-        #: Now dfx
-        for var in src.component_objects(Var):
-            var.fix()  #: Fix everything
-
-        for i in self.states:
-            var = getattr(src, i)
-            for index in var.keys():
-                try:
-                    if index[1] == self.ncp_t:
-                        var[index].unfix()
-                except IndexError:
-                    print("Something whent wrong :(\t", var.name, file=sys.stderr)
-            # var.pprint()
-        self.PlantSample.reconstruct()
-        src.pprint(filename="second.txt")
-        self.PlantSample.write_nl(name="dfx.nl")
-
     @staticmethod
     def parse_rc(file, dsfx):
-
         f = open(file, "r")
         lines = f.readlines()
         for l in lines:

@@ -2,9 +2,10 @@
 from __future__ import print_function
 from __future__ import division
 from pyomo.dae import ContinuousSet
-from pyomo.core.base import Suffix
-
-__author__ = "David M Thierry"  #: @march-2018
+from pyomo.core.base import Suffix, ConcreteModel
+from pyomo.opt import ProblemFormat
+from os import getcwd
+__author__ = "David Thierry @dthierry" #: March 2018
 
 
 def t_ij(time_set, i, j):
@@ -27,7 +28,13 @@ def t_ij(time_set, i, j):
 
 
 def fe_cp(time_set, t):
-    """Return the corresponding fe and cp for a given time"""
+    # type: (ContinuousSet, float) -> tuple
+    """Return the corresponding fe and cp for a given time
+
+    Args:
+        time_set:
+        t:
+    """
     fe_l = time_set.get_lower_element_boundary(t)
     print("fe_l", fe_l)
     fe = None
@@ -49,6 +56,28 @@ def fe_cp(time_set, t):
     return (fe, cp)
 
 
+def fe_compute(time_set, t):
+    # type: (ContinuousSet, float) -> int
+    """Return the corresponding fe given time
+    Args:
+        time_set:
+        t:
+    """
+    fe_l = time_set.get_lower_element_boundary(t)
+
+    fe = int()
+    j = 0
+    for i in time_set.get_finite_elements():
+        if fe_l == i:
+            fe = j
+            break
+        j += 1
+    if t > 0 and t in time_set.get_finite_elements():
+        fe += 1
+    return fe
+
+
+
 def augment_model(d_mod):
     """Attach Suffixes, and more to a base model"""
     d_mod.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
@@ -57,3 +86,20 @@ def augment_model(d_mod):
     d_mod.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
     d_mod.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
 
+
+def write_nl(d_mod, filename=None):
+    # type: (ConcreteModel, str) -> str
+    """
+    Write the nl file
+    Args:
+        d_mod (ConcreteModel): the model of interest
+
+    Returns:
+        object:
+    """
+    if not filename:
+        filename = d_mod.name + '.nl'
+    d_mod.write(filename, format=ProblemFormat.nl)
+    cwd = getcwd()
+    print("nl file {}".format(cwd + "/" + filename))
+    return cwd

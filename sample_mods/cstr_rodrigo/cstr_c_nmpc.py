@@ -8,9 +8,9 @@ from pyomo.dae import *
 from pyomo.opt import SolverFactory, TerminationCondition
 from pyomo.core.kernel.numvalue import value
 from pyomo.core.base import Constraint, Set, Param, Var, Suffix
-from pyomo.core.kernel import sqrt, exp, log
+from pyomo.core.kernel import exp
 
-
+__author__ = "David Thierry @dthierry" #: March 2018
 
 def assert_num_vars_eq(model):
     # type: (pyomo.core.base.ConcreteModel) -> AnyWithNone
@@ -20,6 +20,11 @@ def assert_num_vars_eq(model):
 class cstr_rodrigo_dae(ConcreteModel):
     def __init__(self, nfe_t, ncp_t, **kwargs):
         #: type: (int, int, dict)
+        """
+            CSTR from Rodrigo's thesis
+        Returns:
+            cstr_rodrigo_dae: The model itself. Without discretization.
+        """
         #: if steady == True fallback to steady-state computation
         self.nfe_t = nfe_t  #:
         self.ncp_t = ncp_t
@@ -38,7 +43,14 @@ class cstr_rodrigo_dae(ConcreteModel):
 
         self.Cainb = Param(default=1.0)
         self.Tinb = Param(default=275.0)
-        self.Tjinb = Param(default=250.0)
+        # self.Tjinb = Param(default=250.0)
+
+        #: Our control var
+        self.Tjinb = Var(self.t, initialize=250)
+        self.u1 = Param(self.t, default=250, mutable=True)  #: We are making a sort-of port
+        self.u1_cdummy = Constraint(self.t, rule=lambda m, i: m.Tjinb[i] == self.u1[i])
+        #: u1 will contain the information from the NMPC problem. This is what drives the plant.
+        #: how about smth like nmpc_u1 or u1_nmpc
 
         self.V = Param(initialize=100)
         self.UA = Param(initialize=20000 * 60)
@@ -125,7 +137,7 @@ class cstr_rodrigo_dae(ConcreteModel):
                 return Constraint.Skip
             else:
                 return m.Tjdot[i, n] == \
-                       (m.Fw[i] / m.Vw) * (m.Tjinb - m.Tj[i, n]) + m.UA / (m.Vw * m.rhow * m.Cpw) * (m.T[i, n] - m.Tj[i, n])
+                       (m.Fw[i] / m.Vw) * (m.Tjinb[i] - m.Tj[i, n]) + m.UA / (m.Vw * m.rhow * m.Cpw) * (m.T[i, n] - m.Tj[i, n])
 
         def _rule_ca0(m, n):
             return m.Ca[0, n] == m.Ca_ic[n]
@@ -160,15 +172,12 @@ class cstr_rodrigo_dae(ConcreteModel):
         self.ODE_T.reconstruct()
         self.ODE_Tj.reconstruct()
 
-
         # Declare at framework level
         # self.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
         # self.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
         # self.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
         # self.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
         # self.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
-
-        self.discretizer = TransformationFactory('dae.collocation')
 
     def create_bounds(self):
         for k in self.Ca.keys():
@@ -185,93 +194,3 @@ class cstr_rodrigo_dae(ConcreteModel):
         for var in self.component_data_objects(Var):
             var.setlb(None)
             var.setub(None)
-
-    def discretize(self):
-        if self.steady or self.discretized:
-            print("Already discretized")
-        else:
-            self.discretizer.apply_to(self, nfe=self.nfe_t, ncp=self.ncp_t, scheme=self.scheme)
-            self.discretized = True
-
-#
-# def activate_bounds():
-#   for k in self.Ca.keys():
-#         self.Ca[k].setlb(0.0)
-#   for k in self.T.keys():
-#         self.T[k].setlb(3.6E+02)
-#   for k in self.Tj.keys():
-#         self.Tj[k].setlb(3.5E+02)
-#   return
-#
-# def deactivate_bounds():
-#   for k in self.Ca.keys():
-#         self.Ca[k].setlb(None)
-#   for k in self.T.keys():
-#         self.T[k].setlb(None)
-#   for k in self.Tj.keys():
-#         self.Tj[k].setlb(None)
-#   return
-
-
-def t_ij(time_set, i, j):
-    """Return the corresponding time"""
-    # h = time_set.last()/time_set.get_discretization_info()['nfe']
-    h = time_set.get_finite_elements()[1] - time_set.get_finite_elements()[0]
-    tau = time_set.get_discretization_info()['tau_points']
-    fe = time_set.get_finite_elements()[i]
-    time = fe + tau[j] * h
-    return round(time, 6)
-
-
-def fe_cp(time_set, t):
-    """Return the corresponding fe and cp for a given time"""
-    fe_l = time_set.get_lower_element_boundary(t)
-    print("fe_l", fe_l)
-    fe = None
-    j = 0
-    for i in time_set.get_finite_elements():
-        if fe_l == i:
-            fe = j
-            break
-        j += 1
-    h = time_set.get_finite_elements()[1] - time_set.get_finite_elements()[0]
-    tauh = [i * h for i in time_set.get_discretization_info()['tau_points']]
-    j = 0  #: Watch out for LEGENDRE
-    cp = None
-    for i in tauh:
-        if round(i + fe_l, 6) == t:
-            cp = j
-            break
-        j += 1
-    return (fe, cp)
-
-
-def main():
-    mod = cstr_rodrigo_dae(10, 3)
-    mod.discretize()
-    return mod
-
-
-if __name__ == '__main__':
-    m = main()
-    ip = SolverFactory('ipopt')
-    ip.options["OF_start_with_resto"] = "yes"
-    ip.solve(m, tee=True)
-    # m.display()
-    m.create_bounds()
-    ip.options["OF_start_with_resto"] = "yes"
-    ip.solve(m, tee=True)
-    m.clear_bounds()
-    res = ip.solve(m, tee=True, keepfiles=True)
-    from sys import exit
-    exit()
-    #: Get the current solution file
-    if res.solver.termination_condition != TerminationCondition.optimal:
-        pass
-    else:
-        solfile = ip._soln_file
-        from shutil import copyfile
-        from os import getcwd
-        print(getcwd())
-        file = getcwd() + "/" + "cstr_rodri.sol"
-        copyfile(solfile, file)

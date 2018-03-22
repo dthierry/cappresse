@@ -2,21 +2,24 @@
 from __future__ import print_function
 from __future__ import division
 
-from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix
+from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix, TransformationFactory
 from pyomo.core.kernel.numvalue import value
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
-from nmpc_mhe.dync.DynGen_pyDAE import DynGen_DAE
+from nmpc_mhe.pyomo_dae.DynGen_pyDAE import DynGen_DAE
 import numpy as np
 import sys, os, time
 from six import iterkeys
-__author__ = "David M Thierry @dthierry"
+from nmpc_mhe.aux.utils import t_ij
+from nmpc_mhe.aux.utils import fe_compute
+
+__author__ = "David Thierry @dthierry" #: March 2018
 
 """This version does not necesarily have the same time horizon/discretization as the MHE"""
 
 
 class NmpcGen_DAE(DynGen_DAE):
     def __init__(self, d_mod, hi_t, states, controls, **kwargs):
-        DynGen.__init__(self, d_mod, hi_t, states, controls, **kwargs)
+        DynGen_DAE.__init__(self, d_mod, hi_t, states, controls, **kwargs)
         self.int_file_nmpc_suf = int(time.time())+1
 
         self.ref_state = kwargs.pop("ref_state", None)
@@ -48,6 +51,11 @@ class NmpcGen_DAE(DynGen_DAE):
         # self.res_file_name = "res_nmpc_" + str(int(time.time())) + ".txt"
 
     def create_nmpc(self, **kwargs):
+        """
+        Creates the nmpc model for the optimization.
+        Args:
+            **kwargs:
+        """
         kwargs.pop("newnfe", self.nfe_tnmpc)
         kwargs.pop("newncp", self.ncp_tnmpc)
         self.journalist('W', self._iteration_count, "Initializing NMPC",
@@ -56,22 +64,48 @@ class NmpcGen_DAE(DynGen_DAE):
         self.olnmpc = self.d_mod(self.nfe_tnmpc, self.ncp_tnmpc, _t=_tnmpc)
         self.olnmpc.name = "olnmpc (Open-Loop NMPC)"
         self.olnmpc.create_bounds()
+        discretizer = TransformationFactory('dae.collocation')
+        discretizer.apply_to(self.olnmpc, nfe=self.nfe_tnmpc, ncp=self.ncp_tnmpc, scheme="LAGRANGE-RADAU")
+        self.olnmpc.fe_t = Set(initialize=[i for i in range(0, self.nfe_tnmpc)])  #: Set for the NMPC stuff
+
+        tfe_dic = dict()
+        for t in self.olnmpc.t:
+            if t == max(self.olnmpc.t):
+                tfe_dic[t] = fe_compute(self.olnmpc.t, t-1)
+            else:
+                tfe_dic[t] = fe_compute(self.olnmpc.t, t)
 
         for u in self.u:
             cv = getattr(self.olnmpc, u)  #: Get the param
-            c_val = [value(cv[i]) for i in cv.keys()]  #: Current value
-            self.olnmpc.del_component(cv)  #: Delete the param
-            self.olnmpc.add_component(u, Var(self.olnmpc.fe_t, initialize=lambda m, i: c_val[i-1]))
-            self.olnmpc.equalize_u(direction="r_to_u")
-            cc = getattr(self.olnmpc, u + "_c")  #: Get the constraint
-            ce = getattr(self.olnmpc, u + "_e")  #: Get the expression
+            t_u = [t_ij(self.olnmpc.t, i, 0) for i in range(0, self.olnmpc.nfe_t)]
+            c_val = [value(cv[t_u[i]]) for i in self.olnmpc.fe_t]  #: Current value
+            # self.u1_cdummy = Constraint(self.t, rule=lambda m, i: m.Tjinb[i] == self.u1[i])
+            dumm_eq = getattr(self.olnmpc, u + '_cdummy')
+            dexpr = dumm_eq[0].expr._args[0]
+            control_var = getattr(self.olnmpc, dexpr.parent_component().name)
+            if isinstance(control_var, Var): #: all good
+                pass
+            else:
+                raise ValueError  #: Some exception here
+
+            self.olnmpc.del_component(cv)  #: Delete the dummy_param
+            self.olnmpc.del_component(dumm_eq)  #: Delete the dummy_constraint
+            self.olnmpc.add_component(u, Var(self.olnmpc.fe_t, initialize=lambda m, i: c_val[i]))
+
+            # self.olnmpc.equalize_u(direction="r_to_u")
+            # cc = getattr(self.olnmpc, u + "_cdummy")  #: Get the constraint
+            # ce = getattr(self.olnmpc, u + "_e")  #: Get the expression
+
             cv = getattr(self.olnmpc, u)  #: Get the new variable
             for k in cv.keys():
                 cv[k].setlb(self.u_bounds[u][0])
                 cv[k].setub(self.u_bounds[u][1])
-            cc.clear()
-            cc.rule = lambda m, i: cv[i] == ce[i]
-            cc.reconstruct()
+
+            self.olnmpc.add_component(u + '_cdummy', Constraint(self.olnmpc.t))
+            dumm_eq = getattr(self.olnmpc, u + '_cdummy')
+            dumm_eq.rule = lambda m, i: cv[tfe_dic[i]] == control_var[i]
+            dumm_eq.reconstruct()
+
         #: Dictionary of the states for a particular time point i
         self.xmpc_l = {}
         #: Dictionary of the position for a state in the dictionary
@@ -82,17 +116,19 @@ class NmpcGen_DAE(DynGen_DAE):
         k = 0
         for x in self.states:
             n_s = getattr(self.olnmpc, x)  #: State
+            t = t_ij(self.olnmpc.t, 0, self.ncp_t)
             for j in self.state_vars[x]:
-                self.xmpc_l[0].append(n_s[(0, self.ncp_tnmpc) + j])
+                self.xmpc_l[0].append(n_s[(t,) + j])
                 self.xmpc_key[(x, j)] = k
                 k += 1
         #: Iterate over the rest
         for t in range(1, self.nfe_tnmpc):
+            time = t_ij(self.olnmpc.t, t, self.ncp_tnmpc)
             self.xmpc_l[t] = []
             for x in self.states:
                 n_s = getattr(self.olnmpc, x)  #: State
                 for j in self.state_vars[x]:
-                    self.xmpc_l[t].append(n_s[(t, self.ncp_tnmpc) + j])
+                    self.xmpc_l[t].append(n_s[(time,) + j])
         #: A set with the length of flattened states
         self.olnmpc.xmpcS_nmpc = Set(initialize=[i for i in range(0, len(self.xmpc_l[0]))])
         #: Create set of noisy_states
