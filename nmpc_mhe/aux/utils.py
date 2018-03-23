@@ -4,7 +4,7 @@ from __future__ import division
 from pyomo.dae import ContinuousSet
 from pyomo.core.base import Suffix, ConcreteModel
 from pyomo.opt import ProblemFormat
-from os import getcwd
+from os import getcwd, remove
 __author__ = "David Thierry @dthierry" #: March 2018
 
 
@@ -103,3 +103,23 @@ def write_nl(d_mod, filename=None):
     cwd = getcwd()
     print("nl file {}".format(cwd + "/" + filename))
     return cwd
+
+
+def reconcile_nvars_mequations(d_mod):
+    # type: (ConcreteModel) -> tuple
+    fullpth = getcwd()
+    fullpth += "/_reconcilied.nl"
+    write_nl(d_mod, filename=fullpth)
+    with open(fullpth, 'r') as nl:
+        lines = nl.readlines()
+        line = lines[1]
+        newl = line.split()
+        nvar = int(newl[0])
+        meqn = int(newl[1])
+        print(newl)
+        nl.close()
+    remove(fullpth)
+    print(nvar, meqn)
+    return (nvar, meqn)
+
+

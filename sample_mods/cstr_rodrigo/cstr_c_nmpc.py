@@ -10,6 +10,7 @@ from pyomo.core.kernel.numvalue import value
 from pyomo.core.base import Constraint, Set, Param, Var, Suffix
 from pyomo.core.kernel import exp
 
+
 __author__ = "David Thierry @dthierry" #: March 2018
 
 def assert_num_vars_eq(model):

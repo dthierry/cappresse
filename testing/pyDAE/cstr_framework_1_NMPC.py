@@ -6,6 +6,7 @@ from __future__ import division
 from pyomo.environ import *
 from sample_mods.cstr_rodrigo.cstr_c_nmpc import cstr_rodrigo_dae
 from nmpc_mhe.pyomo_dae.NMPCGen_pyDAE import NmpcGen_DAE
+from nmpc_mhe.aux.utils import reconcile_nvars_mequations
 
 __author__ = "David Thierry @dthierry" #: March 2018
 
@@ -23,4 +24,5 @@ if __name__ == '__main__':
     e = main()
     e.get_state_vars()
     e.create_nmpc()
-    e.olnmpc.pprint()
+    # e.olnmpc.pprint()
+    reconcile_nvars_mequations(e.olnmpc)
