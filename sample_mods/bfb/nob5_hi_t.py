@@ -8,8 +8,8 @@ from pyomo.core.base import Param, ConcreteModel, Var, Constraint, Set, exp, sqr
 from pyomo.opt import ProblemFormat
 from nmpc_mhe.aux.cpoinsc import collptsgen
 from nmpc_mhe.aux.lagrange_f import lgr, lgry, lgrdot, lgrydot
-from nob5_con_hi_t import *
-from initial_s_Gb import ss
+from sample_mods.bfb.nob5_con_hi_t import *
+from sample_mods.bfb.initial_s_Gb import ss
 import os, sys
 
 """

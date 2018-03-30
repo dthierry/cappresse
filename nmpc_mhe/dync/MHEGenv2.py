@@ -14,7 +14,6 @@ import sys, os, time
 from pyutilib.common._exceptions import ApplicationError
 
 __author__ = "David M Thierry @dthierry"
-"""Not yet. Our people, they don't understand."""
 
 
 class MheGen(NmpcGen):
@@ -525,7 +524,7 @@ class MheGen(NmpcGen):
                 continue
             else:
                 kl = v.keys()
-                if len(kl[0]) < 2:
+                if len(v._implicit_subsets) < 2:
                     continue
                 for k in kl:
                     if k[0] < self.nfe_tmhe - 1:
@@ -583,11 +582,12 @@ class MheGen(NmpcGen):
             vd = getattr(tgt, vs.getname())
             # there are two cases: 1 key 1 elem, several keys 1 element
             vskeys = vs.keys()
-            if len(vskeys) == 1:
+            if (not vs._implicit_subsets) or len(vs._implicit_subsets) == 1:
                 #: One key
+                print(vs, type(vs), type(vd))
                 for ks in vskeys:
                     for v in vd.keys():
-                        v.set_value(value(vs[ks]))
+                        vd[v].set_value(value(vs[ks]))  #: this is definitely wrong
             else:
                 k = 0
                 for ks in vskeys:

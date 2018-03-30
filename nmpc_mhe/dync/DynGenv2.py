@@ -33,7 +33,7 @@ class DynSolWeAreDone(RuntimeError):
     def __init__(self, *args, **kwargs):
         pass
 
-class UnexpectecOption(RuntimeError):
+class UnexpectedOption(RuntimeError):
     """This is not a valid option"""
     def __init__(self, *args, **kwargs):
         pass
@@ -244,8 +244,10 @@ class DynGen(object):
         # load values from steady-ref
         for vs in s.component_objects(Var, active=True):
             vd = getattr(d, vs.getname())
+            if not vs._implicit_subsets:
+                continue
             if vs.is_indexed():
-                if len(vs.keys()) > 1:
+                if len(vs._implicit_subsets) > 1:
                     for ks in vs.keys():
                         kj = ks[2:]
                         for j in range(1, self.ncp_t + 1):
@@ -547,15 +549,17 @@ class DynGen(object):
         tgt_src = getattr(tgt, "cp_t")
         if len(cp_src.value) != len(tgt_src.value):
             print("These variables do not have the same number of cps")
-            raise UnexpectecOption("These variables do not have the same number of cps")
+            raise UnexpectedOption("These variables do not have the same number of cps")
         cp = max(cp_src)
         for vs in src.component_objects(Var, active=True):
             if vs.getname()[-7:] == "_pnoisy":
                 continue
+            if not vs._implicit_subsets:
+                continue
             vd = getattr(tgt, vs.getname())
             # there are two cases: 1 key 1 elem, several keys 1 element
             vskeys = vs.keys()  #: keys of the source model
-            if len(vskeys) == 1:
+            if len(vs._implicit_subsets) == 1:
                 #: One key
                 for ks in vskeys:
                     for v in vd.keys():
@@ -734,7 +738,7 @@ class DynGen(object):
                                  "Target {:f}, Current {:f}, n_steps {:d}".format(target[u], current[u],
                                                                                   ncont_steps))
         else:
-            raise UnexpectecOption("src_kind is not not valid")
+            raise UnexpectedOption("src_kind is not not valid")
 
         tn = sum(target[u] for u in self.u)**(1/len(self.u))
         cn = sum(current[u] for u in self.u)**(1/len(self.u))
