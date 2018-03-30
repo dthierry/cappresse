@@ -33,6 +33,11 @@ class DynSolWeAreDone(RuntimeError):
     def __init__(self, *args, **kwargs):
         pass
 
+class UnexpectedOption(RuntimeError):
+    """This is not a valid option"""
+    def __init__(self, *args, **kwargs):
+        pass
+
 class DynGen(object):
     """Default class for the Dynamic model"""
     def __init__(self, d_mod, hi_t, states, controls, **kwargs):
@@ -71,7 +76,7 @@ class DynGen(object):
         self.SteadyRef = self.d_mod(1, 1, steady=True)
         self.SteadyRef2 = object()
         self.PlantSample = self.d_mod(1, self.ncp_t, _t=self.hi_t)
-        self.PlantPred = object()
+        self.PlantPred = None
         self.SteadyRef.name = "SteadyRef"
         self.PlantSample.name = "PlantSample"
         if type(self.ipopt_executable) == str():
@@ -105,8 +110,8 @@ class DynGen(object):
 
         # self.ipopt.options["print_user_options"] = "yes"
         # self.k_aug.options["deb_kkt"] = ""
-
-        self.SteadyRef.ofun = Objective(expr=1, sense=minimize)
+        # self.SteadyRef.dum = Var(bounds=(0,100))
+        self.SteadyRef.ofun = Objective(expr=1.0, sense=minimize)
         self.dyn = object()
         self.l_state = []
         self.l_vals = []
@@ -130,12 +135,14 @@ class DynGen(object):
         for i in self.u:
             u = getattr(self.PlantSample, i)
             for t in range(0, self._window_keep):
-                self._u_plant[(i, t)] = value(u[1])
+                self._u_plant[(i, t)] = value(u[0])
         self.curr_u = dict.fromkeys(self.u, 0.0)
 
         self.state_vars = {}
         self.curr_estate = {}  #: Current estimated state (for the olnmpc)
         self.curr_rstate = {}  #: Current real state (for the olnmpc)
+
+        self.curr_meas = {}  #: Current measurement (for mhe)
 
 
         self.curr_state_offset = {}  #: Current offset of measurement
@@ -207,14 +214,14 @@ class DynGen(object):
             for j in self.state_vars[x]:
                 self.curr_state_offset[(x, j)] = 0.0
                 self.curr_state_noise[(x, j)] = 0.0
-                self.curr_estate[(x, j)] = value(xvar[1, 1, j])
-                self.curr_rstate[(x, j)] = value(xvar[1, 1, j])
+                self.curr_estate[(x, j)] = value(xvar[0, 1, j])
+                self.curr_rstate[(x, j)] = value(xvar[0, 1, j])
                 # print(self.curr_rstate[(x, j)])
-                self.curr_state_target[(x, j)] = value(xvar[1, 1, j])
+                self.curr_state_target[(x, j)] = value(xvar[0, 1, j])
         for u in self.u:
             uvar = getattr(self.SteadyRef, u)
-            self.curr_u_target[u] = value(uvar[1])
-            self.curr_u[u] = value(uvar[1])
+            self.curr_u_target[u] = value(uvar[0])
+            self.curr_u[u] = value(uvar[0])
         with open("res_dyn_label_" + self.res_file_suf + ".txt", "w") as f:
             for x in self.states:
                 for j in self.state_vars[x]:
@@ -234,16 +241,17 @@ class DynGen(object):
             None"""
         s = self.SteadyRef
         d = dmod
+        # load values from steady-ref
         for vs in s.component_objects(Var, active=True):
             vd = getattr(d, vs.getname())
+            if not vs._implicit_subsets:
+                continue
             if vs.is_indexed():
-                if len(vs.keys()) > 1:
-                    # print(vs.getname())
+                if len(vs._implicit_subsets) > 1:
                     for ks in vs.keys():
                         kj = ks[2:]
-                        # for i in range(1, self.nfe_t + 1):
                         for j in range(1, self.ncp_t + 1):
-                            vd[(1, j) + kj].set_value(value(vs[ks]))
+                            vd[(0, j) + kj].set_value(value(vs[ks]))
                 else:
                     for ks in vs.keys():
                         for kd in vd.keys():
@@ -253,16 +261,16 @@ class DynGen(object):
                 dv = getattr(dmod, "d" + x + "_dt")
             except AttributeError:  # delete this
                 continue
-            for i in dv.itervalues():
-                i.set_value(0.0)
+            for i in dv.keys():
+                dv[i].set_value(0.0)
         for i in self.states:
             pn = i + "_ic"
             p = getattr(d, pn)
             vs = getattr(s, i)
             vd0 = getattr(d, i)
             for ks in p.keys():
-                p[ks].value = value(vs[(1, 1)+(ks,)])
-                vd0[(1, 0)+(ks,)].set_value(value(vs[(1, 1)+(ks,)]))
+                p[ks].value = value(vs[(0, 1)+(ks,)])
+                vd0[(0, 0)+(ks,)].set_value(value(vs[(0, 1)+(ks,)]))
 
     def solve_dyn(self, mod, keepsolve=False, **kwargs):
         """Solves a given dynamic model
@@ -522,8 +530,8 @@ class DynGen(object):
             for ks in x_ic.keys():
                 if type(ks) != tuple:
                     ks = (ks,)
-                x_ic[ks].value = value(v_tgt[(1, self.ncp_t) + ks])
-                v_tgt[(1, 0) + ks].set_value(value(v_tgt[(1, self.ncp_t) + ks]))
+                x_ic[ks].value = value(v_tgt[(0, self.ncp_t) + ks])
+                v_tgt[(0, 0) + ks].set_value(value(v_tgt[(0, self.ncp_t) + ks]))
         if plant_step:
             self._iteration_count += 1
 
@@ -541,15 +549,17 @@ class DynGen(object):
         tgt_src = getattr(tgt, "cp_t")
         if len(cp_src.value) != len(tgt_src.value):
             print("These variables do not have the same number of cps")
-            sys.exit(-1)
+            raise UnexpectedOption("These variables do not have the same number of cps")
         cp = max(cp_src)
         for vs in src.component_objects(Var, active=True):
             if vs.getname()[-7:] == "_pnoisy":
                 continue
+            if not vs._implicit_subsets:
+                continue
             vd = getattr(tgt, vs.getname())
             # there are two cases: 1 key 1 elem, several keys 1 element
             vskeys = vs.keys()  #: keys of the source model
-            if len(vskeys) == 1:
+            if len(vs._implicit_subsets) == 1:
                 #: One key
                 for ks in vskeys:
                     for v in vd.keys():
@@ -585,13 +595,13 @@ class DynGen(object):
                         if vs.getname() in self.states:  #: States start at 0
                             for j in range(0, cp + 1):
                                 if ki == (fe, j):
-                                    vd[(1, j) + kj].set_value(value(vs[ks]))
+                                    vd[(0, j) + kj].set_value(value(vs[ks]))
                                 else:
                                     continue
                         else:
                             for j in range(1, cp + 1):
                                 if ki == (fe, j):
-                                    vd[(1, j) + kj].set_value(value(vs[ks]))
+                                    vd[(0, j) + kj].set_value(value(vs[ks]))
                                 else:
                                     continue
 
@@ -604,7 +614,7 @@ class DynGen(object):
         self.load_d_s(self.dyn)
         if initialize:
             self.load_d_s(self.PlantSample)
-            for i in range(1, self.nfe_t + 1):
+            for i in range(0, self.nfe_t):
                 self.solve_dyn(self.PlantSample, mu_init=1e-08, iter_max=10)
                 self.cycleSamPlant()
                 self.load_iguess_dyndyn(self.PlantSample, self.dyn, i)
@@ -650,14 +660,14 @@ class DynGen(object):
             for ks in x_ic.keys():
                 if type(ks) != tuple:
                     ks = (ks,)
-                x_ic[ks].value = value(v_tgt[(1, self.ncp_t) + ks])
-                sigma = value(v_tgt[(1, self.ncp_t) + ks]) * s
+                x_ic[ks].value = value(v_tgt[(0, self.ncp_t) + ks])
+                sigma = value(v_tgt[(0, self.ncp_t) + ks]) * s
 
                 self.curr_state_noise[(x, ks)] = sigma
-                tst_val = value(v_tgt[(1, self.ncp_t) + ks]) + sigma
+                tst_val = value(v_tgt[(0, self.ncp_t) + ks]) + sigma
                 if tst_val < 0:
                     print("error", tst_val, x, ks)
-                x_ic[ks].value = value(v_tgt[(1, self.ncp_t) + ks]) + sigma
+                x_ic[ks].value = value(v_tgt[(0, self.ncp_t) + ks]) + sigma
         self._iteration_count += 1
 
     def create_predictor(self):
@@ -673,8 +683,8 @@ class DynGen(object):
         It always loads the input from the input dictionary"""
 
 
-        fe = kwargs.pop("fe", 1)
-        if fe > 1:
+        fe = kwargs.pop("fe", 0)
+        if fe > 0:
             fe_src = "s"
         else:
             fe_src = "d"
@@ -706,12 +716,12 @@ class DynGen(object):
         if src_kind == "mod":
             src = kwargs.pop("src", None)
             if src:
-                src_fe = kwargs.pop("src_fe", 1)
+                src_fe = kwargs.pop("src_fe", 0)
                 for u in self.u:
                     src_var = getattr(src, u)
                     plant_var = getattr(d_mod, u)
                     target[u] = value(src_var[src_fe])
-                    current[u] = value(plant_var[1])
+                    current[u] = value(plant_var[0])
                     self.journalist("I", self._iteration_count,
                                      "plant_input",
                                      "Target {:f}, Current {:f}, n_steps {:d}".format(target[u], current[u],
@@ -722,13 +732,14 @@ class DynGen(object):
             for u in self.u:
                 plant_var = getattr(d_mod, u)
                 target[u] = self.curr_u[u]
-                current[u] = value(plant_var[1])
+                current[u] = value(plant_var[0])
                 self.journalist("I", self._iteration_count,
                                  "plant_input",
                                  "Target {:f}, Current {:f}, n_steps {:d}".format(target[u], current[u],
                                                                                   ncont_steps))
         else:
-            sys.exit(-1)
+            raise UnexpectedOption("src_kind is not not valid")
+
         tn = sum(target[u] for u in self.u)**(1/len(self.u))
         cn = sum(current[u] for u in self.u)**(1/len(self.u))
         pgap = abs((tn-cn)/cn)
@@ -741,9 +752,9 @@ class DynGen(object):
             for i in range(0, ncont_steps):
                 for u in self.u:
                     plant_var = getattr(d_mod, u)
-                    plant_var[1].value += (target[u]-current[u])/ncont_steps
+                    plant_var[0].value += (target[u]-current[u])/ncont_steps
                     pgap -= pgap/ncont_steps
-                    print("Continuation {:d} :Current {:s}\t{:f}\t :Gap /\% {:f}".format(i, u, value(plant_var[1]), pgap*100))
+                    print("Continuation {:d} :Current {:s}\t{:f}\t :Gap /\% {:f}".format(i, u, value(plant_var[0]), pgap*100))
                 if i == ncont_steps-1:
                     sinopt = False
                     tstv = self.solve_dyn(d_mod,
@@ -781,7 +792,7 @@ class DynGen(object):
                                        linear_scaling_on_demand=True)
         for u in self.u:
             plant_var = getattr(d_mod, u)
-            plant_var[1].value = target[u]  #: To be sure
+            plant_var[0].value = target[u]  #: To be sure
 
 
     def update_u(self, src, **kwargs):
@@ -793,7 +804,7 @@ class DynGen(object):
         Keyword Args:
             mod (pyomo.core.base.PyomoModel.ConcreteModel): The reference model (default d1)
             fe (int): The required finite element """
-        fe = kwargs.pop("fe", 1)
+        fe = kwargs.pop("fe", 0)
         for u in self.u:
             uvar = getattr(src, u)
             self.curr_u[u] = value(uvar[fe])
@@ -802,14 +813,34 @@ class DynGen(object):
         for x in self.states:
             xvar = getattr(self.PlantSample, x)
             for j in self.state_vars[x]:
-                self.curr_rstate[(x, j)] = value(xvar[1, self.ncp_t, j])
+                self.curr_rstate[(x, j)] = value(xvar[0, self.ncp_t, j])
 
-    def update_state_predicted(self):
-        """For the olnmpc"""
+    def update_state_predicted(self, src="estimated"):
+        """Make a prediction for the next state"""
+
+        if self.PlantPred:
+            print(self.PlantPred)
+        else:
+            print(self.PlantPred)
+            self.create_predictor()
+            self.load_d_s(self.PlantPred)
+        # print(type(self.PlantPred))
+        if src == "estimated":
+            self.load_init_state_gen(self.PlantPred, src_kind="dict", state_dict="estimated")  #: Load the initial state
+        else:
+            self.load_init_state_gen(self.PlantPred, src_kind="dict", state_dict="real")  #: Load the initial state
+
+        #: See if this works
+        stat = self.solve_dyn(self.PlantPred, skip_update=True,
+                           iter_max=250,
+                           stop_if_nopt=True,
+                           jacobian_regularization_value=1e-02,
+                           linear_scaling_on_demand=True, tag="lsmhe")
         for x in self.states:
-            xvar = getattr(self.PlantPred, x)
+            xvar = getattr(self.PlantSample, x)
             for j in self.state_vars[x]:
-                self.curr_pstate[(x, j)] = value(xvar[1, self.ncp_t, j])
+                self.curr_pstate[(x, j)] = value(xvar[0, self.ncp_t, j])
+
 
     def load_init_state_gen(self, dmod, src_kind="mod", **kwargs):
         """Loads ref state for a forward simulation.
@@ -845,7 +876,7 @@ class DynGen(object):
                 for j in self.state_vars[x]:
                     val_src = value(xsrc[(fe, cp) + j])
                     xic[j].value = val_src
-                    xvar[(1, 0) + j].set_value(val_src)
+                    xvar[(0, 0) + j].set_value(val_src)
         else:
             state_dict = kwargs.pop("state_dict", None)
             if state_dict == "real":  #: Load from the real state dict
@@ -854,21 +885,21 @@ class DynGen(object):
                     xvar = getattr(dmod, x)
                     for j in self.state_vars[x]:
                         xic[j].value = self.curr_rstate[(x, j)]
-                        xvar[(1, 0) + j].set_value(self.curr_rstate[(x, j)])
+                        xvar[(0, 0) + j].set_value(self.curr_rstate[(x, j)])
             elif state_dict == "estimated":  #: Load from the estimated state dict
                 for x in self.states:
                     xic = getattr(dmod, x + "_ic")
                     xvar = getattr(dmod, x)
                     for j in self.state_vars[x]:
                         xic[j].value = self.curr_estate[(x, j)]
-                        xvar[(1, 0) + j].set_value(self.curr_estate[(x, j)])
+                        xvar[(0, 0) + j].set_value(self.curr_estate[(x, j)])
             elif state_dict == "predicted":  #: Load from the estimated state dict
                 for x in self.states:
                     xic = getattr(dmod, x + "_ic")
                     xvar = getattr(dmod, x)
                     for j in self.state_vars[x]:
                         xic[j].value = self.curr_pstate[(x, j)]
-                        xvar[(1, 0) + j].set_value(self.curr_pstate[(x, j)])
+                        xvar[(0, 0) + j].set_value(self.curr_pstate[(x, j)])
             else:
                 self.journalist("W", self._iteration_count, "load_init_state_gen", "No dict w/state was specified")
                 self.journalist("W", self._iteration_count, "load_init_state_gen", "No update on state performed")
@@ -883,7 +914,7 @@ class DynGen(object):
             xicc = getattr(self.PlantSample, x + "_icc")
             xicc.deactivate()
             for j in self.state_vars[x]:
-                self.xp_l.append(s[(1, 0) + j])
+                self.xp_l.append(s[(0, 0) + j])
                 self.xp_key[(x, j)] = k
                 k += 1
 
@@ -901,7 +932,7 @@ class DynGen(object):
             s = getattr(self.PlantSample, x)  #: state
             xic = getattr(self.PlantSample, x + "_ic")
             for j in self.state_vars[x]:
-                expr = s[(1, 1) + j] == xic[j] + self.PlantSample.w_pnoisy[k]
+                expr = s[(0, 1) + j] == xic[j] + self.PlantSample.w_pnoisy[k]
                 self.PlantSample.ics_noisy.add(expr)
                 k += 1
 
@@ -961,8 +992,6 @@ class DynGen(object):
         src.dum_objfun = Objective(expr=1, sense=minimize)
         self.PlantSample.var_order = Suffix(direction=Suffix.EXPORT)
         self.PlantSample.con_order = Suffix(direction=Suffix.EXPORT)
-
-
 
         src.pprint(filename="first.txt")
         #: Fix/Deactivate irrelevant stuff
@@ -1140,7 +1169,7 @@ class DynGen(object):
         f.close()
 
     @staticmethod
-    def load_iguess_single(src, tgt, src_fe=1, tgt_fe=1):
+    def load_iguess_single(src, tgt, src_fe=0, tgt_fe=0):
         """Loads a set of values from a src model to a tgt model,
            the loading assumes a single value for all collocation points of a variable"""
         cp_src = getattr(src, "cp_t")

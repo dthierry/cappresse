@@ -41,8 +41,8 @@ class NmpcGen(DynGen):
         if not self.u_bounds:
             self.journalist('W', self._iteration_count, "Initializing NMPC", "No bounds dictionary has been specified")
 
-        self.soi_dict = {}  #: State-of-interest
-        self.sp_dict = {}  #: Set-point
+        self.soi_dict = {}  #: State-of-interest.
+        self.sp_dict = {}  #: Set-point.
         self.u_dict = dict.fromkeys(self.u, [])
 
         # self.res_file_name = "res_nmpc_" + str(int(time.time())) + ".txt"
@@ -72,55 +72,61 @@ class NmpcGen(DynGen):
             cc.clear()
             cc.rule = lambda m, i: cv[i] == ce[i]
             cc.reconstruct()
-
+        #: Dictionary of the states for a particular time point i
         self.xmpc_l = {}
-
+        #: Dictionary of the position for a state in the dictionary
         self.xmpc_key = {}
-
-        self.xmpc_l[1] = []
-
+        #:
+        self.xmpc_l[0] = []
+        #: First build the name dictionary
         k = 0
         for x in self.states:
             n_s = getattr(self.olnmpc, x)  #: State
             for j in self.state_vars[x]:
-                self.xmpc_l[1].append(n_s[(1, self.ncp_tnmpc) + j])
+                self.xmpc_l[0].append(n_s[(0, self.ncp_tnmpc) + j])
                 self.xmpc_key[(x, j)] = k
                 k += 1
-
-        for t in range(2, self.nfe_tnmpc + 1):
+        #: Iterate over the rest
+        for t in range(1, self.nfe_tnmpc):
             self.xmpc_l[t] = []
             for x in self.states:
                 n_s = getattr(self.olnmpc, x)  #: State
                 for j in self.state_vars[x]:
                     self.xmpc_l[t].append(n_s[(t, self.ncp_tnmpc) + j])
-
-        self.olnmpc.xmpcS_nmpc = Set(initialize=[i for i in range(0, len(self.xmpc_l[1]))])
+        #: A set with the length of flattened states
+        self.olnmpc.xmpcS_nmpc = Set(initialize=[i for i in range(0, len(self.xmpc_l[0]))])
         #: Create set of noisy_states
-        self.olnmpc.xmpc_ref_nmpc = Param(self.olnmpc.xmpcS_nmpc, initialize=0.0, mutable=True)
+        self.olnmpc.xmpc_ref_nmpc = Param(self.olnmpc.xmpcS_nmpc, initialize=0.0, mutable=True)  #: Ref-state
         self.olnmpc.Q_nmpc = Param(self.olnmpc.xmpcS_nmpc, initialize=1, mutable=True)  #: Control-weight
-        # (diagonal Matrix)
+        # (diagonal Matrices)
+
         self.olnmpc.Q_w_nmpc = Param(self.olnmpc.fe_t, initialize=1e-04, mutable=True)
         self.olnmpc.R_w_nmpc = Param(self.olnmpc.fe_t, initialize=1e+02, mutable=True)
-
+        #: Build the xT*Q*x part
         self.olnmpc.xQ_expr_nmpc = Expression(expr=sum(
             sum(self.olnmpc.Q_w_nmpc[fe] *
-                self.olnmpc.Q_nmpc[k] * (self.xmpc_l[fe][k] - self.olnmpc.xmpc_ref_nmpc[k])**2 for k in self.olnmpc.xmpcS_nmpc)
-                for fe in range(1, self.nfe_tnmpc + 1)))
+                self.olnmpc.Q_nmpc[k] * (self.xmpc_l[fe][k] - self.olnmpc.xmpc_ref_nmpc[k])**2
+                for k in self.olnmpc.xmpcS_nmpc)
+                for fe in range(0, self.nfe_tnmpc)))
+
+        #: Build the control list
         self.umpc_l = {}
-        for t in range(1, self.nfe_tnmpc + 1):
+        for t in range(0, self.nfe_tnmpc):
             self.umpc_l[t] = []
             for u in self.u:
                 uvar = getattr(self.olnmpc, u)
                 self.umpc_l[t].append(uvar[t])
-
-        self.olnmpc.umpcS_nmpc = Set(initialize=[i for i in range(0, len(self.umpc_l[1]))])
+        #: Create set of u
+        self.olnmpc.umpcS_nmpc = Set(initialize=[i for i in range(0, len(self.umpc_l[0]))])
+        #: ref u
         self.olnmpc.umpc_ref_nmpc = Param(self.olnmpc.umpcS_nmpc, initialize=0.0, mutable=True)
         self.olnmpc.R_nmpc = Param(self.olnmpc.umpcS_nmpc, initialize=1, mutable=True)  #: Control-weight
+        #: Build the uT * R * u expression
         self.olnmpc.xR_expr_nmpc = Expression(expr=sum(
             sum(self.olnmpc.R_w_nmpc[fe] *
                 self.olnmpc.R_nmpc[k] * (self.umpc_l[fe][k] - self.olnmpc.umpc_ref_nmpc[k]) ** 2 for k in
                 self.olnmpc.umpcS_nmpc)
-            for fe in range(1, self.nfe_tnmpc + 1)))
+            for fe in range(0, self.nfe_tnmpc)))
         self.olnmpc.objfun_nmpc = Objective(expr=self.olnmpc.xQ_expr_nmpc + self.olnmpc.xR_expr_nmpc)
 
     def initialize_olnmpc(self, ref, src_kind, **kwargs):
@@ -134,7 +140,7 @@ class NmpcGen(DynGen):
             src_kind (str): the kind of source
         Returns:
             """
-        fe = kwargs.pop("fe", 1)
+        fe = kwargs.pop("fe", 0)
         self.journalist("I", self._iteration_count, "initialize_olnmpc", "Attempting to initialize olnmpc")
         self.journalist("I", self._iteration_count, "initialize_olnmpc", "src_kind=" + src_kind)
         # self.load_init_state_nmpc(src_kind="mod", ref=ref, fe=1, cp=self.ncp_t)
@@ -151,7 +157,7 @@ class NmpcGen(DynGen):
         dum = self.d_mod(1, self.ncp_tnmpc, _t=self.hi_t)
         dum.create_bounds()
         #: Load current solution
-        self.load_iguess_single(ref, dum, src_fe=1, tgt_fe=1)
+        self.load_iguess_single(ref, dum, src_fe=0, tgt_fe=0)
         # self.load_iguess_dyndyn(ref, dum, fe, fe_src="s")  #: This is supossed to work
         for u in self.u:  #: Initialize controls dummy model
             cv_dum = getattr(dum, u)
@@ -160,9 +166,9 @@ class NmpcGen(DynGen):
                 cv_dum[i].value = value(cv_ref[fe])
         #: Patching of finite elements
         k_notopt = 0
-        for finite_elem in range(1, self.nfe_tnmpc + 1):
+        for finite_elem in range(0, self.nfe_tnmpc):
             dum.name = "Dummy I " + str(finite_elem)
-            if finite_elem == 1:
+            if finite_elem == 0:
                 if src_kind == "predicted":
                     self.load_init_state_gen(dum, src_kind="dict", state_dict="predicted")
                 elif src_kind == "estimated":
@@ -173,7 +179,7 @@ class NmpcGen(DynGen):
                     self.journalist("E", self._iteration_count, "initialize_olnmpc", "SRC not given")
                     sys.exit()
             else:
-                self.load_init_state_gen(dum, src_kind="mod", ref=dum, fe=1)
+                self.load_init_state_gen(dum, src_kind="mod", ref=dum, fe=0)
 
             tst = self.solve_dyn(dum,
                                o_tee=False,
@@ -206,8 +212,27 @@ class NmpcGen(DynGen):
                 cv_nmpc = getattr(self.olnmpc, u)  #: set controls for open-loop nmpc
                 cv_dum = getattr(dum, u)
                 # works only for fe_t index
-                cv_nmpc[finite_elem].set_value(value(cv_dum[1]))
+                cv_nmpc[finite_elem].set_value(value(cv_dum[0]))
         self.journalist("I", self._iteration_count, "initialize_olnmpc", "Done, k_notopt " + str(k_notopt))
+
+    def preparation_phase_nmpc(self, as_strategy=False, make_prediction=False, plant_state=False):
+        """By default we assume mhe is providing the state"""
+        if plant_state:
+            #: use the plant state instead
+            #: Not yet implemented
+            return None
+        if as_strategy:
+            if make_prediction:
+                self.update_state_predicted(src="estimated")
+                self.initialize_olnmpc(self.PlantPred, "predicted")
+                self.load_init_state_nmpc(src_kind="state_dict", state_dict="predicted")
+            else:
+                self.initialize_olnmpc(self.PlantSample, "estimated")
+                self.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
+        else:
+            #: Similar to as_strategy w/o prediction just to prevent ambiguity
+            self.initialize_olnmpc(self.PlantSample, "estimated")
+            self.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
 
     def load_init_state_nmpc(self, src_kind, **kwargs):
         """Loads ref state for set-point
@@ -238,7 +263,7 @@ class NmpcGen(DynGen):
                 xsrc = getattr(ref, x)
                 for j in self.state_vars[x]:
                     xic[j].value = value(xsrc[(fe, cp) + j])
-                    xvar[(1, 0) + j].set_value(value(xsrc[(fe, cp) + j]))
+                    xvar[(0, 0) + j].set_value(value(xsrc[(fe, cp) + j]))
         else:
             state_dict = kwargs.pop("state_dict", None)
             if state_dict == "real":  #: Load from the real state dict
@@ -247,21 +272,24 @@ class NmpcGen(DynGen):
                     xvar = getattr(self.olnmpc, x)
                     for j in self.state_vars[x]:
                         xic[j].value = self.curr_rstate[(x, j)]
-                        xvar[(1, 0) + j].set_value(self.curr_rstate[(x, j)])
+                        xvar[(0, 0) + j].set_value(self.curr_rstate[(x, j)])
             elif state_dict == "estimated":  #: Load from the estimated state dict
                 for x in self.states:
                     xic = getattr(self.olnmpc, x + "_ic")
                     xvar = getattr(self.olnmpc, x)
                     for j in self.state_vars[x]:
                         xic[j].value = self.curr_estate[(x, j)]
-                        xvar[(1, 0) + j].set_value(self.curr_estate[(x, j)])
+                        xvar[(0, 0) + j].set_value(self.curr_estate[(x, j)])
             elif state_dict == "predicted":  #: Load from the estimated state dict
                 for x in self.states:
                     xic = getattr(self.olnmpc, x + "_ic")
                     xvar = getattr(self.olnmpc, x)
                     for j in self.state_vars[x]:
-                        xic[j].value = self.curr_pstate[(x, j)]
-                        xvar[(1, 0) + j].set_value(self.curr_pstate[(x, j)])
+                        try:
+                            xic[j].value = self.curr_pstate[(x, j)]
+                        except KeyError:
+                            print(self.curr_pstate)
+                        xvar[(0, 0) + j].set_value(self.curr_pstate[(x, j)])
             else:
                 self.journalist("W", self._iteration_count, "load_init_state_nmpc", "No dict w/state was specified")
                 self.journalist("W", self._iteration_count, "load_init_state_nmpc", "No update on state performed")
@@ -269,6 +297,8 @@ class NmpcGen(DynGen):
 
     def compute_QR_nmpc(self, src="plant", n=-1, **kwargs):
         """Using the current state & control targets, computes the Qk and Rk matrices (diagonal)
+        Strategy: take the inverse of the absolute difference between reference and current state such that every
+        offset in the objective is normalized or at least dimensionless
         Args:
             src (str): The source of the update (default mhe) (mhe or plant)
             n (int): The exponent of the weight"""
@@ -281,13 +311,22 @@ class NmpcGen(DynGen):
             for x in self.states:
                 for j in self.state_vars[x]:
                     k = self.xmpc_key[(x, j)]
-                    self.olnmpc.Q_nmpc[k].value = abs(self.curr_estate[(x, j)] - self.curr_state_target[(x, j)])**n
+                    temp = abs(self.curr_estate[(x, j)] - self.curr_state_target[(x, j)])
+                    if temp > 1e-08:
+                        self.olnmpc.Q_nmpc[k].value = temp**n
+                    else:
+                        self.olnmpc.Q_nmpc[k].value = max_w_value
                     self.olnmpc.xmpc_ref_nmpc[k].value = self.curr_state_target[(x, j)]
         elif src == "plant":
             for x in self.states:
                 for j in self.state_vars[x]:
                     k = self.xmpc_key[(x, j)]
-                    self.olnmpc.Q_nmpc[k].value = abs(self.curr_rstate[(x, j)] - self.curr_state_target[(x, j)])**n
+                    # self.olnmpc.Q_nmpc[k].value = abs(self.curr_rstate[(x, j)] - self.curr_state_target[(x, j)])**n
+                    temp = abs(self.curr_rstate[(x, j)] - self.curr_state_target[(x, j)])
+                    if temp > 1e-08:
+                        self.olnmpc.Q_nmpc[k].value = temp ** n
+                    else:
+                        self.olnmpc.Q_nmpc[k].value = max_w_value
                     self.olnmpc.xmpc_ref_nmpc[k].value = self.curr_state_target[(x, j)]
         k = 0
         for u in self.u:
@@ -354,7 +393,7 @@ class NmpcGen(DynGen):
 
         for u in self.u:
             uv = getattr(self.olnmpc, u)
-            uv[1].set_suffix_value(self.olnmpc.dof_v, 1)
+            uv[0].set_suffix_value(self.olnmpc.dof_v, 1)
 
     def sens_dot_nmpc(self):
         self.journalist("I", self._iteration_count, "sens_dot_nmpc", "Set-up")
@@ -424,10 +463,10 @@ class NmpcGen(DynGen):
             cw = self.olnmpc.c_w
             sw.value += sw.value
             cw.value += cw.value
-            if sw.value > 1e06 or cw.value > 1e06:
+            if sw.value > 1e+06 or cw.value > 1e+06:
                 return 1
         elif strategy == "recompute_matrices":
-            cmv += 1e04 * 5
+            cmv += 1e+04 * 5
             self.load_qk(max_qval=cmv)
         elif strategy == "linear_algebra":
             spf = 1
@@ -459,16 +498,18 @@ class NmpcGen(DynGen):
             self.ref_state = ref_state
         else:
             if not ref_state:
-                self.journalist("W", self._iteration_count, "find_target_ss", "No reference state was given, using default")
+                self.journalist("W", self._iteration_count,
+                                "find_target_ss", "No reference state was given, using default")
             if not self.ref_state:
-                self.journalist("W", self._iteration_count, "find_target_ss", "No default reference state was given, exit")
+                self.journalist("W", self._iteration_count,
+                                "find_target_ss", "No default reference state was given, exit")
                 sys.exit()
 
         weights_ref = dict.fromkeys(self.ref_state.keys())
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef, i[0])
             vkey = i[1]
-            vss0 = value(v[(1, 1) + vkey])
+            vss0 = value(v[(0, 1) + vkey])
             val = abs(self.ref_state[i] - vss0)
             if val < 1e-09:
                 val = 1e+06
@@ -509,9 +550,9 @@ class NmpcGen(DynGen):
         ofexp = 0
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef2, i[0])
-            val = value((v[(1, 1) + vkey]))
+            val = value((v[(0, 1) + vkey]))
             vkey = i[1]
-            ofexp += weights[i] * (v[(1, 1) + vkey] - self.ref_state[i])**2
+            ofexp += weights[i] * (v[(0, 1) + vkey] - self.ref_state[i])**2
             # ofexp += -weights[i] * (v[(1, 1) + vkey])**2 #- self.ref_state[i])**2
         self.SteadyRef2.obfun_SteadyRef2 = Objective(expr=ofexp, sense=minimize)
 
@@ -531,12 +572,12 @@ class NmpcGen(DynGen):
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef2, i[0])
             vkey = i[1]
-            val = value(v[(1, 1) + vkey])
+            val = value(v[(0, 1) + vkey])
             print("target {:}".format(i[0]), "key {:}".format(i[1]), "weight {:f}".format(weights[i]),
                   "value {:f}".format(val))
         for u in self.u:
             v = getattr(self.SteadyRef2, u)
-            val = value(v[1])
+            val = value(v[0])
             print("target {:}".format(u), " value {:f}".format(val))
         self.update_targets_nmpc()
 
@@ -545,10 +586,10 @@ class NmpcGen(DynGen):
         for x in self.states:
             xvar = getattr(self.SteadyRef2, x)
             for j in self.state_vars[x]:
-                self.curr_state_target[(x, j)] = value(xvar[1, 1, j])
+                self.curr_state_target[(x, j)] = value(xvar[0, 1, j])
         for u in self.u:
             uvar = getattr(self.SteadyRef2, u)
-            self.curr_u_target[u] = value(uvar[1])
+            self.curr_u_target[u] = value(uvar[0])
 
     def change_setpoint(self, ref_state, **kwargs):
         """Change the update the ref_state dictionary, and attempt to find a new reference state"""
@@ -566,7 +607,7 @@ class NmpcGen(DynGen):
         for i in self.ref_state.keys():
             v = getattr(model_ref, i[0])
             vkey = i[1]
-            vss0 = value(v[(1, 1) + vkey])
+            vss0 = value(v[(0, 1) + vkey])
             val = abs(self.ref_state[i] - vss0)
             if val < 1e-09:
                 val = 1e+06
@@ -582,7 +623,7 @@ class NmpcGen(DynGen):
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef2, i[0])
             vkey = i[1]
-            ofexp += weights[i] * (v[(1, 1) + vkey] - self.ref_state[i]) ** 2
+            ofexp += weights[i] * (v[(0, 1) + vkey] - self.ref_state[i]) ** 2
 
         self.SteadyRef2.obfun_SteadyRef2.set_value(ofexp)
         self.solve_dyn(self.SteadyRef2, iter_max=500, stop_if_nopt=True, **kwargs)
@@ -590,7 +631,7 @@ class NmpcGen(DynGen):
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef2, i[0])
             vkey = i[1]
-            val = value(v[(1, 1) + vkey])
+            val = value(v[(0, 1) + vkey])
             print("target {:}".format(i[0]), "key {:}".format(i[1]), "weight {:f}".format(weights[i]),
                   "value {:f}".format(val))
         self.update_targets_nmpc()
@@ -600,16 +641,15 @@ class NmpcGen(DynGen):
         if src_kind == "estimated":
             for x in self.states:
                 for j in self.state_vars[x]:
-                    self.curr_state_offset[(x, j)] = self.curr_pstate[(x, j)] - self.curr_estate[(x, j)]
+                    self.curr_state_offset[(x, j)] = self.curr_estate[(x, j)] - self.curr_pstate[(x, j)]
         elif src_kind == "real":
             for x in self.states:
                 for j in self.state_vars[x]:
-                    self.curr_state_offset[(x, j)] = self.curr_pstate[(x, j)] - self.curr_rstate[(x, j)]
+                    self.curr_state_offset[(x, j)] = self.curr_rstate[(x, j)] - self.curr_pstate[(x, j)]
 
     def print_r_nmpc(self):
         self.journalist("I", self._iteration_count, "print_r_nmpc", "Results at" + os.getcwd())
         self.journalist("I", self._iteration_count, "print_r_nmpc", "Results suffix " + self.res_file_suf)
-
         # print(self.soi_dict)
         for k in self.ref_state.keys():
             self.soi_dict[k].append(self.curr_soi[k])
@@ -681,13 +721,13 @@ class NmpcGen(DynGen):
             vkey = k[1]
             var = getattr(self.PlantSample, vname)
             #: Assuming the variable is indexed by time
-            self.curr_soi[k] = value(var[(1, self.ncp_t) + vkey])
+            self.curr_soi[k] = value(var[(0, self.ncp_t) + vkey])
         for k in self.ref_state.keys():
             vname = k[0]
             vkey = k[1]
             var = getattr(self.SteadyRef2, vname)
             #: Assuming the variable is indexed by time
-            self.curr_sp[k] = value(var[(1, 1) + vkey])
+            self.curr_sp[k] = value(var[(0, 1) + vkey])
         self.journalist("I", self._iteration_count, "update_soi_sp_nmpc", "Current offsets + Values:")
         for k in self.ref_state.keys():
             #: Assuming the variable is indexed by time
@@ -698,7 +738,7 @@ class NmpcGen(DynGen):
 
         for u in self.u:
             ur = getattr(self.SteadyRef2, u)
-            self.curr_ur[u] = value(ur[1])
+            self.curr_ur[u] = value(ur[0])
 
     def method_for_nmpc_simulation(self):
         pass

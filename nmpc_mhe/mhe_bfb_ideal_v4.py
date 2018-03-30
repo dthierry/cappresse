@@ -185,7 +185,7 @@ for i in range(1, 60):
         e.d1.display(filename="plant.txt")
 
     e.update_noise_meas(e.d1, m_cov)
-    e.load_input_mhe("mod", src=e.d1, fe=e.nfe_t)  #: The inputs must coincid
+    e.patch_input_mhe("mod", src=e.d1, fe=e.nfe_t)  #: The inputs must coincid
     e.patch_meas_mhe(e.nfe_t, src=e.d1, noisy=True)  #: Get the measurement
     e.compute_y_offset()
 

@@ -184,7 +184,7 @@ def main():
         e.patch_meas_mhe(e.PlantSample, noisy=False)  #: Override the predicted measurement
         e.shift_mhe()  #: Shift everything
         e.shift_measurement_input_mhe()
-        e.load_input_mhe("dict")  #: Get the input
+        e.patch_input_mhe("dict")  #: Get the input
         e.init_step_mhe(patch_pred_y=True)  # Initialize next time-slot and predict next y
         #
         stat = e.solve_dyn(e.lsmhe,

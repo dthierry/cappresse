@@ -8,8 +8,8 @@ from pyomo.core.base import Param, ConcreteModel, Var, Constraint, Set, exp, sqr
 from pyomo.opt import ProblemFormat
 from nmpc_mhe.aux.cpoinsc import collptsgen
 from nmpc_mhe.aux.lagrange_f import lgr, lgry, lgrdot, lgrydot
-from nob5_con_hi_t import *
-from initial_s_Gb import ss
+from sample_mods.bfb.nob5_con_hi_t import *
+from sample_mods.bfb.initial_s_Gb import ss
 import os, sys
 
 """
@@ -65,8 +65,9 @@ class bfb_dae(ConcreteModel):
         # For finite element = 1 .. K
         # This has to be > 0
 
-        self.fe_t = Set(initialize=[ii for ii in range(1, self.nfe_t + 1)])
-        self.fe_x = Set(initialize=[ii for ii in range(1, self.nfe_x + 1)])
+        self.fe_t = Set(initialize=[ii for ii in range(0, self.nfe_t)])
+        self.fe_t.pprint()
+        self.fe_x = Set(initialize=[ii for ii in range(0, self.nfe_x)])
 
         # collocation points
         # collocation points for diferential variables
@@ -176,7 +177,7 @@ class bfb_dae(ConcreteModel):
         self.GasIn_T = Param(self.fe_t, initialize=40, mutable=True)  # needs i_value
         self._GasIn_z = {'c': 0.13, 'h': 0.06, 'n': 0.81}
         self._GasIn_z = {}
-        for i in range(1, self.nfe_t + 1):
+        for i in range(0, self.nfe_t):
             self._GasIn_z[i, 'c'] = 0.13
             self._GasIn_z[i, 'h'] = 0.06
             self._GasIn_z[i, 'n'] = 0.81
@@ -510,28 +511,28 @@ class bfb_dae(ConcreteModel):
             self.cp_Hgc = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x,
                                                          rule=lambda m, i, ix, jx:
                                                          m.noisy_Hgc[i, ix, jx] == 0.0
-                                                         if i < m.nfe_t and 0 < jx <= m.ncp_x else Constraint.Skip)
+                                                         if i < (m.nfe_t - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
             self.cp_Nsc = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x, self.sp,
                                                          rule=lambda m, i, ix, jx, c:
                                                          m.noisy_Nsc[i, ix, jx, c] == 0.0
-                                                         if i < m.nfe_t and 0 < jx <= m.ncp_x else Constraint.Skip)
+                                                         if i < (m.nfe_t - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
             self.cp_Hsc = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x,
                                                          rule=lambda m, i, ix, jx:
                                                          m.noisy_Hsc[i, ix, jx] == 0.0
-                                                         if i < m.nfe_t and 0 < jx <= m.ncp_x else Constraint.Skip)
+                                                         if i < (m.nfe_t - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
 
             self.cp_Hge = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x,
                                                          rule=lambda m, i, ix, jx:
                                                          m.noisy_Hge[i, ix, jx] == 0.0
-                                                         if i < m.nfe_t and 0 < jx <= m.ncp_x else Constraint.Skip)
+                                                         if i < (m.nfe_t - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
             self.cp_Nse = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x, self.sp,
                                                          rule=lambda m, i, ix, jx, c:
                                                          m.noisy_Nse[i, ix, jx, c] == 0.0
-                                                         if i < m.nfe_t and 0 < jx <= m.ncp_x else Constraint.Skip)
+                                                         if i < (m.nfe_t - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
             self.cp_Hse = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x,
                                                          rule=lambda m, i, ix, jx:
                                                          m.noisy_Hse[i, ix, jx] == 0.0
-                                                         if i < m.nfe_t and 0 < jx <= m.ncp_x else Constraint.Skip)
+                                                         if i < (m.nfe_t - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
 
         #: Initial condition-Constraints
         self.Hgc_icc = None if steady else Constraint(self.fe_x, self.cp_x, rule=ic_hgc_rule)
@@ -771,7 +772,8 @@ class bfb_dae(ConcreteModel):
 
         def a72_rulex(m, it, jt, ix, jx):
             if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-                return (m.r3c[it, jt, ix, jx]) == (exp(m.wk3c[it, jt, ix, jx]) * (((1 - 2 * (m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) - (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) ** 2) * ((m.P[it, jt, ix, jx] * exp(m.wyc[it, jt, ix, jx, 'c']) * 1E5) ** m.m1) - ((m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) * ((m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) + (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) /exp(m.wKe3c[it, jt, ix, jx]))))
+                return (m.r3c[it, jt, ix, jx]) == \
+                       (exp(m.wk3c[it, jt, ix, jx]) * (((1 - 2 * (m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) - (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) ** 2) * ((m.P[it, jt, ix, jx] * exp(m.wyc[it, jt, ix, jx, 'c']) * 1E5) ** m.m1) - ((m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) * ((m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) + (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) /exp(m.wKe3c[it, jt, ix, jx]))))
             else:
                 return Constraint.Skip
 
@@ -913,7 +915,7 @@ class bfb_dae(ConcreteModel):
 
     def create_bounds(self):
         print('problem with bounds activated')
-        for it in range(1, self.nfe_t + 1):
+        for it in range(0, self.nfe_t):
             for jt in range(1, self.ncp_t + 1):
                 # self.GasOut_P[it, jt].setlb(0)
                 #self.GasOut_F[it, jt].setlb(0)
@@ -933,7 +935,7 @@ class bfb_dae(ConcreteModel):
                 # self.P_l[it, jt].setlb(0)
                 self.Phx_l[it, jt].setlb(0)
                 self.c_capture[it, jt].setlb(0)
-        for it in range(1, self.nfe_t + 1):
+        for it in range(0, self.nfe_t):
             for jt in range(1, self.ncp_t + 1):
                 for cx in ['c', 'h', 'n']:
                     #self.GasOut_z[it, jt, cx].setlb(0)
@@ -941,9 +943,9 @@ class bfb_dae(ConcreteModel):
                     self.ccwin_l[it, jt, cx].setlb(0)
                     self.ne_l[it, jt, cx].setlb(0)
 
-        for it in range(1, self.nfe_t + 1):
+        for it in range(0, self.nfe_t):
             for jt in range(1, self.ncp_t + 1):
-                for ix in range(1, self.nfe_x + 1):
+                for ix in range(0, self.nfe_x):
                     for jx in range(0, self.ncp_x + 1):
                         self.Ar[it, jt, ix, jx].setlb(0)
                         self.db[it, jt, ix, jx].setlb(0)
@@ -1027,9 +1029,9 @@ class bfb_dae(ConcreteModel):
                         self.vbr[it, jt, ix, jx].setlb(0)
                         #self.ve[it, jt, ix, jx].setlb(1e-08)
                         self.vg[it, jt, ix, jx].setlb(0)
-        for it in range(1, self.nfe_t + 1):
+        for it in range(0, self.nfe_t):
             for jt in range(1, self.ncp_t + 1):
-                for ix in range(1, self.nfe_x + 1):
+                for ix in range(0, self.nfe_x):
                     for jx in range(0, self.ncp_x + 1):
                         for cx in ['c', 'h', 'n']:
                             # self.cb[it, jt, ix, jx, cx].setlb(0)
@@ -1072,14 +1074,14 @@ class bfb_dae(ConcreteModel):
                     print(var.name,"\t",str(var.index()),"\tnot found")
                 pass
 
-        if self.nfe_x > 5:
+        if self.nfe_x > 4:
             for var in self.component_objects(Var):
                 for ks in var.keys():
                     if type(ks) != tuple:
                         break
                     if len(ks) >= 4:
-                        if ks[2] > 5:
-                            var[ks].set_value(value(var[(self.nfe_t, self.ncp_t, 2, self.ncp_x) + ks[4:]]))
+                        if ks[2] > 4:
+                            var[ks].set_value(value(var[(self.nfe_t, self.ncp_t, 1, self.ncp_x) + ks[4:]]))
                             # print(var[ks].value)
 
         if self.nfe_t == 1 and self.ncp_t == 1:
@@ -1158,6 +1160,12 @@ class bfb_dae(ConcreteModel):
                 f.write("output_file \"testing.txt\"\n")
                 f.write("print_info_string yes\n")
                 f.write("linear_solver ma57\n")
+                f.write("resto.dual_inf_tol 1e-06\n")
+                f.write("resto.acceptable_dual_inf_tol 1e-06\n")
+                # f.write("resto.constr_viol_tol 1e-06\n")
+                # f.write("resto.acceptable_constr_viol_tol 1e-06\n")
+                f.write("gamma_phi 1e-08\n")
+                f.write("gamma_theta 1e-08\n")
                 # f.write("resto.max_iter 1\n")
                 f.close()
 
@@ -1175,8 +1183,11 @@ class bfb_dae(ConcreteModel):
             # self.ipopt_zU_out.pprint()
             self.clear_bounds()
             someresults = solver.solve(self, tee=True, symbolic_solver_labels=True)
+            self.display(filename="whatevs")
+            # self.dumm = Var()
             self.write_nl(name="nonactive.nl")
             self.snap_shot(filename="fnbound.py")
+
 
             # sys.exit()
 
@@ -1200,7 +1211,8 @@ class bfb_dae(ConcreteModel):
             for var in self.component_objects(Var, active=True):
                 sv = var.name
                 for key in var.iterkeys():
-                    if not key:
+                    if key is None:
+                        print(sv, key, type(key))
                         val = value(var)
                         f.write("snap[\'" + sv + "\'," + str(k0) + "] = " + str(val))
                     else:

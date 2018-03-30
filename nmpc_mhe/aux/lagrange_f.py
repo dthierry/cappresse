@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from cpoinsc import collptsgen
+from nmpc_mhe.aux.cpoinsc import collptsgen
 
 """
 Lagrange interpolating polynomials by David M Thierry

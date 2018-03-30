@@ -165,7 +165,7 @@ def main():
         e.update_soi_sp_nmpc()
         #
         e.update_noise_meas(m_cov)
-        e.load_input_mhe("mod", src=e.PlantSample)  #: The inputs must coincide
+        e.patch_input_mhe("mod", src=e.PlantSample)  #: The inputs must coincide
         #
         e.patch_meas_mhe(e.PlantSample, noisy=True)  #: Get the measurement
         e.compute_y_offset()
