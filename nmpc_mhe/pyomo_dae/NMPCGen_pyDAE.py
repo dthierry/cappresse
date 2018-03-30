@@ -6,11 +6,12 @@ from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expressio
 from pyomo.core.kernel.numvalue import value
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
 from nmpc_mhe.pyomo_dae.DynGen_pyDAE import DynGen_DAE
+
 import numpy as np
 import sys, os, time
 from six import iterkeys
 from nmpc_mhe.aux.utils import t_ij
-from nmpc_mhe.aux.utils import fe_compute
+from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model
 
 __author__ = "David Thierry @dthierry" #: March 2018
 
@@ -64,6 +65,7 @@ class NmpcGen_DAE(DynGen_DAE):
         self.olnmpc = self.d_mod(self.nfe_tnmpc, self.ncp_tnmpc, _t=_tnmpc)
         self.olnmpc.name = "olnmpc (Open-Loop NMPC)"
         self.olnmpc.create_bounds()
+        augment_model(self.olnmpc)
         discretizer = TransformationFactory('dae.collocation')
         discretizer.apply_to(self.olnmpc, nfe=self.nfe_tnmpc, ncp=self.ncp_tnmpc, scheme="LAGRANGE-RADAU")
         self.olnmpc.fe_t = Set(initialize=[i for i in range(0, self.nfe_tnmpc)])  #: Set for the NMPC stuff
@@ -75,7 +77,7 @@ class NmpcGen_DAE(DynGen_DAE):
             else:
                 tfe_dic[t] = fe_compute(self.olnmpc.t, t)
 
-        for u in self.u:
+        for u in self.u:  #: u only has one index
             cv = getattr(self.olnmpc, u)  #: Get the param
             t_u = [t_ij(self.olnmpc.t, i, 0) for i in range(0, self.olnmpc.nfe_t)]
             c_val = [value(cv[t_u[i]]) for i in self.olnmpc.fe_t]  #: Current value
@@ -191,9 +193,13 @@ class NmpcGen_DAE(DynGen_DAE):
             self.journalist("E", self._iteration_count, "initialize_olnmpc", "SRC not given")
             raise ValueError("Unexpected src_kind %s" % src_kind)
         dum = self.d_mod(1, self.ncp_tnmpc, _t=self.hi_t)
+        augment_model(dum)
+        discretizer = TransformationFactory('dae.collocation')
+        discretizer.apply_to(dum, nfe=1, ncp=self.ncp_tnmpc, scheme="LAGRANGE-RADAU")
         dum.create_bounds()
         #: Load current solution
-        self.load_iguess_single(ref, dum, 0, 0)
+        # self.load_iguess_single(ref, dum, 0, 0)
+        load_iguess(ref, dum, 0, 0)
 
         # self.load_iguess_dyndyn(ref, dum, fe, fe_src="s")  #: This is supossed to work
         for u in self.u:  #: Initialize controls dummy model
@@ -242,8 +248,8 @@ class NmpcGen_DAE(DynGen_DAE):
                     print("Too bad :(", file=sys.stderr)
                 k_notopt += 1
             #: Patch
-            self.load_iguess_dyndyn(dum, self.olnmpc, finite_elem)
-
+            # self.load_iguess_dyndyn(dum, self.olnmpc, finite_elem)
+            load_iguess(dum, self.olnmpc, 0, finite_elem)
 
             for u in self.u:
                 cv_nmpc = getattr(self.olnmpc, u)  #: set controls for open-loop nmpc
@@ -257,6 +263,8 @@ class NmpcGen_DAE(DynGen_DAE):
         if plant_state:
             #: use the plant state instead
             #: Not yet implemented
+            self.initialize_olnmpc(self.PlantSample, "real")
+            self.load_init_state_nmpc(src_kind="state_dict", state_dict="real")
             return None
         if as_strategy:
             if make_prediction:
@@ -268,10 +276,11 @@ class NmpcGen_DAE(DynGen_DAE):
                 self.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
         else:
             #: Similar to as_strategy w/o prediction just to prevent ambiguity
+            #: WHY IS THIS HERE
             self.initialize_olnmpc(self.PlantSample, "estimated")
             self.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
 
-    def load_init_state_nmpc(self, src_kind, **kwargs):
+    def load_init_state_nmpc(self, src_kind="dict", **kwargs):
         """Loads ref state for set-point
         Args:
             src_kind (str): the kind of source
@@ -294,13 +303,14 @@ class NmpcGen_DAE(DynGen_DAE):
                 self.journalist("W", self._iteration_count, "load_init_state_nmpc", "No model was given")
                 self.journalist("W", self._iteration_count, "load_init_state_nmpc", "No update on state performed")
                 sys.exit()
-            for x in self.states:
-                xic = getattr(self.olnmpc, x + "_ic")
-                xvar = getattr(self.olnmpc, x)
-                xsrc = getattr(ref, x)
-                for j in self.state_vars[x]:
-                    xic[j].value = value(xsrc[(fe, cp) + j])
-                    xvar[(0, 0) + j].set_value(value(xsrc[(fe, cp) + j]))
+            # for x in self.states:
+            #     xic = getattr(self.olnmpc, x + "_ic")
+            #     xvar = getattr(self.olnmpc, x)
+            #     xsrc = getattr(ref, x)
+            #     for j in self.state_vars[x]:
+            #         xic[j].value = value(xsrc[(fe, cp) + j])
+            #         xvar[(0, 0) + j].set_value(value(xsrc[(fe, cp) + j]))  #: Need fixing
+            pass
         else:
             state_dict = kwargs.pop("state_dict", None)
             if state_dict == "real":  #: Load from the real state dict
@@ -309,28 +319,25 @@ class NmpcGen_DAE(DynGen_DAE):
                     xvar = getattr(self.olnmpc, x)
                     for j in self.state_vars[x]:
                         xic[j].value = self.curr_rstate[(x, j)]
-                        xvar[(0, 0) + j].set_value(self.curr_rstate[(x, j)])
+                        xvar[(0,) + j].set_value(self.curr_rstate[(x, j)])
             elif state_dict == "estimated":  #: Load from the estimated state dict
                 for x in self.states:
                     xic = getattr(self.olnmpc, x + "_ic")
                     xvar = getattr(self.olnmpc, x)
                     for j in self.state_vars[x]:
                         xic[j].value = self.curr_estate[(x, j)]
-                        xvar[(0, 0) + j].set_value(self.curr_estate[(x, j)])
+                        xvar[(0,) + j].set_value(self.curr_estate[(x, j)])
             elif state_dict == "predicted":  #: Load from the estimated state dict
                 for x in self.states:
                     xic = getattr(self.olnmpc, x + "_ic")
                     xvar = getattr(self.olnmpc, x)
                     for j in self.state_vars[x]:
-                        try:
-                            xic[j].value = self.curr_pstate[(x, j)]
-                        except KeyError:
-                            print(self.curr_pstate)
-                        xvar[(0, 0) + j].set_value(self.curr_pstate[(x, j)])
+                        xic[j].value = self.curr_pstate[(x, j)]
+                        xvar[(0,) + j].set_value(self.curr_pstate[(x, j)])
             else:
                 self.journalist("W", self._iteration_count, "load_init_state_nmpc", "No dict w/state was specified")
                 self.journalist("W", self._iteration_count, "load_init_state_nmpc", "No update on state performed")
-                raise ValueError("Unexpeted state_dict %s" % state_dict)
+                raise ValueError("Unexpected state_dict %s" % state_dict)
 
     def compute_QR_nmpc(self, src="plant", n=-1, **kwargs):
         """Using the current state & control targets, computes the Qk and Rk matrices (diagonal)
@@ -386,36 +393,21 @@ class NmpcGen_DAE(DynGen_DAE):
 
     def new_weights_olnmpc(self, state_weight, control_weight):
         """Change the weights associated with the control objective function"""
-        # if type(state_weight) == float:
-        #     for fe in self.olnmpc.fe_t:
-        #         self.olnmpc.Q_w_nmpc[fe].value = state_weight
-        #     self.olnmpc.Q_w_nmpc.display()
-        #     print("float")
-        #     sys.exit()
-        if type(state_weight) == dict:
+
+        if isinstance(state_weight, dict):
             for fe in self.olnmpc.fe_t:
                 self.olnmpc.Q_w_nmpc[fe].value = state_weight[fe]
-            # self.olnmpc.Q_w_nmpc.display()
-            # print("dict")
-            # sys.exit()
         else:
             for fe in self.olnmpc.fe_t:
                 self.olnmpc.Q_w_nmpc[fe].value = state_weight
 
-
-        # if type(control_weight) == float:
-            # for fe in self.olnmpc.fe_t:
-            #     self.olnmpc.R_w_nmpc[fe].value = control_weight
-        if type(control_weight) == dict:
+        if isinstance(control_weight, dict):
             for fe in self.olnmpc.fe_t:
                 self.olnmpc.R_w_nmpc[fe].value = control_weight[fe]
         else:
             for fe in self.olnmpc.fe_t:
                 self.olnmpc.R_w_nmpc[fe].value = control_weight
 
-        # with open("your_weight.txt", "w") as f:
-        #     self.olnmpc.R_w_nmpc.pprint(ostream=f)
-        #     f.close()
 
     def create_suffixes_nmpc(self):
         """Creates the required suffixes for the olnmpc problem"""
@@ -489,40 +481,6 @@ class NmpcGen_DAE(DynGen_DAE):
         ftimings.close()
         self._k_timing = s.split()
 
-    def stall_strategy(self, strategy, cmv=1e-04, **kwargs):  # Fix the damn stall strategy
-        """Suggested three strategies: Change weights, change matrices, change linear algebra"""
-        self._stall_iter += 1
-        self.journalist("I", self._iteration_count, "stall_strategy", "Solver Stalled. " + str(self._stall_iter) + " Times")
-        if strategy == "increase_weights":
-            spf = 0
-            ma57_as = "no"
-            sw = self.olnmpc.s_w
-            cw = self.olnmpc.c_w
-            sw.value += sw.value
-            cw.value += cw.value
-            if sw.value > 1e+06 or cw.value > 1e+06:
-                return 1
-        elif strategy == "recompute_matrices":
-            cmv += 1e+04 * 5
-            self.load_qk(max_qval=cmv)
-        elif strategy == "linear_algebra":
-            spf = 1
-            ma57_as = "yes"
-
-        retval = self.solve_dyn(self.olnmpc, max_cpu_time=300,
-                              small_pivot_flag=spf,
-                              ma57_automatic_scaling=ma57_as,
-                              want_stime=True,
-                              rep_timing=True)
-        if retval == 0:
-            return 0
-        else:
-            if self._stall_iter > 10:
-                self.journalist("I", self._iteration_count, "stall_strategy",
-                                 "Max number of tries reached")
-                sys.exit()
-            self.stall_strategy("increase_weights")
-
     def find_target_ss(self, ref_state=None, **kwargs):
         """Attempt to find a second steady state
         Args:
@@ -546,7 +504,7 @@ class NmpcGen_DAE(DynGen_DAE):
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef, i[0])
             vkey = i[1]
-            vss0 = value(v[(0, 1) + vkey])
+            vss0 = value(v[(1,) + vkey])
             val = abs(self.ref_state[i] - vss0)
             if val < 1e-09:
                 val = 1e+06
@@ -563,22 +521,32 @@ class NmpcGen_DAE(DynGen_DAE):
         self.SteadyRef2.name = "SteadyRef2 (reference)"
         for u in self.u:
             cv = getattr(self.SteadyRef2, u)  #: Get the param
-            c_val = [value(cv[i]) for i in cv.keys()]  #: Current value
-            self.SteadyRef2.del_component(cv)  #: Delete the param
-            self.SteadyRef2.add_component(u, Var(self.SteadyRef2.fe_t, initialize=lambda m, i: c_val[i-1]))
-            self.SteadyRef2.equalize_u(direction="r_to_u")
-            cc = getattr(self.SteadyRef2, u + "_c")  #: Get the constraint
-            ce = getattr(self.SteadyRef2, u + "_e")  #: Get the expression
+            c_val = value(cv[1])  #: Current value
+            dumm_eq = getattr(self.SteadyRef2, u + '_cdummy')
+            dexpr = dumm_eq[1].expr._args[0]
+            control_var = getattr(self.SteadyRef2, dexpr.parent_component().name)
+            if isinstance(control_var, Var):  #: all good
+                pass
+            else:
+                raise ValueError  #: Some exception here
+
+            self.SteadyRef2.del_component(cv)  #: Delete the dummy_param
+            self.SteadyRef2.del_component(dumm_eq)  #: Delete the dummy_constraint
+            self.SteadyRef2.add_component(u, Var([1], initialize=lambda m, i: c_val))
+            ###
             cv = getattr(self.SteadyRef2, u)  #: Get the new variable
             for k in cv.keys():
                 cv[k].setlb(self.u_bounds[u][0])
                 cv[k].setub(self.u_bounds[u][1])
-            cc.clear()
-            cc.rule = lambda m, i: cv[i] == ce[i]
-            cc.reconstruct()
+
+            self.SteadyRef2.add_component(u + '_cdummy', Constraint([1]))
+            dumm_eq = getattr(self.SteadyRef2, u + '_cdummy')
+            dumm_eq.rule = lambda m, i: cv[i] == control_var[i]
+            dumm_eq.reconstruct()
+
 
         self.SteadyRef2.create_bounds()
-        self.SteadyRef2.equalize_u(direction="r_to_u")
+        # self.SteadyRef2.equalize_u(direction="r_to_u")
 
         for vs in self.SteadyRef.component_objects(Var, active=True):  #: Load_guess
             vt = getattr(self.SteadyRef2, vs.getname())
@@ -587,17 +555,11 @@ class NmpcGen_DAE(DynGen_DAE):
         ofexp = 0
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef2, i[0])
-            val = value((v[(0, 1) + vkey]))
             vkey = i[1]
-            ofexp += weights[i] * (v[(0, 1) + vkey] - self.ref_state[i])**2
-            # ofexp += -weights[i] * (v[(1, 1) + vkey])**2 #- self.ref_state[i])**2
+            ofexp += weights[i] * (v[(1,) + vkey] - self.ref_state[i])**2
         self.SteadyRef2.obfun_SteadyRef2 = Objective(expr=ofexp, sense=minimize)
 
         tst = self.solve_dyn(self.SteadyRef2, iter_max=10000, stop_if_nopt=True, halt_on_ampl_error=False, **kwargs)
-        # self.SteadyRef2.write_nl(name="steady.nl")
-        # self.SteadyRef2.write_nl()
-        # self.SteadyRef2.snap_shot(filename="mom.py")
-        # sys.exit()
 
         if tst != 0:
             self.SteadyRef2.display(filename="failed_SteadyRef2.txt")
@@ -607,14 +569,15 @@ class NmpcGen_DAE(DynGen_DAE):
             # sys.exit(-1)
         self.journalist("I", self._iteration_count, "find_target_ss", "Target: solve done")
         for i in self.ref_state.keys():
+            print(i)
             v = getattr(self.SteadyRef2, i[0])
             vkey = i[1]
-            val = value(v[(0, 1) + vkey])
+            val = value(v[(1,) + vkey])
             print("target {:}".format(i[0]), "key {:}".format(i[1]), "weight {:f}".format(weights[i]),
                   "value {:f}".format(val))
         for u in self.u:
             v = getattr(self.SteadyRef2, u)
-            val = value(v[0])
+            val = value(v[1])
             print("target {:}".format(u), " value {:f}".format(val))
         self.update_targets_nmpc()
 
@@ -623,13 +586,13 @@ class NmpcGen_DAE(DynGen_DAE):
         for x in self.states:
             xvar = getattr(self.SteadyRef2, x)
             for j in self.state_vars[x]:
-                self.curr_state_target[(x, j)] = value(xvar[0, 1, j])
+                self.curr_state_target[(x, j)] = value(xvar[(1,) + j])
         for u in self.u:
             uvar = getattr(self.SteadyRef2, u)
-            self.curr_u_target[u] = value(uvar[0])
+            self.curr_u_target[u] = value(uvar[1])
 
     def change_setpoint(self, ref_state, **kwargs):
-        """Change the update the ref_state dictionary, and attempt to find a new reference state"""
+        """update the ref_state dictionary, and attempt to find a new reference state"""
         if ref_state:
             self.ref_state = ref_state
         else:
@@ -644,14 +607,13 @@ class NmpcGen_DAE(DynGen_DAE):
         for i in self.ref_state.keys():
             v = getattr(model_ref, i[0])
             vkey = i[1]
-            vss0 = value(v[(0, 1) + vkey])
+            vss0 = value(v[(0,) + vkey])
             val = abs(self.ref_state[i] - vss0)
             if val < 1e-09:
                 val = 1e+06
             else:
                 val = 1/val
             weights_ref[i] = val
-
 
         #: If no weights are passed, use the reference that we have just calculated
         weights = kwargs.pop("weights", weights_ref)
@@ -660,7 +622,7 @@ class NmpcGen_DAE(DynGen_DAE):
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef2, i[0])
             vkey = i[1]
-            ofexp += weights[i] * (v[(0, 1) + vkey] - self.ref_state[i]) ** 2
+            ofexp += weights[i] * (v[(1,) + vkey] - self.ref_state[i]) ** 2
 
         self.SteadyRef2.obfun_SteadyRef2.set_value(ofexp)
         self.solve_dyn(self.SteadyRef2, iter_max=500, stop_if_nopt=True, **kwargs)
@@ -668,7 +630,7 @@ class NmpcGen_DAE(DynGen_DAE):
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef2, i[0])
             vkey = i[1]
-            val = value(v[(0, 1) + vkey])
+            val = value(v[(1,) + vkey])
             print("target {:}".format(i[0]), "key {:}".format(i[1]), "weight {:f}".format(weights[i]),
                   "value {:f}".format(val))
         self.update_targets_nmpc()
@@ -687,15 +649,10 @@ class NmpcGen_DAE(DynGen_DAE):
     def print_r_nmpc(self):
         self.journalist("I", self._iteration_count, "print_r_nmpc", "Results at" + os.getcwd())
         self.journalist("I", self._iteration_count, "print_r_nmpc", "Results suffix " + self.res_file_suf)
-        # print(self.soi_dict)
         for k in self.ref_state.keys():
             self.soi_dict[k].append(self.curr_soi[k])
             self.sp_dict[k].append(self.curr_sp[k])
             print("Current values\t", self.ref_state[k], k)
-
-        # for u in self.u:
-        #     self.u_dict[u].append(self.curr_u[u])
-        #     print(self.curr_u[u])
 
         with open("res_nmpc_rs_" + self.res_file_suf + ".txt", "a") as f:
             for k in self.ref_state.keys():
@@ -730,14 +687,6 @@ class NmpcGen_DAE(DynGen_DAE):
                     f.write('\t')
             f.write('\n')
             f.close()
-        # with open("res_nmpc_u_" + self.res_file_suf + ".txt", "a") as f:
-        #     for u in self.u:
-        #         for i in range(0, len(self.u_dict[u])):
-        #             iv = str(self.u_dict[u][i])
-        #             f.write(iv)
-        #             f.write('\t')
-        #         f.write('\n')
-        #     f.close()
 
     def update_soi_sp_nmpc(self):
         """States-of-interest and set-point update"""
@@ -758,13 +707,14 @@ class NmpcGen_DAE(DynGen_DAE):
             vkey = k[1]
             var = getattr(self.PlantSample, vname)
             #: Assuming the variable is indexed by time
-            self.curr_soi[k] = value(var[(0, self.ncp_t) + vkey])
+            t = t_ij(self.PlantSample.t, 0, self.ncp_t)
+            self.curr_soi[k] = value(var[(t, ) + vkey])
         for k in self.ref_state.keys():
             vname = k[0]
             vkey = k[1]
             var = getattr(self.SteadyRef2, vname)
             #: Assuming the variable is indexed by time
-            self.curr_sp[k] = value(var[(0, 1) + vkey])
+            self.curr_sp[k] = value(var[(1,) + vkey])
         self.journalist("I", self._iteration_count, "update_soi_sp_nmpc", "Current offsets + Values:")
         for k in self.ref_state.keys():
             #: Assuming the variable is indexed by time
@@ -772,10 +722,9 @@ class NmpcGen_DAE(DynGen_DAE):
             print("\tCurrent offset \% \% \t", k, self.curr_off_soi[k], end="\t")
             print("\tCurrent value \% \% \t", self.curr_soi[k])
 
-
         for u in self.u:
             ur = getattr(self.SteadyRef2, u)
-            self.curr_ur[u] = value(ur[0])
+            self.curr_ur[u] = value(ur[1])
 
     def method_for_nmpc_simulation(self):
         pass

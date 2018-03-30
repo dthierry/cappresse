@@ -12,7 +12,7 @@ import sys, time, re, os
 from pyutilib.common._exceptions import ApplicationError
 import datetime
 from shutil import copyfile
-from nmpc_mhe.aux.utils import t_ij
+from nmpc_mhe.aux.utils import t_ij, load_iguess, augment_model
 
 __author__ = "David Thierry @dthierry" #: March 2018
 
@@ -48,100 +48,6 @@ class UnexpectedOption(RuntimeError):
 
 # PyomoConcrete = ConcreteModel
 
-
-def load_iguess(src, tgt, fe_src, fe_tgt):
-    # type: (ConcreteModel, ConcreteModel, int, int) -> None
-    """Loads the current values of the src model into the tgt model, i.e. src-->tgt.
-    This will assume that the time set is always at the beginning.
-
-    Args:
-        src (ConcreteModel): Model with the source values.
-        tgt (ConcreteModel): Model with the target variables.
-        fe_src (int): Source finite element.
-        fe_tgt (int): Target finite element.
-
-    Returns:
-        None:
-    """
-    uniform_mode = True
-    steady = False
-    if src.name == "unknown" or None:
-        pass
-    elif src.name == "SteadyRef":
-        #: If we use a steay-state model we have to change the strategy
-        print("Steady!")
-        fe_src = 1
-        steady = True
-    fe0_src = getattr(src, "nfe_t")
-    fe0_tgt = getattr(tgt, "nfe_t")
-    print("fetgt", fe0_tgt, fe_tgt)
-    if fe_src > fe0_src - 1:
-        if steady:
-            pass
-        else:
-            raise KeyError("Finite element beyond maximum: src")
-    if fe_tgt > fe0_tgt - 1:
-        raise KeyError("Finite element beyond maximum: tgt")
-
-    cp_src = getattr(src, "ncp_t")
-    cp_tgt = getattr(tgt, "ncp_t")
-    #: Continuous time set
-    tS_src = getattr(src, "t")
-    tS_tgt = getattr(tgt, "t")
-    print(cp_tgt)
-
-    if cp_src != cp_tgt:
-        print("These variables do not have the same number of Collocation points (ncp_t)")
-        # raise UnexpectedOption("These variables do not have the same number of Collocation points (ncp_t)")
-        uniform_mode = False
-
-    if steady:
-        for vs in src.component_objects(Var, active=True):
-            if tS_src not in vs._implicit_subsets:
-                continue
-            vd = getattr(tgt, vs.getname())
-            vd.pprint()
-            remaining_set = vs._implicit_subsets[1]
-            for j in range(2, len(vs._implicit_subsets)):
-                remaining_set *= vs._implicit_subsets[j]
-            for index in remaining_set:
-                for j in range(0, cp_tgt + 1):
-                    # t_src = 1
-                    t_tgt = t_ij(tS_tgt, fe_tgt, j)
-                    print(t_tgt)
-                    index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
-                    vd[(t_tgt,) + index].set_value(value(vs[(1,) + index]))
-    elif uniform_mode:
-        for vs in src.component_objects(Var, active=True):
-            if tS_src not in vs._implicit_subsets:
-                continue
-            vd = getattr(tgt, vs.getname())
-            remaining_set = vs._implicit_subsets[1]
-            for j in range(2, len(vs._implicit_subsets)):
-                remaining_set *= vs._implicit_subsets[j]
-            for index in remaining_set:
-                for j in range(0, cp_src + 1):
-                    t_src = t_ij(tS_src, fe_src, j)
-                    t_tgt = t_ij(tS_tgt, fe_tgt, j)
-
-                    index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
-                    vd[(t_tgt,) + index].set_value(value(vs[(t_src,) + index]))
-                    print(vd.getname(), t_tgt, value(vd[(t_tgt,) + index]))
-    else:
-        for vs in src.component_objects(Var, active=True):
-            if tS_src not in vs._implicit_subsets:
-                continue
-            vd = getattr(tgt, vs.getname())
-            remaining_set = vs._implicit_subsets[1]
-            for j in range(2, len(vs._implicit_subsets)):
-                remaining_set *= vs._implicit_subsets[j]
-            for index in remaining_set:
-                for j in range(0, cp_tgt + 1):
-                    t_src = t_ij(tS_src, fe_src, cp_src)  #: only patch the last value
-                    t_tgt = t_ij(tS_tgt, fe_tgt, j)
-                    index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
-                    #: Better idea: interpolate
-                    vd[(t_tgt,) + index].set_value(value(vs[(t_src,) + index]))
 
 
 class DynGen_DAE(object):
@@ -274,7 +180,10 @@ class DynGen_DAE(object):
 
     def load_iguess_steady(self):
         """"Call the method for loading initial guess from steady-state"""
-        self.SteadyRef.init_steady_ref()
+        retval = self.solve_dyn(self.SteadyRef)
+        if retval:
+            raise Exception
+
 
     def get_state_vars(self, skip_solve=False):
         """Solves steady state model (SteadyRef)
@@ -779,7 +688,8 @@ class DynGen_DAE(object):
                                        linear_scaling_on_demand=True)
         for u in self.u:
             plant_var = getattr(d_mod, u)
-            plant_var[0].value = target[u]  #: To be sure
+            for key in plant_var.keys():
+                plant_var[key].value = target[u]  #: To be sure
 
     def update_u(self, src, **kwargs):
         """Update the current control(input) vector
@@ -847,22 +757,23 @@ class DynGen_DAE(object):
         ref = kwargs.pop("ref", None)
 
         if src_kind == "mod":
-            fe_t = getattr(ref, "fe_t")
-            nfe = max(fe_t)
-            cp_t = getattr(ref, "cp_t")
-            ncp = max(cp_t)
-            fe = kwargs.pop("fe", nfe)
-            cp = kwargs.pop("cp", ncp)
+            fe_t = getattr(ref, "nfe_t")
+            cp_t = getattr(ref, "ncp_t")
+            #: in place if a particular set of fe and cp is desired
+            fe = kwargs.pop("fe", fe_t)
+            cp = kwargs.pop("cp", cp_t)
             if not ref:
                 self.journalist("W", self._iteration_count, "load_init_state_gen", "No model was given")
                 self.journalist("W", self._iteration_count, "load_init_state_gen", "No update on state performed")
                 return
+            tgt_tS = getattr(ref, "t")
+            t = t_ij(tgt_tS, fe, cp)
             for x in self.states:
                 xic = getattr(dmod, x + "_ic")
                 xvar = getattr(dmod, x)
                 xsrc = getattr(ref, x)
                 for j in self.state_vars[x]:
-                    val_src = value(xsrc[(fe, cp) + j])
+                    val_src = value(xsrc[(t,) + j])
                     xic[j].value = val_src
                     xvar[(0,) + j].set_value(val_src)
         else:
@@ -1051,11 +962,3 @@ class DynGen_DAE(object):
             self.journalist("I", self._iteration_count, "noisy_plant_manager", "Noise removed")
 
 
-def augment_model(d_mod):
-    # type: (ConcreteModel) -> None
-    """Attach Suffixes, and more to a base model"""
-    d_mod.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
-    d_mod.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
-    d_mod.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
-    d_mod.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
-    d_mod.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)

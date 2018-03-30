@@ -2,8 +2,9 @@
 from __future__ import print_function
 from __future__ import division
 from pyomo.dae import ContinuousSet
-from pyomo.core.base import Suffix, ConcreteModel
+from pyomo.core.base import Suffix, ConcreteModel, Var, Suffix
 from pyomo.opt import ProblemFormat
+from pyomo.core.kernel.numvalue import value
 from os import getcwd, remove
 __author__ = "David Thierry @dthierry" #: March 2018
 
@@ -92,10 +93,10 @@ def write_nl(d_mod, filename=None):
     """
     Write the nl file
     Args:
-        d_mod (ConcreteModel): the model of interest
+        d_mod (ConcreteModel): the model of interest.
 
     Returns:
-        object:
+        cwd (str): The current working directory.
     """
     if not filename:
         filename = d_mod.name + '.nl'
@@ -107,6 +108,15 @@ def write_nl(d_mod, filename=None):
 
 def reconcile_nvars_mequations(d_mod):
     # type: (ConcreteModel) -> tuple
+    """
+    Compute the actual number of variables and equations in a model by reading the relevant line at the nl file.
+    Args:
+        d_mod (ConcreteModel):  The model of interest
+
+    Returns:
+        tuple: The number of variables and the number of constraints.
+
+    """
     fullpth = getcwd()
     fullpth += "/_reconcilied.nl"
     write_nl(d_mod, filename=fullpth)
@@ -116,10 +126,116 @@ def reconcile_nvars_mequations(d_mod):
         newl = line.split()
         nvar = int(newl[0])
         meqn = int(newl[1])
-        print(newl)
         nl.close()
     remove(fullpth)
-    print(nvar, meqn)
     return (nvar, meqn)
 
 
+def load_iguess(src, tgt, fe_src, fe_tgt):
+    # type: (ConcreteModel, ConcreteModel, int, int) -> None
+    """Loads the current values of the src model into the tgt model, i.e. src-->tgt.
+    This will assume that the time set is always at the beginning.
+
+    Args:
+        src (ConcreteModel): Model with the source values.
+        tgt (ConcreteModel): Model with the target variables.
+        fe_src (int): Source finite element.
+        fe_tgt (int): Target finite element.
+
+    Returns:
+        None:
+    """
+    uniform_mode = True
+    steady = False
+    if src.name == "unknown" or None:
+        pass
+    elif src.name == "SteadyRef":
+        #: If we use a steay-state model we have to change the strategy
+        print("Steady!")
+        fe_src = 1
+        steady = True
+    fe0_src = getattr(src, "nfe_t")
+    fe0_tgt = getattr(tgt, "nfe_t")
+    print("fetgt", fe0_tgt, fe_tgt)
+    if fe_src > fe0_src - 1:
+        if steady:
+            pass
+        else:
+            raise KeyError("Finite element beyond maximum: src")
+    if fe_tgt > fe0_tgt - 1:
+        raise KeyError("Finite element beyond maximum: tgt")
+
+    cp_src = getattr(src, "ncp_t")
+    cp_tgt = getattr(tgt, "ncp_t")
+    #: Continuous time set
+    tS_src = getattr(src, "t")
+    tS_tgt = getattr(tgt, "t")
+
+    if cp_src != cp_tgt:
+        print("These variables do not have the same number of Collocation points (ncp_t)")
+        # raise UnexpectedOption("These variables do not have the same number of Collocation points (ncp_t)")
+        uniform_mode = False
+
+    if steady:
+        for vs in src.component_objects(Var, active=True):
+            if not vs._implicit_subsets:
+                continue
+            if tS_src not in vs._implicit_subsets:
+                continue
+            vd = getattr(tgt, vs.getname())
+            remaining_set = vs._implicit_subsets[1]
+            for j in range(2, len(vs._implicit_subsets)):
+                remaining_set *= vs._implicit_subsets[j]
+            for index in remaining_set:
+                for j in range(0, cp_tgt + 1):
+                    # t_src = 1
+                    t_tgt = t_ij(tS_tgt, fe_tgt, j)
+                    index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
+                    vd[(t_tgt,) + index].set_value(value(vs[(1,) + index]))
+    elif uniform_mode:
+        for vs in src.component_objects(Var, active=True):
+            if not vs._implicit_subsets:
+                continue
+            if tS_src not in vs._implicit_subsets:
+                continue
+            vd = getattr(tgt, vs.getname())
+            remaining_set = vs._implicit_subsets[1]
+            for j in range(2, len(vs._implicit_subsets)):
+                remaining_set *= vs._implicit_subsets[j]
+            for index in remaining_set:
+                for j in range(0, cp_src + 1):
+                    t_src = t_ij(tS_src, fe_src, j)
+                    t_tgt = t_ij(tS_tgt, fe_tgt, j)
+
+                    index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
+                    vd[(t_tgt,) + index].set_value(value(vs[(t_src,) + index]))
+                    # print(vd.getname(), t_tgt, value(vd[(t_tgt,) + index]))
+    else:
+        for vs in src.component_objects(Var, active=True):
+            if not vs._implicit_subsets:
+                continue
+            if not vs._implicit_subsets:
+                continue
+            if tS_src not in vs._implicit_subsets:
+                continue
+            vd = getattr(tgt, vs.getname())
+            remaining_set = vs._implicit_subsets[1]
+            for j in range(2, len(vs._implicit_subsets)):
+                remaining_set *= vs._implicit_subsets[j]
+            for index in remaining_set:
+                for j in range(0, cp_tgt + 1):
+                    t_src = t_ij(tS_src, fe_src, cp_src)  #: only patch the last value
+                    t_tgt = t_ij(tS_tgt, fe_tgt, j)
+                    index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
+                    #: Better idea: interpolate
+                    vd[(t_tgt,) + index].set_value(value(vs[(t_src,) + index]))
+
+
+def augment_model(d_mod):
+    # type: (ConcreteModel) -> None
+    """Attach Suffixes, and more to a base model"""
+    d_mod.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+    d_mod.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+    d_mod.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+    d_mod.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+    d_mod.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
