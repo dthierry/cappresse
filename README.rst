@@ -9,4 +9,4 @@ This is a work in progress to create a framework to perform NLP-based control wi
 Copyright & License
 -------------------
 
-Copyright (c) 2017, `David Thierry`. MIT License.
+Copyright (c) 2017, `David Thierry`. BSD-3 License.
