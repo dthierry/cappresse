@@ -18,8 +18,8 @@ def main():
     u_bounds = {"u1": (0, 1000)}
     ref_state = {("Ca", (0,)): 0.010}
     e = NmpcGen_DAE(cstr_rodrigo_dae, 2, states, controls, u_bounds=u_bounds, ref_state=ref_state,
-               k_aug_executable="/home/dav0/k_aug/src/k_aug/k_aug",
-               dot_driver_executable="/home/dav0/k_aug/src/k_aug/dot_driver/dot_driver")
+               k_aug_executable="/home/dav0/k_aug/src/k_aug/",
+               dot_driver_executable="/home/dav0/k_aug/sr/dot_driver/dot_driver")
     return e
 
 
@@ -42,7 +42,6 @@ if __name__ == '__main__':
     e.update_state_real()  # update the current state
     e.update_soi_sp_nmpc()
     e.preparation_phase_nmpc(as_strategy=False, make_prediction=False, plant_state=True)
-    # e.initialize_olnmpc(e.PlantSample, "estimated")
     # e.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
     stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300,
                             jacobian_regularization_value=1e-04, tag="olnmpc",
@@ -53,7 +52,7 @@ if __name__ == '__main__':
     e.cycleSamPlant(plant_step=True)
     e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
     # e.noisy_plant_manager(sigma=0.001, action="apply", update_level=True)
-    for i in range(0, 1000):
+    for i in range(0, 100):
         if i in [30 * (j * 2) for j in range(0, 100)]:
             ref_state = {("Ca", (0,)): 0.019}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
@@ -76,6 +75,8 @@ if __name__ == '__main__':
         e.update_u(e.olnmpc)  #: Get the resulting input for k+1
         e.cycleSamPlant(plant_step=True)
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
+        e.PlantSample.u1.pprint()
+        sys.exit()
         # e.noisy_plant_manager(sigma=0.01, action="apply", update_level=True)
 
     # print(e.soi_dict[key])
