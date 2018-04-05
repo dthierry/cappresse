@@ -18,20 +18,20 @@ from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model
 __author__ = "David Thierry @dthierry" #: March 2018
 
 
-class MheGen(NmpcGen_DAE):
-    def __init__(self, d_mod, hi_t, states, controls, noisy_states, noisy_vars, measurements, measurement_vars, **kwargs):
+class MheGen_DAE(NmpcGen_DAE):
+    def __init__(self, d_mod, hi_t, states, controls, noisy_states, measurements, **kwargs):
         NmpcGen_DAE.__init__(self, d_mod, hi_t, states, controls, **kwargs)
         self.int_file_mhe_suf = int(time.time())-1
 
         # Need a list of relevant measurements y
 
         self.y = measurements
-        self.y_vars = measurement_vars
+        self.y_vars = dict()
 
         # Need a list or relevant noisy-states z
 
         self.x_noisy = noisy_states
-        self.x_vars = noisy_vars
+        self.x_vars = dict()
         self.deact_ics = kwargs.pop('del_ics', True)
         self.diag_Q_R = kwargs.pop('diag_QR', True)  #: By default use diagonal matrices for Q and R matrices
         if self.diag_Q_R:
@@ -46,9 +46,10 @@ class MheGen(NmpcGen_DAE):
         print("-" * 120)
         print("I[[create_lsmhe]] lsmhe (full) model created.")
         print("-" * 120)
-        nstates = sum(len(self.x_vars[x]) for x in self.x_noisy)
 
-        self.journalist("I", self._iteration_count, "MHE with \t", str(nstates) + "states")
+        # nstates = sum(len(self.x_vars[x]) for x in self.x_noisy)
+        # self.journalist("I", self._iteration_count, "MHE with \t", str(nstates) + "states")
+
         _t_mhe = self.nfe_tmhe * self.hi_t
         self.lsmhe = self.d_mod(self.nfe_tmhe, self.ncp_tmhe, _t=_t_mhe)
         augment_model(self.lsmhe)
@@ -65,6 +66,7 @@ class MheGen(NmpcGen_DAE):
         k = 0
         for x in self.x_noisy:
             n_s = getattr(self.lsmhe, x)  #: Noisy-state
+            self.x_vars[x] = list()
             if not n_s._implicit_subsets:
                 raise Exception("not right")
             if tS_mhe not in n_s._implicit_subsets:
@@ -75,6 +77,7 @@ class MheGen(NmpcGen_DAE):
             # for jth in self.lsmhe.fe_t:  #: the jth variable
             for kth in remaining_set:
                 kth = kth if isinstance(kth, tuple) else (kth,)
+                self.x_vars[x].append(kth)
                 self.xkN_l.append(n_s[(0,) + kth])
                 self.xkN_nexcl.append(1)  #: non-exclusion list for active bounds
                 self.xkN_key[(x, kth)] = k
@@ -100,6 +103,7 @@ class MheGen(NmpcGen_DAE):
         self.yk_l[0] = []
         for y in self.y:
             m_v = getattr(self.lsmhe, y)  #: Measured "state"
+            self.y_vars[y] = list()
             if not m_v._implicit_subsets:
                 raise Exception("not right")
             if tS_mhe not in m_v._implicit_subsets:
@@ -111,6 +115,7 @@ class MheGen(NmpcGen_DAE):
             t = t_ij(tS_mhe, 0, self.ncp_tmhe)
             for kth in remaining_set:
                 kth = kth if isinstance(kth, tuple) else (kth,)
+                self.y_vars[y].append(kth)
                 self.yk_l[0].append(m_v[(t,) + kth])
                 #: position of the variable in the list
                 self.yk_key[(y,) + kth] = k  #: The key needs to be created only once, that is why the loop was split
@@ -143,10 +148,17 @@ class MheGen(NmpcGen_DAE):
                              initialize=lambda mod, t, i, ii: 1.0 if i == ii else 0.0, mutable=True)
 
         #: Constraints for the input noise
+        tfe_mhe_dic = dict()
+        for t in self.lsmhe.t:
+            if t == max(self.lsmhe.t):
+                tfe_mhe_dic[t] = fe_compute(tS_mhe, t - 1)
+            else:
+                tfe_mhe_dic[t] = fe_compute(tS_mhe, t)
+
         for u in self.u:  #: u only has one index
             cv = getattr(self.lsmhe, u)  #: Get the param
-            t_u = [t_ij(self.olnmpc.t, i, 0) for i in range(0, self.olnmpc.nfe_t)]
-            c_val = [value(cv[t_u[i]]) for i in self.olnmpc.fe_t]  #: Current value
+            t_u = [t_ij(tS_mhe, i, 0) for i in range(0, self.lsmhe.nfe_t)]
+            c_val = [value(cv[t_u[i]]) for i in self.lsmhe.fe_t]  #: Current value
             dumm_eq = getattr(self.lsmhe, u + '_cdummy')
             dexpr = dumm_eq[0].expr._args[0]
             control_var = getattr(self.lsmhe, dexpr.parent_component().name)
@@ -157,35 +169,20 @@ class MheGen(NmpcGen_DAE):
 
             self.lsmhe.del_component(cv)  #: Delete the dummy_param
             self.lsmhe.del_component(dumm_eq)  #: Delete the dummy_constraint
-            # self.lsmhe.add_component(u, Var(self.lsmhe.fe_t, initialize=lambda m, i: c_val[i]))
-            self.olnmpc.add_component(u, Param(self.olnmpc.fe_t, mutable=True, initialize=lambda m, i: c_val[i]))
+            #: Change this guy to mutable parameter [piece-wise constant]
+            self.lsmhe.add_component(u, Param(self.lsmhe.fe_t, mutable=True, initialize=lambda m, i: c_val[i]))
             self.lsmhe.add_component('w_' + u + '_mhe', Var(self.lsmhe.fe_t, initialize=0.0))
-
-            # self.lsmhe.equalize_u(direction="r_to_u")
-            # cc = getattr(self.lsmhe, u + "_cdummy")  #: Get the constraint
-            # ce = getattr(self.lsmhe, u + "_e")  #: Get the expression
-
-            cv = getattr(self.lsmhe, u)  #: Get the new variable
-            self.lsmhe.add_component(u + '_cdummy', Constraint(self.lsmhe.t))
-            dumm_eq = getattr(self.lsmhe, u + '_cdummy')
-            dumm_eq.rule = lambda m, i: cv[tfe_dic[i]] == control_var[i]
-            dumm_eq.reconstruct()
-
-        for u in self.u:
-            self.lsmhe.add_component("w_" + u + "_mhe", Var(self.lsmhe.fe_t, initialize=0.0))  #: Noise for input
-            self.lsmhe.add_component("w_" + u + "c_mhe", Constraint(self.lsmhe.fe_t))
-            self.lsmhe.equalize_u(direction="r_to_u")
-            con_w = getattr(self.lsmhe, "w_" + u + "c_mhe")  #: Get the constraint-noisy
-            var_w = getattr(self.lsmhe, "w_" + u + "_mhe")  #: Get the constraint-noisy
-            ce = getattr(self.lsmhe, u + "_e")  #: Get the expression
-            cp = getattr(self.lsmhe, u)  #: Get the param
-            con_w.rule = lambda m, i: cp[i] == ce[i] + var_w[i]
-            con_w.reconstruct()
-            con_w.deactivate()
+            cv_param = getattr(self.lsmhe, u)  #: Get the new variable
+            cv_noise = getattr(self.lsmhe, 'w_' + u + '_mhe')
+            self.lsmhe.add_component(u + '_cdummy', Constraint(self.lsmhe.t,
+                                                               rule=lambda m, i:
+                                                               cv_param[tfe_mhe_dic[i]] == control_var[i] + cv_noise[tfe_mhe_dic[i]]))
+            cv_con = getattr(self.lsmhe, u + '_cdummy')
+            cv_con.deactivate()
+            cv_con.pprint()
 
         self.lsmhe.U_mhe = Param(self.lsmhe.fe_t, self.u, initialize=1, mutable=True)
-        self.lsmhe.U_mhe.pprint()
-
+        # self.lsmhe.U_mhe.pprint()
         #: Deactivate icc constraints
         if self.deact_ics:
             pass
@@ -199,19 +196,15 @@ class MheGen(NmpcGen_DAE):
                     for k in self.x_vars[i]:
                         ic_con[k].deactivate()
 
-        #: Put the noise in the continuation equations (finite-element)
+        #: Put the noise in the ode
         j = 0
         self.lsmhe.noisy_cont = ConstraintList()
         for i in self.x_noisy:
-            # cp_con = getattr(self.lsmhe, "cp_" + i)
             cp_exp = getattr(self.lsmhe, "noisy_" + i)
-            # self.lsmhe.del_component(cp_con)
             for k in self.x_vars[i]:  #: This should keep the same order
                 for t in range(0, self.nfe_tmhe - 1):
                     self.lsmhe.noisy_cont.add(cp_exp[t, k] == self.lsmhe.wk_mhe[t, j])
-                    # self.lsmhe.noisy_cont.add(cp_exp[t, k] == 0.0)
                 j += 1
-            # cp_con.reconstruct()
         self.lsmhe.noisy_cont.deactivate()
 
         #: Expressions for the objective function (least-squares)

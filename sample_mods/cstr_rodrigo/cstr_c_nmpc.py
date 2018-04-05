@@ -98,9 +98,9 @@ class cstr_rodrigo_dae(ConcreteModel):
         # m.T_ic = Param(m.ncstr, default=3.8400724261199036E+02)
         # m.Tj_ic = Param(m.ncstr, default=3.7127352272578315E+02)
 
-        self.ODE_ca = Constraint(self.t, self.ncstr)
-        self.ODE_T = Constraint(self.t, self.ncstr)
-        self.ODE_Tj = Constraint(self.t, self.ncstr)
+        self.de_ca = Constraint(self.t, self.ncstr)
+        self.de_T = Constraint(self.t, self.ncstr)
+        self.de_Tj = Constraint(self.t, self.ncstr)
 
         #: No need of these guys at steady.
         if self.steady:
@@ -154,9 +154,9 @@ class cstr_rodrigo_dae(ConcreteModel):
         # let Tj0 := 3.7127352272578315E+02 ;
 
         self.kdef.rule = lambda m, i, n: _rule_k(m, i, n)
-        self.ODE_ca.rule = lambda m, i, n: _rule_ca(m, i, n)
-        self.ODE_T.rule = lambda m, i, n: _rule_t(m, i, n)
-        self.ODE_Tj.rule = lambda m, i, n: _rule_tj(m, i, n)
+        self.de_ca.rule = lambda m, i, n: _rule_ca(m, i, n)
+        self.de_T.rule = lambda m, i, n: _rule_t(m, i, n)
+        self.de_Tj.rule = lambda m, i, n: _rule_tj(m, i, n)
 
         if self.steady:
             pass
@@ -169,9 +169,9 @@ class cstr_rodrigo_dae(ConcreteModel):
             self.Tj_icc.reconstruct()
 
         self.kdef.reconstruct()
-        self.ODE_ca.reconstruct()
-        self.ODE_T.reconstruct()
-        self.ODE_Tj.reconstruct()
+        self.de_ca.reconstruct()
+        self.de_T.reconstruct()
+        self.de_Tj.reconstruct()
 
         # Declare at framework level
         # self.dual = Suffix(direction=Suffix.IMPORT_EXPORT)

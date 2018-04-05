@@ -66,6 +66,7 @@ class DynGen_DAE(object):
         self.k_aug_executable = kwargs.get('k_aug_executable', None)
         self.ipopt_executable = kwargs.get('ipopt_executable', None)
         self.dot_driver_executable = kwargs.get('dot_driver_executable', None)
+        override_solver_check = kwargs.get('override_solver_check', False)
 
         self.hi_t = hi_t
 
@@ -109,29 +110,36 @@ class DynGen_DAE(object):
             self.ipopt = SolverFactory("ipopt")
             self.asl_ipopt = SolverFactory("asl:ipopt")
 
-        if not self.k_aug_executable:
-            # try to find it on the path
-            # this has to be moved to mhegen somehow
-            if self.which('k_aug'):
-                self.k_aug = SolverFactory("k_aug")
-            else:
-                print("k_aug not found")
-                sys.exit()
-        else:
+        if self.k_aug_executable:
             self.k_aug = SolverFactory("k_aug",
                                        executable=self.k_aug_executable)
+            if self.k_aug.available():
+                pass
+            else:
+                self.k_aug = SolverFactory("k_aug")
+                if self.k_aug.available():
+                    pass
+                elif override_solver_check:
+                    pass
+                else:
+                    raise Exception
 
-        self.k_aug_sens = SolverFactory("k_aug",
-                                        executable=self.k_aug_executable)
-        self.dot_driver = SolverFactory("dot_driver",
-                                        executable=self.dot_driver_executable)
+        if self.dot_driver_executable:
+            self.dot_driver = SolverFactory("dot_driver",
+                                       executable=self.dot_driver_executable)
+            if self.dot_driver.available():
+                pass
+            else:
+                self.dot_driver = SolverFactory("dot_driver")
+                if self.dot_driver.available():
+                    pass
+                elif override_solver_check:
+                    pass
+                else:
+                    raise Exception
 
         # self.k_aug.options["eig_rh"] = ""
         self.asl_ipopt.options["halt_on_ampl_error"] = "yes"
-
-        # self.ipopt.options["print_user_options"] = "yes"
-        # self.k_aug.options["deb_kkt"] = ""
-        # self.SteadyRef.dum = Var(bounds=(0,100))
         self.SteadyRef.ofun = Objective(expr=1.0, sense=minimize)
         self.dyn = object()
         self.l_state = []

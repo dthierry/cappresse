@@ -17,9 +17,10 @@ def main():
     controls = ["u1"]
     u_bounds = {"u1": (0, 1000)}
     ref_state = {("Ca", (0,)): 0.010}
-    e = NmpcGen_DAE(cstr_rodrigo_dae, 2, states, controls, u_bounds=u_bounds, ref_state=ref_state,
-               k_aug_executable="/home/dav0/k_aug/src/k_aug/",
-               dot_driver_executable="/home/dav0/k_aug/sr/dot_driver/dot_driver")
+    e = NmpcGen_DAE(cstr_rodrigo_dae, 2, states, controls,
+                    u_bounds=u_bounds,
+                    ref_state=ref_state,
+                    override_solver_check=True)
     return e
 
 
