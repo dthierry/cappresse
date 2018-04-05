@@ -14,6 +14,7 @@ __author__ = "David Thierry @dthierry" #: March 2018
 
 def main():
     states = ["Ca", "T", "Tj"]
+
     measurements = ['T']
     controls = ["u1"]
     u_bounds = {"u1": (0, 1000)}
@@ -25,7 +26,8 @@ def main():
 
 if __name__ == '__main__':
     e = main()
-    e.get_state_vars()
-    e.load_iguess_steady()
-    load_iguess(e.SteadyRef, e.PlantSample, 0, 0)
-    e.lsmhe.pprint()
+
+    # e.get_state_vars()
+    # e.load_iguess_steady()
+    # load_iguess(e.SteadyRef, e.PlantSample, 0, 0)
+    e.lsmhe.pprint(filename="here_out")

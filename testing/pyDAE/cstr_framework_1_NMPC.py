@@ -9,6 +9,7 @@ from nmpc_mhe.pyomo_dae.NMPCGen_pyDAE import NmpcGen_DAE
 from nmpc_mhe.aux.utils import load_iguess
 from nmpc_mhe.aux.utils import reconcile_nvars_mequations
 import matplotlib.pyplot as plt
+import sys
 
 __author__ = "David Thierry @dthierry" #: March 2018
 
@@ -77,7 +78,7 @@ if __name__ == '__main__':
         e.cycleSamPlant(plant_step=True)
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
         e.PlantSample.u1.pprint()
-        sys.exit()
+        # sys.exit()
         # e.noisy_plant_manager(sigma=0.01, action="apply", update_level=True)
 
     # print(e.soi_dict[key])

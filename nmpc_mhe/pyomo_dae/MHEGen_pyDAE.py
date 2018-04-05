@@ -24,12 +24,10 @@ class MheGen_DAE(NmpcGen_DAE):
         self.int_file_mhe_suf = int(time.time())-1
 
         # Need a list of relevant measurements y
-
         self.y = measurements
         self.y_vars = dict()
 
         # Need a list or relevant noisy-states z
-
         self.x_noisy = noisy_states
         self.x_vars = dict()
         self.deact_ics = kwargs.pop('del_ics', True)
@@ -43,14 +41,11 @@ class MheGen_DAE(NmpcGen_DAE):
         self.nfe_tmhe = kwargs.pop('nfe_tmhe', self.nfe_t)  #: Specific number of finite elements
         self.ncp_tmhe = kwargs.pop('ncp_tmhe', self.ncp_t)  #: Specific number of collocation points
 
-        print("-" * 120)
-        print("I[[create_lsmhe]] lsmhe (full) model created.")
-        print("-" * 120)
-
         # nstates = sum(len(self.x_vars[x]) for x in self.x_noisy)
         # self.journalist("I", self._iteration_count, "MHE with \t", str(nstates) + "states")
 
         _t_mhe = self.nfe_tmhe * self.hi_t
+
         self.lsmhe = self.d_mod(self.nfe_tmhe, self.ncp_tmhe, _t=_t_mhe)
         augment_model(self.lsmhe)
         discretizer = TransformationFactory('dae.collocation')
@@ -80,12 +75,11 @@ class MheGen_DAE(NmpcGen_DAE):
                 self.x_vars[x].append(kth)
                 self.xkN_l.append(n_s[(0,) + kth])
                 self.xkN_nexcl.append(1)  #: non-exclusion list for active bounds
-                self.xkN_key[(x, kth)] = k
+                self.xkN_key[(x,) + kth] = k
                 k += 1
 
         #: self.lsmhe.fe_t won't work with the pyomo.dae; re-define a new one
         self.lsmhe.fe_t = Set(initialize=[i for i in range(0, self.nfe_tmhe)])  #: Set for the MHE stuff
-        #:
         self.lsmhe.xkNk_mhe = Set(initialize=[i for i in range(0, len(self.xkN_l))])  #: Create set of noisy_states
         self.lsmhe.x_0_mhe = Param(self.lsmhe.xkNk_mhe, initialize=0.0, mutable=True)  #: Prior-state
         self.lsmhe.wk_mhe = Param(self.lsmhe.fe_t, self.lsmhe.xkNk_mhe, initialize=0.0) \
@@ -179,10 +173,9 @@ class MheGen_DAE(NmpcGen_DAE):
                                                                cv_param[tfe_mhe_dic[i]] == control_var[i] + cv_noise[tfe_mhe_dic[i]]))
             cv_con = getattr(self.lsmhe, u + '_cdummy')
             cv_con.deactivate()
-            cv_con.pprint()
 
         self.lsmhe.U_mhe = Param(self.lsmhe.fe_t, self.u, initialize=1, mutable=True)
-        # self.lsmhe.U_mhe.pprint()
+
         #: Deactivate icc constraints
         if self.deact_ics:
             pass
@@ -197,14 +190,20 @@ class MheGen_DAE(NmpcGen_DAE):
                         ic_con[k].deactivate()
 
         #: Put the noise in the ode
-        j = 0
+        #: Cant make it a set of individual constraints bc. I can't access invidual components...
+        #: of a constraint
         self.lsmhe.noisy_cont = ConstraintList()
+        j = 0
         for i in self.x_noisy:
-            cp_exp = getattr(self.lsmhe, "noisy_" + i)
+            oc_e = getattr(self.lsmhe, i + "dot_disc_eq")
             for k in self.x_vars[i]:  #: This should keep the same order
-                for t in range(0, self.nfe_tmhe - 1):
-                    self.lsmhe.noisy_cont.add(cp_exp[t, k] == self.lsmhe.wk_mhe[t, j])
-                j += 1
+                for t in self.lsmhe.t:
+                    if t == 0 or tfe_mhe_dic[t] == self.lsmhe.nfe_t:
+                        continue
+                    e = oc_e[(t,) + k].expr
+                    j = self.xkN_key[(i,) + k]
+                    self.lsmhe.noisy_cont.add(e._args[0] == self.lsmhe.wk_mhe[tfe_mhe_dic[t], j])
+                # j += 1
         self.lsmhe.noisy_cont.deactivate()
 
         #: Expressions for the objective function (least-squares)
@@ -232,9 +231,6 @@ class MheGen_DAE(NmpcGen_DAE):
                 expr_u_obf += self.lsmhe.U_mhe[i, u] * var_w[i] ** 2
 
         self.lsmhe.U_e_mhe = Expression(expr=0.5 * expr_u_obf)  # how about this
-        # with open("file_cv.txt", "a") as f:
-        #     self.lsmhe.U_e_mhe.pprint(ostream=f)
-        #     f.close()
 
         self.lsmhe.Arrival_e_mhe = Expression(
             expr=0.5 * sum((self.xkN_l[j] - self.lsmhe.x_0_mhe[j]) *
@@ -244,24 +240,19 @@ class MheGen_DAE(NmpcGen_DAE):
         self.lsmhe.Arrival_dummy_e_mhe = Expression(
             expr=100000.0 * sum((self.xkN_l[j] - self.lsmhe.x_0_mhe[j]) ** 2 for j in self.lsmhe.xkNk_mhe))
 
-        self.lsmhe.obfun_dum_mhe_deb = Objective(sense=minimize,
-                                             expr=1.0)
+        self.lsmhe.obfun_dum_mhe_deb = Objective(sense=minimize, expr=1.0)
+        #: no arrival
         self.lsmhe.obfun_dum_mhe = Objective(sense=minimize,
-                                             expr=self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.U_e_mhe) # no arrival
+                                             expr=self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.U_e_mhe)
         self.lsmhe.obfun_dum_mhe.deactivate()
 
         self.lsmhe.obfun_mhe_first = Objective(sense=minimize,
                                          expr=self.lsmhe.Arrival_dummy_e_mhe)
         self.lsmhe.obfun_mhe_first.deactivate()
 
-
         self.lsmhe.obfun_mhe = Objective(sense=minimize,
                                          expr=self.lsmhe.Arrival_e_mhe + self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.U_e_mhe)
         self.lsmhe.obfun_mhe.deactivate()
-
-        # with open("file_cv.txt", "a") as f:
-        #     self.lsmhe.obfun_mhe.pprint(ostream=f)
-        #     f.close()
 
         self._PI = {}  #: Container of the KKT matrix
         self.xreal_W = {}
@@ -269,7 +260,6 @@ class MheGen_DAE(NmpcGen_DAE):
         self.curr_y_offset = {}  #: Current offset of measurement
         self.curr_u_offset = {}  #: Current offset of the input
 
-        
         for y in self.y:
             for j in self.y_vars[y]:
                 self.curr_m_noise[(y, j)] = 0.0
@@ -307,7 +297,6 @@ class MheGen_DAE(NmpcGen_DAE):
             f.close()
 
 
-
     def initialize_xreal(self, ref):
         """Wanted to keep the states in a horizon-like window, this should be done in the main dyngen class"""
         dum = self.d_mod(1, self.ncp_tmhe, _t=self.hi_t)
@@ -318,7 +307,7 @@ class MheGen_DAE(NmpcGen_DAE):
                 pn = i + "_ic"
                 p = getattr(dum, pn)
                 vs = getattr(dum, i)
-                for ks in p.iterkeys():
+                for ks in p.keys():
                     p[ks].value = value(vs[(0, self.ncp_t) + (ks,)])
             #: Solve
             self.solve_dyn(dum, o_tee=False)
@@ -413,8 +402,6 @@ class MheGen_DAE(NmpcGen_DAE):
             self.patch_input_mhe(src_kind="dict")  #: At this point it doesn't matter if this is the wrong input
             self.init_step_mhe(patch_pred_y=False)  #: Just for initialization purposes
             self.journalist("I", self._iteration_count, "preparation_phase_mhe", "idMHE: Ready")
-
-        
 
     def patch_meas_mhe(self, src, **kwargs):
         """Mechanism to assign a value of y0 to the current mhe from the dynamic model
@@ -1110,8 +1097,6 @@ class MheGen_DAE(NmpcGen_DAE):
         for u in self.u:
             con_w = getattr(self.lsmhe, "w_" + u + "c_mhe")
             con_w[self.nfe_tmhe-1].set_suffix_value(self.lsmhe.npdp, self.curr_u_offset[u])
-
-
 
 
         # with open("somefile0.txt", "w") as f:
