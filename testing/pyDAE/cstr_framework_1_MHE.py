@@ -21,6 +21,25 @@ def main():
     ref_state = {("Ca", (0,)): 0.010}
     e = MheGen_DAE(cstr_rodrigo_dae, 2, states, controls, states, measurements, u_bounds=u_bounds, ref_state=ref_state,
                    override_solver_check=True)
+    Q = {}
+    U = {}
+    R = {}
+
+    Q['Ca'] = 1.11
+    Q['T'] = 99.0
+    Q['Tj'] = 1.1
+
+    U['u1'] = 0.22
+
+    R['T'] = 1.22
+    e.set_covariance_disturb(Q)
+    e.set_covariance_u(U)
+    e.set_covariance_meas(R)
+    e.lsmhe.Q_mhe.pprint()
+    e.lsmhe.R_mhe.pprint()
+    e.lsmhe.U_mhe.pprint()
+    e.create_rh_sfx()
+
     return e
 
 

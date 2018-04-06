@@ -6,7 +6,8 @@ from pyomo.core.base import Suffix, ConcreteModel, Var, Suffix
 from pyomo.opt import ProblemFormat
 from pyomo.core.kernel.numvalue import value
 from os import getcwd, remove
-__author__ = "David Thierry @dthierry" #: March 2018
+
+__author__ = "David Thierry @dthierry"  #: March 2018
 
 
 def t_ij(time_set, i, j):
@@ -78,9 +79,12 @@ def fe_compute(time_set, t):
     return fe
 
 
+def augment_model(d_mod) -> None:
+    """Attach Suffixes, and more to a base model
 
-def augment_model(d_mod):
-    """Attach Suffixes, and more to a base model"""
+    Args:
+        d_mod(ConcreteModel): Model of interest.
+    """
     d_mod.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
     d_mod.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
     d_mod.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
@@ -229,13 +233,3 @@ def load_iguess(src, tgt, fe_src, fe_tgt):
                     index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
                     #: Better idea: interpolate
                     vd[(t_tgt,) + index].set_value(value(vs[(t_src,) + index]))
-
-
-def augment_model(d_mod):
-    # type: (ConcreteModel) -> None
-    """Attach Suffixes, and more to a base model"""
-    d_mod.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
-    d_mod.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
-    d_mod.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
-    d_mod.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
-    d_mod.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)

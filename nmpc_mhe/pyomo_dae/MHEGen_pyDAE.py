@@ -47,6 +47,7 @@ class MheGen_DAE(NmpcGen_DAE):
         _t_mhe = self.nfe_tmhe * self.hi_t
 
         self.lsmhe = self.d_mod(self.nfe_tmhe, self.ncp_tmhe, _t=_t_mhe)
+
         augment_model(self.lsmhe)
         discretizer = TransformationFactory('dae.collocation')
         discretizer.apply_to(self.lsmhe, nfe=self.nfe_tmhe, ncp=self.ncp_tmhe, scheme="LAGRANGE-RADAU")
@@ -198,7 +199,7 @@ class MheGen_DAE(NmpcGen_DAE):
             oc_e = getattr(self.lsmhe, i + "dot_disc_eq")
             for k in self.x_vars[i]:  #: This should keep the same order
                 for t in self.lsmhe.t:
-                    if t == 0 or tfe_mhe_dic[t] == self.lsmhe.nfe_t:
+                    if t == 0 or tfe_mhe_dic[t] == self.lsmhe.nfe_t - 1:
                         continue
                     e = oc_e[(t,) + k].expr
                     j = self.xkN_key[(i,) + k]
@@ -251,7 +252,8 @@ class MheGen_DAE(NmpcGen_DAE):
         self.lsmhe.obfun_mhe_first.deactivate()
 
         self.lsmhe.obfun_mhe = Objective(sense=minimize,
-                                         expr=self.lsmhe.Arrival_e_mhe + self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.U_e_mhe)
+                                         expr=self.lsmhe.Arrival_e_mhe + self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe +
+                                              self.lsmhe.U_e_mhe)
         self.lsmhe.obfun_mhe.deactivate()
 
         self._PI = {}  #: Container of the KKT matrix
@@ -284,8 +286,7 @@ class MheGen_DAE(NmpcGen_DAE):
             self.y_real[y] = []
             self.y_noise_jrnl[y] = []
             self.yk0_jrnl[y] = []
-        self.dum_mhe = self.d_mod(1, self.ncp_tmhe, _t=self.hi_t)
-        self.dum_mhe.name = "Dummy [MHE]"
+
 
         with open("res_mhe_label_" + self.res_file_suf + ".txt", "w") as f:
             for x in self.x_noisy:
@@ -485,8 +486,10 @@ class MheGen_DAE(NmpcGen_DAE):
             for i in range(0, self.nfe_tmhe):
                 for y in self.y:
                     for jth in self.y_vars[y]:  #: the jth variable
-                        v_i = self.yk_key[(y, jth)]
-                        rtarget[i, v_i] = 1 / cov_dict[(y, jth), (y, jth), i]
+                        v_i = self.yk_key[(y,) + jth]
+                        if cov_dict[y] == 0:
+                            raise ZeroDivisionError('wrong covariance')
+                        rtarget[i, v_i] = 1 / cov_dict[y]
         else:
             sys.exit(1)
 
@@ -504,32 +507,29 @@ class MheGen_DAE(NmpcGen_DAE):
         #         rtarget[_t, v_i, v_j] = cov_dict[vni, vnj, _t]
 
     def set_covariance_disturb(self, cov_dict):
-        """Sets covariance(inverse) for the states.
+        """Assign values to the covariance of the disturbance.
+
+        For now we only take diagonal covariance(variance) matrices.
         Args:
-            cov_dict (dict): a dictionary with the following key structure [(state_name, j), (state_name, k), time]
+            cov_dict (dict): The values of the covariance
+
         Returns:
-            None
+            None:
         """
         qtarget = getattr(self.lsmhe, "Q_mhe")
         if self.diag_Q_R:
             for i in range(0, self.nfe_tmhe - 1):
                 for x in self.x_noisy:
                     for jth in self.x_vars[x]:  #: the jth variable
-                        v_i = self.xkN_key[(x, jth)]
-                        qtarget[i, v_i] = 1 / cov_dict[(x, jth), (x, jth), i]
-        else:
-            sys.exit(1)
+                        v_i = self.xkN_key[(x,) + jth]
+                        if cov_dict != 0.0:
+                            qtarget[i, v_i] = 1 / cov_dict[x]
+                        else:
+                            raise ZeroDivisionError
 
-        # for key in cov_dict:
-        #     vni = key[0]
-        #     vnj = key[1]
-        #     _t = key[2]
-        #     v_i = self.xkN_key[vni]
-        #     v_j = self.xkN_key[vnj]
-        #     if self.diag_Q_R:
-        #         qtarget[_t, v_i] = 1 / cov_dict[vni, vnj, _t]
-        #     else:
-        #         qtarget[_t, v_i, v_j] = cov_dict[vni, vnj, _t]
+        else:
+            raise Exception("Not yet implemented [set_covariance_disturb]")
+
 
     def set_covariance_u(self, cov_dict):
         """Sets covariance(inverse) for the states.
@@ -539,12 +539,12 @@ class MheGen_DAE(NmpcGen_DAE):
             None
         """
         qtarget = getattr(self.lsmhe, "U_mhe")
-        qtarget.display()
-        for key in cov_dict:
-            vni = key[0]
-            _t = key[1]
-            qtarget[_t, vni] = 1 / cov_dict[vni, _t]
-        qtarget.display()
+        for key in qtarget:
+            _t = key[0]
+            vni = key[1]
+            if cov_dict[vni] == 0.0:
+                raise ZeroDivisionError
+            qtarget[_t, vni] = 1 / cov_dict[vni]
 
     def shift_mhe(self):
         """Shifts current initial guesses of variables for the mhe problem"""
@@ -564,7 +564,6 @@ class MheGen_DAE(NmpcGen_DAE):
 
     def shift_measurement_input_mhe(self):
         """Shifts current measurements for the mhe problem"""
-        
         y0 = getattr(self.lsmhe, "yk0_mhe")
         #: Start from the second fe
         for i in range(1, self.nfe_tmhe):
@@ -574,7 +573,6 @@ class MheGen_DAE(NmpcGen_DAE):
                 umhe = getattr(self.lsmhe, u)
                 umhe[i-1] = value(umhe[i])
         self.adjust_nu0_mhe()
-
 
     def patch_input_mhe(self, src_kind, **kwargs):
         """Loads inputs into the mhe model, by default takes the last finite element"""
@@ -663,7 +661,7 @@ class MheGen_DAE(NmpcGen_DAE):
         self.adjust_nu0_mhe()
         self.adjust_w_mhe()
 
-    def create_rh_sfx(self, set_suffix=True):
+    def create_rh_sfx(self, set_suffix: bool = True) -> None:
         """Creates relevant suffixes for k_aug (prior at fe=2) (Reduced_Hess)
         Args:
             set_suffix (bool): True if update must be done
@@ -684,12 +682,12 @@ class MheGen_DAE(NmpcGen_DAE):
         else:
             self.lsmhe.f_timestamp = Suffix(direction=Suffix.EXPORT,
                                             datatype=Suffix.INT)
-
+        t_prior = t_ij(self.lsmhe.t, 1, 0)
         if set_suffix:
             for key in self.x_noisy:
                 var = getattr(self.lsmhe, key)
                 for j in self.x_vars[key]:
-                    var[(1, 0) + j].set_suffix_value(self.lsmhe.dof_v, 1)
+                    var[(t_prior,) + j].set_suffix_value(self.lsmhe.dof_v, 1)
 
     def create_sens_suffix_mhe(self, set_suffix=True):
         """Creates relevant suffixes for k_aug (Sensitivity)

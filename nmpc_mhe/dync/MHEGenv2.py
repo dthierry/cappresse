@@ -636,7 +636,7 @@ class MheGen(NmpcGen):
         self.adjust_w_mhe()
 
     def create_rh_sfx(self, set_suffix=True):
-        """Creates relevant suffixes for k_aug (prior at fe=2) (Reduced_Hess)
+        """Creates relevant suffixes for k_aug (prior at fe=1)(second sampling) (Reduced_Hess)
         Args:
             set_suffix (bool): True if update must be done
         Returns:
