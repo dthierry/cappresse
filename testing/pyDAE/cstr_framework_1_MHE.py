@@ -40,6 +40,15 @@ def main():
     e.lsmhe.U_mhe.pprint()
     e.create_rh_sfx()
 
+    e.get_state_vars()
+    e.load_iguess_steady()
+    load_iguess(e.SteadyRef, e.PlantSample, 0, 0)
+
+    reconcile_nvars_mequations(e.lsmhe)
+    e.solve_dyn(e.PlantSample)
+
+    e.init_lsmhe_prep(e.PlantSample)
+
     return e
 
 

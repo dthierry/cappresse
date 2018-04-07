@@ -26,6 +26,8 @@ m.x1 = Var(m.t, m.i1, bounds=(0, 1))
 m.x2 = Var(m.t, m.i1, bounds=(0, 1))
 m.u = Var(m.t, initialize=0)
 
+m.p = Param(m.t, default=3.4, mutable=True)
+
 m.x1dot = DerivativeVar(m.x1)
 m.x2dot = DerivativeVar(m.x2)
 
@@ -44,8 +46,8 @@ m.x1dotcon = Constraint(m.t, m.i1, rule=_x1dot)
 def _x2dot(M, i, j):
     if i == 0:
         return Constraint.Skip
-    return M.x2dot[i, j] == M.x1[i, j] ** 2 + M.u[i] ** 2
-
+    return M.x2dot[i, j] == M.x1[i, j] ** 2 + M.u[i] ** 2 + M.p[i]
+    # return M.x2dot[i, j] == M.x1[i, j] ** 2 + M.u[i] ** 2
 
 m.x2dotcon = Constraint(m.t, m.i1, rule=_x2dot)
 
@@ -57,3 +59,11 @@ def _init(M):
 
 
 m.init_conditions = ConstraintList(rule=_init)
+n = m.clone()
+
+d = TransformationFactory('dae.collocation')
+d.apply_to(n, nfe=2, ncp=2)
+
+d2 = TransformationFactory('dae.collocation')
+d2.apply_to(m, nfe=1, ncp=2)
+

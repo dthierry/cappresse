@@ -49,7 +49,11 @@ class cstr_rodrigo_dae(ConcreteModel):
         #: Our control var
         self.Tjinb = Var(self.t, initialize=250)
         self.u1 = Param(self.t, default=250, mutable=True)  #: We are making a sort-of port
-        self.u1_cdummy = Constraint(self.t, rule=lambda m, i: m.Tjinb[i] == self.u1[i])
+        def u1_rule(m, i):
+            return m.Tjinb[i] == m.u1[i]
+
+        # self.u1_cdummy = Constraint(self.t, rule=lambda m, i: m.Tjinb[i] == self.u1[i])
+        self.u1_cdummy = Constraint(self.t, rule=u1_rule)
         #: u1 will contain the information from the NMPC problem. This is what drives the plant.
         #: how about smth like nmpc_u1 or u1_nmpc
 

@@ -14,7 +14,7 @@ import sys, os, time
 from pyutilib.common._exceptions import ApplicationError
 from nmpc_mhe.aux.utils import t_ij
 from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model
-
+from copy import deepcopy
 __author__ = "David Thierry @dthierry" #: March 2018
 
 
@@ -47,10 +47,28 @@ class MheGen_DAE(NmpcGen_DAE):
         _t_mhe = self.nfe_tmhe * self.hi_t
 
         self.lsmhe = self.d_mod(self.nfe_tmhe, self.ncp_tmhe, _t=_t_mhe)
+        # self.dum_mhe = self.d_mod(1, self.ncp_tmhe, _t=self.hi_t)
+
+        self.dum_mhe = self.lsmhe.clone()
+
+        self.dum_mhe.t._bounds = (0, self.hi_t)
+        self.dum_mhe.t.clear()
+        self.dum_mhe.t.construct()
+        self.dum_mhe.t.pprint()
+        self.dum_mhe.name = "Dummy [MHE]"
+        for i in self.dum_mhe.component_objects(Var):
+            i.clear()
+            i.construct()
+        for i in self.dum_mhe.component_objects(Constraint):
+            i.clear()
+            i.construct()
 
         augment_model(self.lsmhe)
-        discretizer = TransformationFactory('dae.collocation')
-        discretizer.apply_to(self.lsmhe, nfe=self.nfe_tmhe, ncp=self.ncp_tmhe, scheme="LAGRANGE-RADAU")
+        augment_model(self.dum_mhe)
+
+        d = TransformationFactory('dae.collocation')
+        d.apply_to(self.lsmhe, nfe=self.nfe_tmhe, ncp=self.ncp_tmhe, scheme="LAGRANGE-RADAU")
+
         self.lsmhe.name = "LSMHE (Least-Squares MHE)"
         self.lsmhe.create_bounds()
         #: create x_pi constraint
@@ -161,18 +179,20 @@ class MheGen_DAE(NmpcGen_DAE):
                 pass
             else:
                 raise ValueError  #: Some exception here
-
+            dumm_eq.clear()
             self.lsmhe.del_component(cv)  #: Delete the dummy_param
-            self.lsmhe.del_component(dumm_eq)  #: Delete the dummy_constraint
+            # self.lsmhe.del_component(dumm_eq)  #: Delete the dummy_constraint
             #: Change this guy to mutable parameter [piece-wise constant]
+
             self.lsmhe.add_component(u, Param(self.lsmhe.fe_t, mutable=True, initialize=lambda m, i: c_val[i]))
             self.lsmhe.add_component('w_' + u + '_mhe', Var(self.lsmhe.fe_t, initialize=0.0))
             cv_param = getattr(self.lsmhe, u)  #: Get the new variable
             cv_noise = getattr(self.lsmhe, 'w_' + u + '_mhe')
-            self.lsmhe.add_component(u + '_cdummy', Constraint(self.lsmhe.t,
+            self.lsmhe.add_component(u + '_cdummy_mhe', Constraint(self.lsmhe.t,
                                                                rule=lambda m, i:
                                                                cv_param[tfe_mhe_dic[i]] == control_var[i] + cv_noise[tfe_mhe_dic[i]]))
-            cv_con = getattr(self.lsmhe, u + '_cdummy')
+            dumm_eq.rule = lambda m, i: cv_param[tfe_mhe_dic[i]] == control_var[i]
+            cv_con = getattr(self.lsmhe, u + '_cdummy_mhe')
             cv_con.deactivate()
 
         self.lsmhe.U_mhe = Param(self.lsmhe.fe_t, self.u, initialize=1, mutable=True)
@@ -297,40 +317,23 @@ class MheGen_DAE(NmpcGen_DAE):
                     f.write('\t')
             f.close()
 
-
-    def initialize_xreal(self, ref):
-        """Wanted to keep the states in a horizon-like window, this should be done in the main dyngen class"""
-        dum = self.d_mod(1, self.ncp_tmhe, _t=self.hi_t)
-        dum.name = "Dummy [xreal]"
-        self.load_iguess_dyndyn(ref, dum, 1)
-        for fe in range(0, self._window_keep):
-            for i in self.states:
-                pn = i + "_ic"
-                p = getattr(dum, pn)
-                vs = getattr(dum, i)
-                for ks in p.keys():
-                    p[ks].value = value(vs[(0, self.ncp_t) + (ks,)])
-            #: Solve
-            self.solve_dyn(dum, o_tee=False)
-            for i in self.states:
-                self.xreal_W[(i, fe)] = []
-                xs = getattr(dum, i)
-                for k in xs.keys():
-                    if k[0] == self.ncp_t:
-                        print(i)
-                        self.xreal_W[(i, fe)].append(value(xs[k]))
-
     def init_lsmhe_prep(self, ref, update=True):
         """Initializes the lsmhe in preparation phase
         Args:
             ref (pyomo.core.base.PyomoModel.ConcreteModel): The reference model"""
         self.journalist("I", self._iteration_count, "init_lsmhe_prep", "Preparation phase MHE")
         dum = self.dum_mhe
+        if not 'tau_points' in dum.t.get_discretization_info().keys():
+            d = TransformationFactory('dae.collocation')
+            d.apply_to(dum, nfe=1, ncp=self.ncp_tmhe, scheme='LAGRANGE-RADAU')
+
         #: Load current solution
-        # self.load_iguess_dyndyn(ref, dum, 1)  # This function can't possibly work
-        self.load_iguess_single(ref, dum, src_fe=0, tgt_fe=0)
+        print(dum.t.get_discretization_info())
+        print(ref.t.get_discretization_info())
+        load_iguess(ref, dum, 0, 0)
         self.load_init_state_gen(dum, src_kind="mod", ref=ref, fe=0)
         #: Patching of finite elements
+        t0ncp = t_ij(self.lsmhe.t, 0, self.ncp_tmhe)
         for finite_elem in range(0, self.nfe_tmhe):
             #: Cycle ICS
             for i in self.states:
@@ -338,19 +341,19 @@ class MheGen_DAE(NmpcGen_DAE):
                 p = getattr(dum, pn)
                 vs = getattr(dum, i)
                 for ks in p.keys():
-                    p[ks].value = value(vs[(0, self.ncp_tmhe) + (ks,)])
+                    p[ks].value = value(vs[(t0ncp,) + (ks,)])
             if finite_elem == 0:
                 for i in self.states:
                     pn = i + "_ic"
                     p = getattr(self.lsmhe, pn)  #: Target
                     vs = getattr(dum, i)  #: Source
                     for ks in p.keys():
-                        p[ks].value = value(vs[(0, self.ncp_tmhe) + (ks,)])
+                        p[ks].value = value(vs[(t0ncp,) + (ks,)])
             self.patch_meas_mhe(self.PlantSample, fe=finite_elem)
             #: Solve
             self.solve_dyn(dum, o_tee=True)
             #: Patch
-            self.load_iguess_dyndyn(dum, self.lsmhe, finite_elem)
+            load_iguess(dum, self.lsmhe, 0, finite_elem)
             self.patch_input_mhe("mod", src=dum, fe=finite_elem)
 
         self.lsmhe.name = "Preparation MHE"   #: Pretty much simulation
@@ -370,20 +373,23 @@ class MheGen_DAE(NmpcGen_DAE):
             sys.exit()
         self.lsmhe.name = "LSMHE (Least-Squares MHE)"
         if update:
+              cut_off_time = t_ij(self.lsmhe.t, self.lsmhe.nfe_t - 1, 0)
               for i in self.x_noisy:  # only deactivate the relevant noisy-state continuity conditions
-                  cp_con = getattr(self.lsmhe, "cp_" + i)
+                  cp_con = getattr(self.lsmhe, i + "dot_disc_eq")
                   for ii in self.x_vars[i]:
-                      for t in range(0, self.nfe_tmhe - 1):
+                      for t in self.lsmhe.t:
+                          if t >= cut_off_time or t == 0:
+                              continue
                           cp_con[(t,) + ii].deactivate()
-
               self.lsmhe.noisy_cont.activate()  # activate new noisy-state continuity conditions
               self.lsmhe.obfun_dum_mhe_deb.deactivate()
               self.lsmhe.obfun_dum_mhe.activate()
               # self.deact_icc_mhe()
               self.lsmhe.hyk_c_mhe.activate()
               for u in self.u:
-                  cc = getattr(self.lsmhe, u + "_c")  #: Get the constraint for input
-                  con_w = getattr(self.lsmhe, "w_" + u + "c_mhe")  #: Get the constraint-noisy
+                  # need to keep both!!
+                  cc = getattr(self.lsmhe, u + "_cdummy")  #: Get the constraint for input
+                  con_w = getattr(self.lsmhe, u + "_cdummy_mhe")  #: Get the constraint-noisy
                   cc.deactivate()
                   con_w.activate()
         self.journalist("I", self._iteration_count, "initialize_lsmhe", "Attempting to initialize lsmhe Done")
@@ -408,11 +414,11 @@ class MheGen_DAE(NmpcGen_DAE):
         """Mechanism to assign a value of y0 to the current mhe from the dynamic model
         By default load the measurement to the last finite element of the lsmhe
         Args:
-            ref(pyomo.core.base.PyomoModel.ConcreteModel): The reference model
+            src(ConcreteModel): The reference model
         Returns:
             meas_dict (dict): A dictionary containing the measurements list by meas_var
         """
-        y0dest = getattr(self.lsmhe, "yk0_mhe")
+        y0dest = getattr(self.lsmhe, "yk0_mhe")  #: Param containing data.
         fe = kwargs.pop("fe", self.nfe_tmhe - 1)
         use_dict = kwargs.pop("use_dict", False)
         #: Override patching
@@ -426,18 +432,19 @@ class MheGen_DAE(NmpcGen_DAE):
 
         skip_update = kwargs.pop("skip_update", False)
         noisy = kwargs.pop("noisy", True)
-        cp = getattr(src, "cp_t")
-        cpa = max(cp)  #: From the source
+        cp = getattr(src, "ncp_t")
+        cpa = cp  #: From the source
 
         meas_dic = dict.fromkeys(self.y)
         l = []
+        tcpa = t_ij(src.t, 0, cpa)
         for y in self.y:
             lm = []
             var = getattr(src, y)
             for j in self.y_vars[y]:
                 # self.curr_meas[(y, j)] = value(var[(0, cpa,) + j])
-                lm.append(value(var[(0, cpa,) + j]))
-                l.append(value(var[(0, cpa,) + j]))
+                lm.append(value(var[(tcpa,) + j]))
+                l.append(value(var[(tcpa,) + j]))
             meas_dic[y] = lm
             
         # if not skip_update:  #: Update the mhe model
@@ -445,7 +452,7 @@ class MheGen_DAE(NmpcGen_DAE):
 
         for i in self.y:
             for j in self.y_vars[i]:
-                k = self.yk_key[(i, j)]
+                k = self.yk_key[(i,) + j]
                 #: Adding noise to the mhe measurement
                 y0dest[fe, k].value = l[k] + self.curr_m_noise[(i, j)] if noisy else l[k]
         return meas_dic
@@ -578,19 +585,17 @@ class MheGen_DAE(NmpcGen_DAE):
         """Loads inputs into the mhe model, by default takes the last finite element"""
         src = kwargs.pop("src", self.PlantSample)
         fe = kwargs.pop("fe", self.nfe_tmhe - 1)
-        # src_kind = kwargs.pop("src_kind", "mod")
         if src_kind == "mod":
             for u in self.u:
                 usrc = getattr(src, u)
                 utrg = getattr(self.lsmhe, u)
-                utrg[fe].value = value(usrc[0])
+                utrg[fe].value = value(usrc[0])  #: This has to work
         elif src_kind == "dict":
             for u in self.u:
                 utrg = getattr(self.lsmhe, u)
                 utrg[fe].value = self.curr_u[u]
         else:
             raise ValueError("Either use mod or dict %s" % src_kind)
-
 
     def init_step_mhe(self, patch_pred_y=False, **kwargs):
         """Takes the last state-estimate from the mhe to perform an open-loop simulation
