@@ -666,7 +666,7 @@ class MheGen_DAE(NmpcGen_DAE):
         self.adjust_nu0_mhe()
         self.adjust_w_mhe()
 
-    def create_rh_sfx(self, set_suffix: bool = True) -> None:
+    def create_rh_sfx(self, set_suffix=True):
         """Creates relevant suffixes for k_aug (prior at fe=2) (Reduced_Hess)
         Args:
             set_suffix (bool): True if update must be done

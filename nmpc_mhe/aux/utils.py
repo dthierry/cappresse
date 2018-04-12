@@ -79,7 +79,7 @@ def fe_compute(time_set, t):
     return fe
 
 
-def augment_model(d_mod) -> None:
+def augment_model(d_mod):
     """Attach Suffixes, and more to a base model
 
     Args:
