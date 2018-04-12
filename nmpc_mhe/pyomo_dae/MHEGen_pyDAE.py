@@ -2,10 +2,11 @@
 from __future__ import print_function
 from __future__ import division
 
-from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix, ConstraintList, TransformationFactory
+from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix,\
+    ConstraintList, TransformationFactory, ConcreteModel
 from pyomo.core.base.sets import SimpleSet
 from pyomo.dae import *
-from pyomo.core.kernel.numvalue import value
+from pyomo.core.kernel.numvalue import value as value
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
 from nmpc_mhe.pyomo_dae.NMPCGen_pyDAE import NmpcGen_DAE
 import numpy as np
@@ -14,7 +15,7 @@ import sys, os, time
 from pyutilib.common._exceptions import ApplicationError
 from nmpc_mhe.aux.utils import t_ij, reconcile_nvars_mequations
 from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model
-from copy import deepcopy
+
 __author__ = "David Thierry @dthierry" #: March 2018
 
 
@@ -51,18 +52,6 @@ class MheGen_DAE(NmpcGen_DAE):
 
         self.dum_mhe = self.lsmhe.clone()
         self.dum_mhe.pprint(filename="before")
-
-        # self.dum_mhe.t._bounds = (0, self.hi_t)
-        # self.dum_mhe.t.clear()
-        # self.dum_mhe.t.construct()
-        # self.dum_mhe.t.pprint()
-        # self.dum_mhe.name = "Dummy [MHE]"
-        # for i in self.dum_mhe.component_objects(Var):
-        #     i.clear()
-        #     i.construct()
-        # for i in self.dum_mhe.component_objects(Constraint):
-        #     i.clear()
-        #     i.construct()
 
         augment_model(self.lsmhe)
         augment_model(self.dum_mhe, new_timeset_bounds=(0, self.hi_t), given_name="Dummy[MHE]")
@@ -319,9 +308,11 @@ class MheGen_DAE(NmpcGen_DAE):
             f.close()
 
     def init_lsmhe_prep(self, ref, update=True):
+        # type: (ConcreteModel, bool) -> None
         """Initializes the lsmhe in preparation phase
         Args:
-            ref (pyomo.core.base.PyomoModel.ConcreteModel): The reference model"""
+            update (bool): If true, initialize variables as well.
+            ref (ConcreteModel): The reference model."""
         self.journalist("I", self._iteration_count, "init_lsmhe_prep", "Preparation phase MHE")
         dum = self.dum_mhe
         if not 'tau_points' in dum.t.get_discretization_info().keys():
@@ -329,13 +320,9 @@ class MheGen_DAE(NmpcGen_DAE):
             d.apply_to(dum, nfe=1, ncp=self.ncp_tmhe, scheme='LAGRANGE-RADAU')
 
         #: Load current solution
-        # print(dum.t.get_discretization_info())
-        # print(ref.t.get_discretization_info())
         load_iguess(ref, dum, 0, 0)
         self.load_init_state_gen(dum, src_kind="mod", ref=ref, fe=0)
-        # dum.pprint(filename="dummy.txt")
-        # print(os.getcwd())
-        # reconcile_nvars_mequations(dum, keep_nl=True, labels=True)
+
         #: Patching of finite elements
         t0ncp = t_ij(self.lsmhe.t, 0, self.ncp_tmhe)
         for finite_elem in range(0, self.nfe_tmhe):
@@ -558,20 +545,32 @@ class MheGen_DAE(NmpcGen_DAE):
             qtarget[_t, vni] = 1 / cov_dict[vni]
 
     def shift_mhe(self):
-        """Shifts current initial guesses of variables for the mhe problem"""
+        """Shifts current initial guesses of variables for the mhe problem by one finite element.
+
+        """
         for v in self.lsmhe.component_objects(Var, active=True):
-            if type(v.index_set()) == SimpleSet:  #: Don't want simple sets
-                continue
-            else:
-                kl = v.keys()
-                if len(kl[0]) < 2:
+            if v._implicit_subsets is None:
+                if v.index_set() is self.lsmhe.t:  #: time is the only set
+                    for i in range(0, self.nfe_tmhe - 1):
+                        for j in range(0, self.ncp_tmhe + 1):
+                            t_dash_i = t_ij(self.lsmhe.t, i, j)
+                            t = t_ij(self.lsmhe.t, i + 1, j)
+                            val = value(v[t])
+                            v[t_dash_i].set_value(val)
+                else:
                     continue
-                for k in kl:
-                    if k[0] < self.nfe_tmhe - 1:
-                        try:
-                            v[k].set_value(v[(k[0] + 1,) + k[1:]])
-                        except ValueError:
-                            continue
+            else:
+                if self.lsmhe.t in v._implicit_subsets:
+                    remaining_set = set(product(v._implicit_subsets[1:], repeat=len(v._implicit_subsets[1:])))
+                    for rs in remaining_set:
+                        for i in range(0, self.nfe_tmhe - 1):
+                            for j in range(0, self.ncp_tmhe + 1):
+                                t_dash_i = t_ij(self.lsmhe.t, i, j)
+                                t = t_ij(self.lsmhe.t, i + 1, j)
+                                val = value(v[(t,) + rs])
+                                v[(t_dash_i,) + rs].set_value(val)
+                else:
+                    continue
 
     def shift_measurement_input_mhe(self):
         """Shifts current measurements for the mhe problem"""
@@ -602,55 +601,39 @@ class MheGen_DAE(NmpcGen_DAE):
             raise ValueError("Either use mod or dict %s" % src_kind)
 
     def init_step_mhe(self, patch_pred_y=False, **kwargs):
-        """Takes the last state-estimate from the mhe to perform an open-loop simulation
-        that initializes the last slice of the mhe horizon. By default the last finite element will be taken as ref.
+        """Takes the last state-estimate from the mhe to perform an open-loop simulation that initializes
+        the last slice of the mhe horizon. By default the last finite element will be taken as reference.
+
+        Operations:
+        # Load initial guess to ref
+        # Set values for inputs
+        # Set values for initial states
+        # Solve reference
+        # Load back to lsmhe
+
         Args:
-            patch_y (bool): If true, patch the measurements as well"""
+            patch_pred_y:
+            **kwargs:
+        """
         tgt = self.dum_mhe
         src = self.lsmhe
-        # fe_t = getattr(src, "fe_t")
-        # l = max(fe_t)  #: Maximum fe value
         fe_src = kwargs.pop("fe", self.nfe_tmhe - 1)
+
         #: Load initial guess to tgt
-        for vs in src.component_objects(Var, active=True):
-            if vs.getname()[-4:] == "_mhe":
-                continue
-            vd = getattr(tgt, vs.getname())
-            # there are two cases: 1 key 1 elem, several keys 1 element
-            vskeys = vs.keys()
-            if len(vskeys) == 1:
-                #: One key
-                for ks in vskeys:
-                    for v in vd.keys():
-                        v.set_value(value(vs[ks]))
-            else:
-                k = 0
-                for ks in vskeys:
-                    if k == 0:
-                        if type(ks) != tuple:
-                            #: Several keys of 1 element each!!
-                            vd[0].set_value(value(vs[vskeys[-1]]))  #: This has got to be true
-                            break
-                        k += 1
-                    kj = ks[2:]
-                    if vs.getname() in self.states:  #: States start at 0
-                        for j in range(0, self.ncp_tmhe + 1):
-                            vd[(0, j) + kj].set_value(value(vs[(fe_src, j) + kj]))
-                    else:
-                        for j in range(1, self.ncp_tmhe + 1):
-                            vd[(0, j) + kj].set_value(value(vs[(fe_src, j) + kj]))
+        load_iguess(src, tgt, fe_src, 0)
         #: Set values for inputs
         for u in self.u:  #: This should update the inputs
             usrc = getattr(src, u)
             utgt = getattr(tgt, u)
             utgt[0].value = (value(usrc[fe_src]))
         #: Set values for initial states
+        t_ncp = t_ij(self.lsmhe.t, fe_src, self.ncp_tmhe)
         for x in self.states:
             pn = x + "_ic"
             p = getattr(tgt, pn)
             vs = getattr(self.lsmhe, x)
             for ks in p.keys():
-                p[ks].value = value(vs[(fe_src, self.ncp_tmhe) + (ks,)])
+                p[ks].value = value(vs[(t_ncp,) + (ks,)])
         #: Solve
         test = self.solve_dyn(tgt, o_tee=True, stop_if_nopt=False, max_cpu_time=300,
                             jacobian_regularization_value=1e-04,
@@ -660,15 +643,12 @@ class MheGen_DAE(NmpcGen_DAE):
         #: Load solution as a guess to lsmhe
         if test != 0:
             self.journalist("I", self._iteration_count, "init_step_mhe", "Failed prediction for next step")
-        self.load_iguess_dyndyn(tgt, self.lsmhe, self.nfe_tmhe - 1)
-
-
-
+        load_iguess(tgt, src, 0, fe_src)
         if patch_pred_y:  #: patch the measurement associated with the solution of the dummy model to the mhe
             self.journalist("I", self._iteration_count, "init_step_mhe", "Prediction for advanced-step.. Ready")
             self.patch_meas_mhe(tgt, noisy=True)
         self.adjust_nu0_mhe()
-        self.adjust_w_mhe()
+        # self.adjust_w_mhe()
 
     def create_rh_sfx(self, set_suffix=True):
         """Creates relevant suffixes for k_aug (prior at fe=2) (Reduced_Hess)

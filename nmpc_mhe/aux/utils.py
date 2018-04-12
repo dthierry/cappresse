@@ -218,54 +218,77 @@ def load_iguess(src, tgt, fe_src, fe_tgt):
 
     if steady:
         for vs in src.component_objects(Var, active=True):
-            if not vs._implicit_subsets:
-                continue
-            if tS_src not in vs._implicit_subsets:
-                continue
-            vd = getattr(tgt, vs.getname())
-            remaining_set = vs._implicit_subsets[1]
-            for j in range(2, len(vs._implicit_subsets)):
-                remaining_set *= vs._implicit_subsets[j]
-            for index in remaining_set:
-                for j in range(0, cp_tgt + 1):
-                    # t_src = 1
-                    t_tgt = t_ij(tS_tgt, fe_tgt, j)
-                    index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
-                    vd[(t_tgt,) + index].set_value(value(vs[(1,) + index]))
+            if vs._implicit_subsets is None:
+                if vs.index_set() is tS_src:
+                    vd = getattr(tgt, vs.getname())
+                    for j in range(0, cp_tgt + 1):
+                        t_tgt = t_ij(tS_tgt, fe_tgt, j)
+                        vd[t_tgt].set_value(value(vs[1]))
+                else:
+                    continue
+            else:
+                if not tS_src in vs._implicit_subsets:
+                    continue
+                else:
+                    vd = getattr(tgt, vs.getname())
+                    remaining_set = vs._implicit_subsets[1]
+                    for j in range(2, len(vs._implicit_subsets)):
+                        remaining_set *= vs._implicit_subsets[j]
+                    for index in remaining_set:
+                        for j in range(0, cp_tgt + 1):
+                            # t_src = 1
+                            t_tgt = t_ij(tS_tgt, fe_tgt, j)
+                            index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
+                            vd[(t_tgt,) + index].set_value(value(vs[(1,) + index]))
     elif uniform_mode:
         for vs in src.component_objects(Var, active=True):
-            if not vs._implicit_subsets:
-                continue
-            if tS_src not in vs._implicit_subsets:
-                continue
-            vd = getattr(tgt, vs.getname())
-            remaining_set = vs._implicit_subsets[1]
-            for j in range(2, len(vs._implicit_subsets)):
-                remaining_set *= vs._implicit_subsets[j]
-            for index in remaining_set:
-                for j in range(0, cp_src + 1):
-                    t_src = t_ij(tS_src, fe_src, j)
-                    t_tgt = t_ij(tS_tgt, fe_tgt, j)
-
-                    index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
-                    vd[(t_tgt,) + index].set_value(value(vs[(t_src,) + index]))
-                    # print(vd.getname(), t_tgt, value(vd[(t_tgt,) + index]))
+            if vs._implicit_subsets is None:
+                if vs.index_set() is tS_src:
+                    vd = getattr(tgt, vs.getname())
+                    for j in range(0, cp_src + 1):
+                        t_src = t_ij(tS_src, fe_src, j)
+                        t_tgt = t_ij(tS_tgt, fe_tgt, j)
+                        vd[t_tgt].set_value(value(vs[t_src]))
+                else:
+                    continue
+            else:
+                if not tS_src in vs._implicit_subsets:
+                    continue
+                else:
+                    vd = getattr(tgt, vs.getname())
+                    remaining_set = vs._implicit_subsets[1]
+                    for j in range(2, len(vs._implicit_subsets)):
+                        remaining_set *= vs._implicit_subsets[j]
+                    for index in remaining_set:
+                        for j in range(0, cp_src + 1):
+                            t_src = t_ij(tS_src, fe_src, j)
+                            t_tgt = t_ij(tS_tgt, fe_tgt, j)
+                            index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
+                            vd[(t_tgt,) + index].set_value(value(vs[(t_src,) + index]))
     else:
         for vs in src.component_objects(Var, active=True):
-            if not vs._implicit_subsets:
-                continue
-            if not vs._implicit_subsets:
-                continue
-            if tS_src not in vs._implicit_subsets:
-                continue
-            vd = getattr(tgt, vs.getname())
-            remaining_set = vs._implicit_subsets[1]
-            for j in range(2, len(vs._implicit_subsets)):
-                remaining_set *= vs._implicit_subsets[j]
-            for index in remaining_set:
-                for j in range(0, cp_tgt + 1):
-                    t_src = t_ij(tS_src, fe_src, cp_src)  #: only patch the last value
-                    t_tgt = t_ij(tS_tgt, fe_tgt, j)
-                    index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
-                    #: Better idea: interpolate
-                    vd[(t_tgt,) + index].set_value(value(vs[(t_src,) + index]))
+            if vs._implicit_subsets is None:
+                if vs.index_set() is tS_src:
+                    vd = getattr(tgt, vs.getname())
+                    for j in range(0, cp_tgt + 1):
+                        t_src = t_ij(tS_src, fe_src, cp_src)  #: only patch the last value
+                        t_tgt = t_ij(tS_tgt, fe_tgt, j)
+                        #: Better idea: interpolate
+                        vd[t_tgt].set_value(value(vs[t_src]))
+                else:
+                    continue
+            else:
+                if not tS_src in vs._implicit_subsets:
+                    continue
+                else:
+                    vd = getattr(tgt, vs.getname())
+                    remaining_set = vs._implicit_subsets[1]
+                    for j in range(2, len(vs._implicit_subsets)):
+                        remaining_set *= vs._implicit_subsets[j]
+                    for index in remaining_set:
+                        for j in range(0, cp_tgt + 1):
+                            t_src = t_ij(tS_src, fe_src, cp_src)  #: only patch the last value
+                            t_tgt = t_ij(tS_tgt, fe_tgt, j)
+                            index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
+                            #: Better idea: interpolate
+                            vd[(t_tgt,) + index].set_value(value(vs[(t_src,) + index]))

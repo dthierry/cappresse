@@ -48,6 +48,10 @@ def main():
     e.solve_dyn(e.PlantSample)
 
     e.init_lsmhe_prep(e.PlantSample)
+    # e.lsmhe.pprint(filename="f0")
+    e.shift_mhe()
+    # e.lsmhe.pprint(filename="f1")
+    e.init_step_mhe()
 
     return e
 
