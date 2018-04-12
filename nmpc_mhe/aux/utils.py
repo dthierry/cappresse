@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 from __future__ import division
-from pyomo.dae import ContinuousSet
-from pyomo.core.base import Suffix, ConcreteModel, Var, Suffix
+from pyomo.dae import ContinuousSet, DerivativeVar
+from pyomo.core.base import Suffix, ConcreteModel, Var, Suffix, Constraint
 from pyomo.opt import ProblemFormat
 from pyomo.core.kernel.numvalue import value
 from os import getcwd, remove
@@ -79,7 +79,7 @@ def fe_compute(time_set, t):
     return fe
 
 
-def augment_model(d_mod):
+def augment_model(d_mod, new_timeset_bounds=None, given_name=None):
     """Attach Suffixes, and more to a base model
 
     Args:
@@ -90,9 +90,42 @@ def augment_model(d_mod):
     d_mod.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
     d_mod.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
     d_mod.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+    if not new_timeset_bounds is None:
+        cs = None
+        for s in d_mod.component_objects(ContinuousSet):
+            cs = s
+        if cs is None:
+            raise RuntimeError("The model has no ContinuousSet")
+        if not isinstance(new_timeset_bounds, tuple):
+            raise RuntimeError("new_timeset_bounds should be tuple = (t0, tf)")
+        cs._bounds = new_timeset_bounds
+        cs.clear()
+        cs.construct()
+
+        for o in d_mod.component_objects([Var, DerivativeVar, Constraint]):
+            #: This series of if conditions are in place to avoid some weird behaviour
+            if o._implicit_subsets is None:
+                if o.index_set() is cs:
+                    pass
+                else:
+                    # print(o)
+                    o.reconstruct()
+                    continue
+            else:
+                if cs in o._implicit_subsets:
+                    pass
+                else:
+                    o.reconstruct()
+                    continue
+            o.clear()
+            o.construct()
 
 
-def write_nl(d_mod, filename=None):
+    if isinstance(given_name, str):
+        d_mod.name = given_name
+
+
+def write_nl(d_mod, filename=None, labels=False):
     # type: (ConcreteModel, str) -> str
     """
     Write the nl file
@@ -104,13 +137,13 @@ def write_nl(d_mod, filename=None):
     """
     if not filename:
         filename = d_mod.name + '.nl'
-    d_mod.write(filename, format=ProblemFormat.nl)
+    d_mod.write(filename, format=ProblemFormat.nl, io_options={'symbolic_solver_labels': labels})
     cwd = getcwd()
     print("nl file {}".format(cwd + "/" + filename))
     return cwd
 
 
-def reconcile_nvars_mequations(d_mod):
+def reconcile_nvars_mequations(d_mod, keep_nl=False, **kwargs):
     # type: (ConcreteModel) -> tuple
     """
     Compute the actual number of variables and equations in a model by reading the relevant line at the nl file.
@@ -123,7 +156,7 @@ def reconcile_nvars_mequations(d_mod):
     """
     fullpth = getcwd()
     fullpth += "/_reconcilied.nl"
-    write_nl(d_mod, filename=fullpth)
+    write_nl(d_mod, filename=fullpth, **kwargs)
     with open(fullpth, 'r') as nl:
         lines = nl.readlines()
         line = lines[1]
@@ -131,7 +164,10 @@ def reconcile_nvars_mequations(d_mod):
         nvar = int(newl[0])
         meqn = int(newl[1])
         nl.close()
-    remove(fullpth)
+    if keep_nl:
+        pass
+    else:
+        remove(fullpth)
     return (nvar, meqn)
 
 

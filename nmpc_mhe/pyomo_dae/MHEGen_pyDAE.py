@@ -12,7 +12,7 @@ import numpy as np
 from itertools import product
 import sys, os, time
 from pyutilib.common._exceptions import ApplicationError
-from nmpc_mhe.aux.utils import t_ij
+from nmpc_mhe.aux.utils import t_ij, reconcile_nvars_mequations
 from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model
 from copy import deepcopy
 __author__ = "David Thierry @dthierry" #: March 2018
@@ -50,21 +50,22 @@ class MheGen_DAE(NmpcGen_DAE):
         # self.dum_mhe = self.d_mod(1, self.ncp_tmhe, _t=self.hi_t)
 
         self.dum_mhe = self.lsmhe.clone()
+        self.dum_mhe.pprint(filename="before")
 
-        self.dum_mhe.t._bounds = (0, self.hi_t)
-        self.dum_mhe.t.clear()
-        self.dum_mhe.t.construct()
-        self.dum_mhe.t.pprint()
-        self.dum_mhe.name = "Dummy [MHE]"
-        for i in self.dum_mhe.component_objects(Var):
-            i.clear()
-            i.construct()
-        for i in self.dum_mhe.component_objects(Constraint):
-            i.clear()
-            i.construct()
+        # self.dum_mhe.t._bounds = (0, self.hi_t)
+        # self.dum_mhe.t.clear()
+        # self.dum_mhe.t.construct()
+        # self.dum_mhe.t.pprint()
+        # self.dum_mhe.name = "Dummy [MHE]"
+        # for i in self.dum_mhe.component_objects(Var):
+        #     i.clear()
+        #     i.construct()
+        # for i in self.dum_mhe.component_objects(Constraint):
+        #     i.clear()
+        #     i.construct()
 
         augment_model(self.lsmhe)
-        augment_model(self.dum_mhe)
+        augment_model(self.dum_mhe, new_timeset_bounds=(0, self.hi_t), given_name="Dummy[MHE]")
 
         d = TransformationFactory('dae.collocation')
         d.apply_to(self.lsmhe, nfe=self.nfe_tmhe, ncp=self.ncp_tmhe, scheme="LAGRANGE-RADAU")
@@ -328,10 +329,13 @@ class MheGen_DAE(NmpcGen_DAE):
             d.apply_to(dum, nfe=1, ncp=self.ncp_tmhe, scheme='LAGRANGE-RADAU')
 
         #: Load current solution
-        print(dum.t.get_discretization_info())
-        print(ref.t.get_discretization_info())
+        # print(dum.t.get_discretization_info())
+        # print(ref.t.get_discretization_info())
         load_iguess(ref, dum, 0, 0)
         self.load_init_state_gen(dum, src_kind="mod", ref=ref, fe=0)
+        # dum.pprint(filename="dummy.txt")
+        # print(os.getcwd())
+        # reconcile_nvars_mequations(dum, keep_nl=True, labels=True)
         #: Patching of finite elements
         t0ncp = t_ij(self.lsmhe.t, 0, self.ncp_tmhe)
         for finite_elem in range(0, self.nfe_tmhe):
