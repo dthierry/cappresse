@@ -1,20 +1,21 @@
 # -*- coding: utf-8 -*-
-from __future__ import print_function
 from __future__ import division
+from __future__ import print_function
 
-from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix,\
-    ConstraintList, TransformationFactory, ConcreteModel
-from pyomo.core.base.sets import SimpleSet
-from pyomo.dae import *
-from pyomo.core.kernel.numvalue import value as value
-from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
-from nmpc_mhe.pyomo_dae.NMPCGen_pyDAE import NmpcGen_DAE
-import numpy as np
+import os
+import sys
+import time
 from itertools import product
-import sys, os, time
+
+import numpy as np
+from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix, \
+    ConstraintList, TransformationFactory, ConcreteModel
+from pyomo.core.kernel.numvalue import value as value
 from pyutilib.common._exceptions import ApplicationError
-from nmpc_mhe.aux.utils import t_ij, reconcile_nvars_mequations
+
 from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model
+from nmpc_mhe.aux.utils import t_ij
+from nmpc_mhe.pyomo_dae.NMPCGen_pyDAE import NmpcGen_DAE
 
 __author__ = "David Thierry @dthierry" #: March 2018
 
@@ -24,7 +25,8 @@ class MheGen_DAE(NmpcGen_DAE):
         NmpcGen_DAE.__init__(self, d_mod, hi_t, states, controls, **kwargs)
         self.int_file_mhe_suf = int(time.time())-1
 
-        # Need a list of relevant measurements y
+        #: u is piece-wise constant
+        #: wk_mhe is piece-wise constant
         self.y = measurements
         self.y_vars = dict()
 
@@ -169,19 +171,23 @@ class MheGen_DAE(NmpcGen_DAE):
                 pass
             else:
                 raise ValueError  #: Some exception here
-            dumm_eq.clear()
+            self.lsmhe.del_component(dumm_eq)  #: Delete the dummy_eqn
             self.lsmhe.del_component(cv)  #: Delete the dummy_param
-            # self.lsmhe.del_component(dumm_eq)  #: Delete the dummy_constraint
-            #: Change this guy to mutable parameter [piece-wise constant]
 
+            #: Change this guy to mutable parameter [piece-wise constant]
             self.lsmhe.add_component(u, Param(self.lsmhe.fe_t, mutable=True, initialize=lambda m, i: c_val[i]))
             self.lsmhe.add_component('w_' + u + '_mhe', Var(self.lsmhe.fe_t, initialize=0.0))
+
             cv_param = getattr(self.lsmhe, u)  #: Get the new variable
             cv_noise = getattr(self.lsmhe, 'w_' + u + '_mhe')
-            self.lsmhe.add_component(u + '_cdummy_mhe', Constraint(self.lsmhe.t,
-                                                               rule=lambda m, i:
-                                                               cv_param[tfe_mhe_dic[i]] == control_var[i] + cv_noise[tfe_mhe_dic[i]]))
-            dumm_eq.rule = lambda m, i: cv_param[tfe_mhe_dic[i]] == control_var[i]
+            self.lsmhe.add_component(u + '_cdummy_mhe',
+                                     Constraint(self.lsmhe.t,
+                                                rule=lambda m, i:
+                                                cv_param[tfe_mhe_dic[i]] == control_var[i] + cv_noise[tfe_mhe_dic[i]]))
+            self.lsmhe.add_component(u + '_cdummy',
+                                     Constraint(self.lsmhe.t,
+                                                rule=lambda m, i:
+                                                cv_param[tfe_mhe_dic[i]] == control_var[i]))
             cv_con = getattr(self.lsmhe, u + '_cdummy_mhe')
             cv_con.deactivate()
 
@@ -491,19 +497,6 @@ class MheGen_DAE(NmpcGen_DAE):
         else:
             sys.exit(1)
 
-        # for key in cov_dict:
-        #     vni = key[0]
-        #     vnj = key[1]
-        #     _t = key[2]
-        #
-        #     v_i = self.yk_key[vni]
-        #     v_j = self.yk_key[vnj]
-        #     # try:
-        #     if self.diag_Q_R:
-        #         rtarget[_t, v_i] = 1 / cov_dict[vni, vnj, _t]
-        #     else:
-        #         rtarget[_t, v_i, v_j] = cov_dict[vni, vnj, _t]
-
     def set_covariance_disturb(self, cov_dict):
         """Assign values to the covariance of the disturbance.
 
@@ -634,6 +627,9 @@ class MheGen_DAE(NmpcGen_DAE):
             vs = getattr(self.lsmhe, x)
             for ks in p.keys():
                 p[ks].value = value(vs[(t_ncp,) + (ks,)])
+
+        self.lsmhe.display(filename='lsmhe')
+        self.dum_mhe.display(filename='dum')
         #: Solve
         test = self.solve_dyn(tgt, o_tee=True, stop_if_nopt=False, max_cpu_time=300,
                             jacobian_regularization_value=1e-04,
@@ -699,6 +695,7 @@ class MheGen_DAE(NmpcGen_DAE):
                     var[(self.nfe_tmhe - 1, self.ncp_tmhe) + j].set_suffix_value(self.lsmhe.dof_v, 1)
 
     def check_active_bound_noisy(self):
+        # TODO: adjust to framework <DT, p:2>
         """Checks if the dof_(super-basic) have active bounds, if so, add them to the exclusion list"""
         if hasattr(self.lsmhe, "dof_v"):
             self.lsmhe.dof_v.clear()
@@ -708,26 +705,26 @@ class MheGen_DAE(NmpcGen_DAE):
             self.lsmhe.rh_name.clear()
         else:
             self.lsmhe.rh_name = Suffix(direction=Suffix.IMPORT)  #: Red_hess_name
-
+        t_prior = t_ij(self.lsmhe.t, 1, 0)
         self.xkN_nexcl = []
         k = 0
         for x in self.x_noisy:
             v = getattr(self.lsmhe, x)
             for j in self.x_vars[x]:
                 active_bound = False
-                if v[(1, 0) + j].lb:
-                    if v[(1, 0) + j].value - v[(1, 0) + j].lb < 1e-08:
+                if v[(t_prior,) + j].lb:
+                    if v[(t_prior,) + j].value - v[(t_prior,) + j].lb < 1e-08:
                         active_bound = True
-                if v[(1, 0) + j].ub:
-                    if v[(1, 0) + j].ub - v[(1, 0) + j].value < 1e-08:
+                if v[(t_prior,) + j].ub:
+                    if v[(t_prior,) + j].ub - v[(t_prior,) + j].value < 1e-08:
                         active_bound = True
                 if active_bound:
-                    print("Active bound {:s}, {:d}, value {:f}".format(x, j[0], v[(1, 0) + j].value), file=sys.stderr)
-                    v[(1, 0) + j].set_suffix_value(self.lsmhe.dof_v, 0)
+                    print("Active bound {:s}, {:d}, value {:f}".format(x, j[0], v[(t_prior,) + j].value), file=sys.stderr)
+                    v[(t_prior,) + j].set_suffix_value(self.lsmhe.dof_v, 0)
                     self.xkN_nexcl.append(0)
                     k += 1
                 else:
-                    v[(1, 0) + j].set_suffix_value(self.lsmhe.dof_v, 1)
+                    v[(t_prior,) + j].set_suffix_value(self.lsmhe.dof_v, 1)
                     self.xkN_nexcl.append(1)  #: Not active, add it to the non-exclusion list.
         if k > 0:
             print("I[[check_active_bound_noisy]] {:d} Active bounds.".format(k))
@@ -754,6 +751,7 @@ class MheGen_DAE(NmpcGen_DAE):
                         ic_con[k].deactivate()
 
     def regen_objective_fun(self):
+        # TODO: adjust to framework <DT, p:2>
         """Given the exclusion list, regenerate the expression for the arrival cost"""
         self.lsmhe.Arrival_e_mhe.set_value(0.5 * sum((self.xkN_l[j] - self.lsmhe.x_0_mhe[j]) *
                                                      sum(self.lsmhe.PikN_mhe[j, k] *
@@ -770,6 +768,7 @@ class MheGen_DAE(NmpcGen_DAE):
             self.lsmhe.hyk_c_mhe.activate()
 
     def load_covariance_prior(self):
+        # TODO: adjust to framework <DT, p:2>
         """Computes the reduced-hessian (inverse of the prior-covariance)
         Reads the result_hessian.txt file that contains the covariance information"""
         self.journalist("I", self._iteration_count, "load_covariance_prior", "K_AUG w red_hess")
@@ -806,30 +805,32 @@ class MheGen_DAE(NmpcGen_DAE):
         print("-" * 120)
 
     def set_state_covariance(self):
+        # TODO: adjust to framework <DT, p:2>
         """Sets covariance(inverse) for the prior_state.
         Args:
             None
         Return:
             None
         """
+        t_prior = t_ij(self.lsmhe.t, 1, 0)
         pikn = getattr(self.lsmhe, "PikN_mhe")
         for key_j in self.x_noisy:
             for key_k in self.x_noisy:
                 vj = getattr(self.lsmhe, key_j)
                 vk = getattr(self.lsmhe, key_k)
                 for j in self.x_vars[key_j]:
-                    if vj[(1, 0) + j].get_suffix_value(self.lsmhe.dof_v) == 0:
+                    if vj[(t_prior,) + j].get_suffix_value(self.lsmhe.dof_v) == 0:
                         #: This state is at its bound, skip
                         continue
                     for k in self.x_vars[key_k]:
-                        if vk[(1, 0) + k].get_suffix_value(self.lsmhe.dof_v) == 0:
+                        if vk[(t_prior,) + k].get_suffix_value(self.lsmhe.dof_v) == 0:
                             #: This state is at its bound, skip
                             print("vj {:s} {:d} .sfx={:d}, vk {:s} {:d}.sfx={:d}"
-                                  .format(key_j, j[0], vj[(1, 0) + j].get_suffix_value(self.lsmhe.dof_v),
-                                          key_k, k[0], vk[(1, 0) + k].get_suffix_value(self.lsmhe.dof_v),))
+                                  .format(key_j, j[0], vj[(t_prior,) + j].get_suffix_value(self.lsmhe.dof_v),
+                                          key_k, k[0], vk[(t_prior,) + k].get_suffix_value(self.lsmhe.dof_v),))
                             continue
-                        row = vj[(1, 0) + j].get_suffix_value(self.lsmhe.rh_name)
-                        col = vk[(1, 0) + k].get_suffix_value(self.lsmhe.rh_name)
+                        row = vj[(t_prior,) + j].get_suffix_value(self.lsmhe.rh_name)
+                        col = vk[(t_prior,) + k].get_suffix_value(self.lsmhe.rh_name)
                         #: Ampl does not give you back 0's
                         if not row:
                             row = 0
@@ -837,8 +838,8 @@ class MheGen_DAE(NmpcGen_DAE):
                             col = 0
 
                         # print((row, col), (key_j, j), (key_k, k))
-                        q0j = self.xkN_key[key_j, j]
-                        q0k = self.xkN_key[key_k, k]
+                        q0j = self.xkN_key[(key_j,) + j]
+                        q0k = self.xkN_key[(key_k,) + k]
                         pi = self._PI[row, col]
                         try:
                             pikn[q0j, q0k] = pi
@@ -848,18 +849,20 @@ class MheGen_DAE(NmpcGen_DAE):
                             pikn[q0j, q0k] = 0.0
 
     def set_prior_state_from_prior_mhe(self):
+        # TODO: adjust to framework <DT, p:2>
         """Mechanism to assign a value to x0 (prior-state) from the previous mhe
         Args:
             None
         Returns:
             None
         """
+        t_prior = t_ij(self.lsmhe.t, 1, 0)
         for x in self.x_noisy:
             var = getattr(self.lsmhe, x)
             for j in self.x_vars[x]:
                 z0dest = getattr(self.lsmhe, "x_0_mhe")
                 z0 = self.xkN_key[x, j]
-                z0dest[z0] = value(var[(1, 0,) + j])
+                z0dest[z0] = value(var[(t_prior,) + j])
 
     def prior_phase(self):
         """Encapsulates all the prior-state related issues, like collection, covariance computation and update"""
@@ -873,6 +876,7 @@ class MheGen_DAE(NmpcGen_DAE):
         pass
 
     def update_noise_meas(self, cov_dict):
+        # TODO: adjust to framework <DT, p:2>
         self.journalist("I", self._iteration_count, "introduce_noise_meas", "Noise introduction")
         # f = open("m0.txt", "w")
         # f1 = open("m1.txt", "w")
@@ -1047,6 +1051,7 @@ class MheGen_DAE(NmpcGen_DAE):
             f.close()
 
     def compute_y_offset(self, noisy=False, uoff_update=True):
+        # TODO: adjust to framework <DT, p:3>
         """Gets the offset of prediction and real measurement for asMHE"""
         mhe_y = getattr(self.lsmhe, "yk0_mhe")
         for y in self.y:
@@ -1118,6 +1123,7 @@ class MheGen_DAE(NmpcGen_DAE):
         self._dot_timing = k[0]
 
     def sens_k_aug_mhe(self):
+        # TODO: adjust to framework <DT, p:3>
         self.journalist("I", self._iteration_count, "sens_k_aug_mhe", "k_aug sensitivity")
         self.lsmhe.ipopt_zL_in.update(self.lsmhe.ipopt_zL_out)
         self.lsmhe.ipopt_zU_in.update(self.lsmhe.ipopt_zU_out)
@@ -1142,6 +1148,7 @@ class MheGen_DAE(NmpcGen_DAE):
         self._k_timing = s.split()
 
     def update_state_mhe(self, as_nmpc_mhe_strategy=False):
+        # TODO: adjust to framework <DT, p:2>
         # Improvised strategy
         if as_nmpc_mhe_strategy:
             self.journalist("I", self._iteration_count, "update_state_mhe", "offset ready for asnmpcmhe")

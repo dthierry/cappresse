@@ -1,14 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from __future__ import print_function
 from __future__ import division
-from pyomo.environ import *
-from sample_mods.cstr_rodrigo.cstr_c_nmpc import cstr_rodrigo_dae
-from nmpc_mhe.pyomo_dae.MHEGen_pyDAE import MheGen_DAE
+from __future__ import print_function
+
 from nmpc_mhe.aux.utils import load_iguess
 from nmpc_mhe.aux.utils import reconcile_nvars_mequations
-import matplotlib.pyplot as plt
+from nmpc_mhe.pyomo_dae.MHEGen_pyDAE import MheGen_DAE
+from sample_mods.cstr_rodrigo.cstr_c_nmpc import cstr_rodrigo_dae
 
 __author__ = "David Thierry @dthierry" #: March 2018
 
@@ -20,7 +19,7 @@ def main():
     u_bounds = {"u1": (0, 1000)}
     ref_state = {("Ca", (0,)): 0.010}
     e = MheGen_DAE(cstr_rodrigo_dae, 2, states, controls, states, measurements, u_bounds=u_bounds, ref_state=ref_state,
-                   override_solver_check=True)
+                   override_solver_check=True, k_aug_executable='/home/dav0/NMPC/k_aug/src/k_aug/k_aug')
     Q = {}
     U = {}
     R = {}
@@ -52,6 +51,16 @@ def main():
     e.shift_mhe()
     # e.lsmhe.pprint(filename="f1")
     e.init_step_mhe()
+    e.solve_dyn(e.lsmhe,
+                skip_update=False,
+                max_cpu_time=600,
+                ma57_pre_alloc=5, tag="lsmhe")  #: Pre-loaded mhe solve
+    e.check_active_bound_noisy()
+    e.load_covariance_prior()
+    e.set_state_covariance()
+
+    e.regen_objective_fun()  #: Regen erate the obj fun
+    e.deact_icc_mhe()  #: Remove the initial conditions
 
     return e
 
