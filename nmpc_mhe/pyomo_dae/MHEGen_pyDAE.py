@@ -423,7 +423,7 @@ class MheGen_DAE(NmpcGen_DAE):
             self.journalist("I", self._iteration_count, "patch_meas_mhe", "use_dict")
             for y in self.y:
                 for j in self.y_vars[y]:
-                    k = self.yk_key[(y, j)]
+                    k = self.yk_key[(y,) + j]
                     y0dest[fe, k].value = self.curr_meas[(y, j)]
             return dict()
 
@@ -861,7 +861,7 @@ class MheGen_DAE(NmpcGen_DAE):
             var = getattr(self.lsmhe, x)
             for j in self.x_vars[x]:
                 z0dest = getattr(self.lsmhe, "x_0_mhe")
-                z0 = self.xkN_key[x, j]
+                z0 = self.xkN_key[(x,) +  j]
                 z0dest[z0] = value(var[(t_prior,) + j])
 
     def prior_phase(self):
@@ -901,11 +901,13 @@ class MheGen_DAE(NmpcGen_DAE):
         for x in self.x_noisy:
             elist = []
             rlist = []
+            t_Nmhe = t_ij(self.lsmhe.t, self.nfe_tmhe - 1, self.ncp_tmhe)
+            t_sim = t_ij(self.PlantSample.t, 0, self.ncp_t)
             xe = getattr(self.lsmhe, x)
             xr = getattr(self.PlantSample, x)
             for j in self.x_vars[x]:
-                elist.append(value(xe[(self.nfe_tmhe - 1, self.ncp_tmhe) + j]))
-                rlist.append(value(xr[(0, self.ncp_t) + j]))
+                elist.append(value(xe[(t_Nmhe,) + j]))
+                rlist.append(value(xr[(t_sim,) + j]))
             self.s_estimate[x].append(elist)
             self.s_real[x].append(rlist)
 
@@ -963,10 +965,10 @@ class MheGen_DAE(NmpcGen_DAE):
             ye = getattr(self.lsmhe, y)
             yr = getattr(self.PlantSample, y)
             for j in self.y_vars[y]:
-                elist.append(value(ye[(self.nfe_tmhe-1, self.ncp_tmhe) + j]))
-                rlist.append(value(yr[(0, self.ncp_t) + j]))
+                elist.append(value(ye[(t_Nmhe,) + j]))
+                rlist.append(value(yr[(t_sim,) + j]))
                 nlist.append(self.curr_m_noise[(y, j)])
-                yklst.append(value(self.lsmhe.yk0_mhe[self.nfe_tmhe-1, self.yk_key[(y, j)]]))
+                yklst.append(value(self.lsmhe.yk0_mhe[self.nfe_tmhe-1, self.yk_key[(y,) + j]]))
             self.y_estimate[y].append(elist)
             self.y_real[y].append(rlist)
             self.y_noise_jrnl[y].append(nlist)
@@ -1054,12 +1056,13 @@ class MheGen_DAE(NmpcGen_DAE):
         # TODO: adjust to framework <DT, p:3>
         """Gets the offset of prediction and real measurement for asMHE"""
         mhe_y = getattr(self.lsmhe, "yk0_mhe")
+        t_ncp = t_ij(self.PlantSample.t, 0, self.ncp_t)
         for y in self.y:
             plant_y = getattr(self.PlantSample, y)
             for j in self.y_vars[y]:
-                k = self.yk_key[(y, j)]
+                k = self.yk_key[(y,) + j]
                 mhe_yval = value(mhe_y[self.nfe_tmhe-1, k])
-                plant_yval = value(plant_y[(0, self.ncp_t) + j])
+                plant_yval = value(plant_y[(t_ncp, ) + j])
                 y_noise = self.curr_m_noise[(y, j)] if noisy else 0.0
                 self.curr_y_offset[(y, j)] = plant_yval - mhe_yval
         if uoff_update:
@@ -1081,7 +1084,7 @@ class MheGen_DAE(NmpcGen_DAE):
         self.create_sens_suffix_mhe()
         for y in self.y:
             for j in self.y_vars[y]:
-                k = self.yk_key[(y, j)]
+                k = self.yk_key[(y,) + j]
                 self.lsmhe.hyk_c_mhe[self.nfe_tmhe-1, k].set_suffix_value(self.lsmhe.npdp, self.curr_y_offset[(y, j)])
 
         #: Added this bit to account for the case when the last input does not match the one used
@@ -1150,6 +1153,7 @@ class MheGen_DAE(NmpcGen_DAE):
     def update_state_mhe(self, as_nmpc_mhe_strategy=False):
         # TODO: adjust to framework <DT, p:2>
         # Improvised strategy
+        t_mhe = t_ij(self.lsmhe.t, self.nfe_tmhe-1, self.ncp_tmhe)
         if as_nmpc_mhe_strategy:
             self.journalist("I", self._iteration_count, "update_state_mhe", "offset ready for asnmpcmhe")
             for x in self.states:
@@ -1157,23 +1161,20 @@ class MheGen_DAE(NmpcGen_DAE):
                 x0 = getattr(self.olnmpc, x + "_ic")
                 for j in self.state_vars[x]:
                     #: Compute the offset between current loaded value for the nmpc and mhe
-                    self.curr_state_offset[(x, j)] = value(xvar[self.nfe_tmhe-1, self.ncp_tmhe, j]) - value(x0[j])
-                    # print("state !", self.curr_state_offset[(x, j)])
+                    self.curr_state_offset[(x, j)] = value(xvar[t_mhe, j]) - value(x0[j])
 
         for x in self.states:
             xvar = getattr(self.lsmhe, x)
             for j in self.state_vars[x]:
-                self.curr_estate[(x, j)] = value(xvar[self.nfe_tmhe-1, self.ncp_tmhe, j])
+                self.curr_estate[(x, j)] = value(xvar[t_mhe, j])
 
     def update_measurement(self):
         """Update the current dictionary from the plant"""
-
-        cp = getattr(self.PlantSample, "cp_t")
-        cpa = max(cp)  #: From the source
+        t_ncp = t_ij(self.PlantSample.t, 0, self.ncp_t)
         for y in self.y:
             var = getattr(self.PlantSample, y)
             for j in self.y_vars[y]:
-                self.curr_meas[(y, j)] = value(var[(0, cpa,) + j])
+                self.curr_meas[(y, j)] = value(var[(t_ncp,) + j])
 
 
     def method_for_mhe_simulation_step(self):

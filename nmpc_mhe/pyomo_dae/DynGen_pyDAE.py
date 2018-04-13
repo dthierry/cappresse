@@ -220,6 +220,7 @@ class DynGen_DAE(object):
 
         # Gather the keys for a given state and form the state_vars dictionary
         for x in self.states:
+            # BUG: Is this a tuple?
             self.state_vars[x] = []
             try:
                 xv = getattr(self.SteadyRef, x)
