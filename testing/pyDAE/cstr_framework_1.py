@@ -12,9 +12,7 @@ __author__ = "David Thierry @dthierry" #: March 2018
 def main():
     states = ["Ca", "T", "Tj"]
     controls = []
-    e = DynGen_DAE(cstr_rodrigo_dae, 2, states, controls,
-               k_aug_executable="/home/dav0/k_aug/src/k_aug/k_aug",
-               dot_driver_executable="/home/dav0/k_aug/src/k_aug/dot_driver/dot_driver")
+    e = DynGen_DAE(cstr_rodrigo_dae, 2, states, controls)
     return e
 
 
@@ -23,3 +21,4 @@ if __name__ == '__main__':
     e.create_dyn()
     e.solve_dyn(e.dyn)
     e.get_state_vars()
+    print(e.state_vars)
