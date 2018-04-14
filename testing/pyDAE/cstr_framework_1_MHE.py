@@ -23,7 +23,7 @@ def main():
                    u_bounds=u_bounds,
                    ref_state=ref_state,
                    override_solver_check=True,
-                   k_aug_executable='/home/dav0/NMPC/k_aug/src/k_aug/k_aug')
+                   k_aug_executable='/home/dav0/k2/KKT_matrix/src/k_aug/k_aug')
 
     #: We need k_aug to run this :(
     Q = {}

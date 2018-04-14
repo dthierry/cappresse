@@ -120,7 +120,6 @@ def augment_model(d_mod, new_timeset_bounds=None, given_name=None):
             o.clear()
             o.construct()
 
-
     if isinstance(given_name, str):
         d_mod.name = given_name
 
@@ -292,3 +291,15 @@ def load_iguess(src, tgt, fe_src, fe_tgt):
                             index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
                             #: Better idea: interpolate
                             vd[(t_tgt,) + index].set_value(value(vs[(t_src,) + index]))
+
+def augment_steady(dmod):
+    cs = None
+    for s in dmod.component_objects(ContinuousSet):
+        cs = s
+    if cs is None:
+        raise RuntimeError("The model has no ContinuousSet")
+    dv_list = []
+    for dv in dmod.component_objects(DerivativeVar):
+        dv_list.append(dv.name)  #: We have the dvs
+    #: search for collocation equations
+

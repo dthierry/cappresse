@@ -695,7 +695,6 @@ class MheGen_DAE(NmpcGen_DAE):
                     var[(self.nfe_tmhe - 1, self.ncp_tmhe) + j].set_suffix_value(self.lsmhe.dof_v, 1)
 
     def check_active_bound_noisy(self):
-        # TODO: adjust to framework <DT, p:2>
         """Checks if the dof_(super-basic) have active bounds, if so, add them to the exclusion list"""
         if hasattr(self.lsmhe, "dof_v"):
             self.lsmhe.dof_v.clear()
@@ -740,8 +739,6 @@ class MheGen_DAE(NmpcGen_DAE):
                     # self.lsmhe.del_component(ic_con[k])
                 except AttributeError:
                     continue
-
-
         #: Maybe only for a subset of the states
         else:
             for i in self.x_noisy:
@@ -1113,11 +1110,6 @@ class MheGen_DAE(NmpcGen_DAE):
         results = self.dot_driver.solve(self.lsmhe, tee=True, symbolic_solver_labels=True)
         self.lsmhe.solutions.load_from(results)
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
-
-        # with open("somefile1.txt", "w") as f:
-        #     self.lsmhe.x.display(ostream=f)
-        #     self.lsmhe.M.display(ostream=f)
-        #     f.close()
 
         ftiming = open("timings_dot_driver.txt", "r")
         s = ftiming.readline()

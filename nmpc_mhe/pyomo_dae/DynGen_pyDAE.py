@@ -46,10 +46,6 @@ class UnexpectedOption(RuntimeError):
         pass
 
 
-# PyomoConcrete = ConcreteModel
-
-
-
 class DynGen_DAE(object):
     """Default class for the Dynamic model"""
 
@@ -84,8 +80,6 @@ class DynGen_DAE(object):
 
         self.res_file_suf = str(int(time.time()))
         self._reftime = time.time()
-
-        # self.hi_t = self._t/self.nfe_t
 
 
         self.SteadyRef = self.d_mod(1, 1, steady=True)
@@ -220,7 +214,7 @@ class DynGen_DAE(object):
 
         # Gather the keys for a given state and form the state_vars dictionary
         for x in self.states:
-            # BUG: Is this a tuple?
+            # BUG: Is this a tuple? A: Yes
             self.state_vars[x] = []
             try:
                 xv = getattr(self.SteadyRef, x)
@@ -450,8 +444,6 @@ class DynGen_DAE(object):
             stop_if_nopt = 1
 
         if tag == "plant":  #: If this is the plant, don't load the solutions if there is a failure
-            # print(results.solver.status)
-            # print(results.solver.termination_condition)
             if results.solver.status != SolverStatus.ok or \
                     results.solver.termination_condition != TerminationCondition.optimal:
                 pass
