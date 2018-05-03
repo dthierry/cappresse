@@ -12,7 +12,7 @@ import sys, time, re, os
 from pyutilib.common._exceptions import ApplicationError
 import datetime
 from shutil import copyfile
-from nmpc_mhe.aux.utils import t_ij, load_iguess, augment_model
+from nmpc_mhe.aux.utils import t_ij, load_iguess, augment_model, augment_steady
 
 __author__ = "David Thierry @dthierry" #: March 2018
 
@@ -81,12 +81,13 @@ class DynGen_DAE(object):
         self.res_file_suf = str(int(time.time()))
         self._reftime = time.time()
 
+        self.SteadyRef = self.d_mod.clone()
+        augment_steady(self.SteadyRef)
 
-        self.SteadyRef = self.d_mod(1, 1, steady=True)
         self.SteadyRef2 = object()
-        self.PlantSample = self.d_mod(1, self.ncp_t, _t=self.hi_t)
-        augment_model(self.PlantSample)  #: Augment suffixes for the model.
-        # self.PlantSample.discretize()
+        self.PlantSample = self.d_mod.clone()
+
+        augment_model(self.PlantSample, new_timeset_bounds=(0, self.hi_t))  #: Augment suffixes for the model.
 
         discretizer = TransformationFactory('dae.collocation')
         discretizer.apply_to(self.PlantSample, nfe=1, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
@@ -524,9 +525,9 @@ class DynGen_DAE(object):
         print("-" * 120)
         print("I[[create_dyn]] Dynamic (full) model created.")
         print("-" * 120)
-        self.dyn = self.d_mod(self.nfe_t, self.ncp_t, _t=self._t)
+        self.dyn = self.d_mod.clone() #(self.nfe_t, self.ncp_t, _t=self._t)
+        augment_model(self.dyn, new_timeset_bounds=(0, self._t))
         self.dyn.name = "full_dyn"
-        augment_model(self.dyn)
         # self.load_d_s(self.dyn)
         load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
         discretizer = TransformationFactory('dae.collocation')
@@ -535,6 +536,7 @@ class DynGen_DAE(object):
         if initialize:
             # self.load_d_s(self.PlantSample)
             load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
+            self.PlantSample.pprint()
             for i in range(0, self.nfe_t):
                 self.solve_dyn(self.PlantSample, mu_init=1e-08, iter_max=10, o_tee=True)
                 self.cycleSamPlant()
@@ -567,7 +569,9 @@ class DynGen_DAE(object):
         # print("-" * 120)
 
     def create_predictor(self):
-        self.PlantPred = self.d_mod(1, self.ncp_t, _t=self.hi_t)
+        self.PlantPred = self.d_mod  #(1, self.ncp_t, _t=self.hi_t)
+        augment_model(self.PlantPred, new_timeset_bounds=(0, self.hi_t))
+
         self.PlantPred.name = "Dynamic Predictor"
         discretizer = TransformationFactory('dae.collocation')
         discretizer.apply_to(self.PlantPred, nfe=1, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")

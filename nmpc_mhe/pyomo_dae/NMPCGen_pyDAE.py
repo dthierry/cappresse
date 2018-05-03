@@ -11,7 +11,7 @@ import numpy as np
 import sys, os, time
 from six import iterkeys
 from nmpc_mhe.aux.utils import t_ij
-from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model
+from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model, augment_steady
 
 __author__ = "David Thierry @dthierry" #: March 2018
 
@@ -517,12 +517,15 @@ class NmpcGen_DAE(DynGen_DAE):
         self.journalist("I", self._iteration_count, "find_target_ss", "Attempting to find steady state")
 
         del self.SteadyRef2
-        self.SteadyRef2 = self.d_mod(1, 1, steady=True)
+        self.SteadyRef2 = self.d_mod(1, 1)
+        augment_steady(self.SteadyRef2)
         self.SteadyRef2.name = "SteadyRef2 (reference)"
         for u in self.u:
             cv = getattr(self.SteadyRef2, u)  #: Get the param
             c_val = value(cv[1])  #: Current value
             dumm_eq = getattr(self.SteadyRef2, u + '_cdummy')
+            dumm_eq.pprint()
+
             dexpr = dumm_eq[1].expr._args[0]
             control_var = getattr(self.SteadyRef2, dexpr.parent_component().name)
             if isinstance(control_var, Var):  #: all good
@@ -543,7 +546,6 @@ class NmpcGen_DAE(DynGen_DAE):
             dumm_eq = getattr(self.SteadyRef2, u + '_cdummy')
             dumm_eq.rule = lambda m, i: cv[i] == control_var[i]
             dumm_eq.reconstruct()
-
 
         self.SteadyRef2.create_bounds()
         # self.SteadyRef2.equalize_u(direction="r_to_u")

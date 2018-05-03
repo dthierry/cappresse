@@ -23,7 +23,7 @@ def main():
                    u_bounds=u_bounds,
                    ref_state=ref_state,
                    override_solver_check=True,
-                   k_aug_executable='/home/dav0/k2/KKT_matrix/src/k_aug/k_aug')
+                   k_aug_executable='/home/dav0/devzone/k_aug/cmake-build-k_aug/k_aug')
 
     #: We need k_aug to run this :(
     Q = {}
@@ -68,7 +68,7 @@ def main():
     e.regen_objective_fun()  #: Regen erate the obj fun
     e.deact_icc_mhe()  #: Remove the initial conditions
 
-    for i in range(0, 5):  #: Five steps
+    for i in range(0, 20):  #: Five steps
         e.solve_dyn(e.PlantSample, stop_if_nopt=True)
 
         e.update_state_real()  # update the current state

@@ -2,7 +2,7 @@
 from __future__ import print_function
 from __future__ import division
 from pyomo.dae import ContinuousSet, DerivativeVar
-from pyomo.core.base import Suffix, ConcreteModel, Var, Suffix, Constraint
+from pyomo.core.base import Suffix, ConcreteModel, Var, Suffix, Constraint, TransformationFactory, ConstraintList
 from pyomo.opt import ProblemFormat
 from pyomo.core.kernel.numvalue import value
 from os import getcwd, remove
@@ -79,17 +79,28 @@ def fe_compute(time_set, t):
     return fe
 
 
-def augment_model(d_mod, new_timeset_bounds=None, given_name=None):
+def augment_model(d_mod, new_timeset_bounds=None, given_name=None, skip_suffixes=False):
     """Attach Suffixes, and more to a base model
 
     Args:
         d_mod(ConcreteModel): Model of interest.
     """
-    d_mod.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
-    d_mod.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
-    d_mod.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
-    d_mod.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
-    d_mod.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
+    if hasattr(d_mod, 'is_steady'):
+        #: keep it steady
+        if d_mod.is_steady:
+            pass
+    else:
+        #: steady is false by default
+        d_mod.is_steady = False
+
+    if skip_suffixes:
+        pass
+    else:
+        d_mod.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
+        d_mod.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
+        d_mod.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
+        d_mod.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
+        d_mod.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
     if not new_timeset_bounds is None:
         cs = None
         for s in d_mod.component_objects(ContinuousSet):
@@ -292,14 +303,39 @@ def load_iguess(src, tgt, fe_src, fe_tgt):
                             #: Better idea: interpolate
                             vd[(t_tgt,) + index].set_value(value(vs[(t_src,) + index]))
 
+
 def augment_steady(dmod):
     cs = None
     for s in dmod.component_objects(ContinuousSet):
         cs = s
     if cs is None:
         raise RuntimeError("The model has no ContinuousSet")
+    #: set new bounds on the time set
+    augment_model(dmod, new_timeset_bounds=(0,1))
+    dmod.pprint()
     dv_list = []
     for dv in dmod.component_objects(DerivativeVar):
-        dv_list.append(dv.name)  #: We have the dvs
-    #: search for collocation equations
+        dv_list.append(dv.name)  #: We have the differential variables
 
+    #: Search for collocation equations
+    dae = TransformationFactory('dae.collocation')
+    dae.apply_to(dmod, nfe=1, ncp=1)
+
+    #: Deactivate collocation constraint
+    for dv in dv_list:
+        col_con = getattr(dmod, dv + "_disc_eq")
+        col_con.deactivate()
+        #: Check whether we need icc cons
+        if hasattr(dmod, dv + "_icc"):
+            icc_con = getattr(dmod, dv + "_icc")
+            icc_con.deactivate()
+    dmod.add_component("dvs_steady", ConstraintList())
+    clist = getattr(dmod, "dvs_steady")
+    for dv in dv_list:
+        dvar = getattr(dmod, dv)
+        for key in dvar.keys():
+            clist.add(dvar[key] == 0)
+    if hasattr(dmod, 'name'):
+        pass
+    if hasattr(dmod, 'is_steady'):
+        dmod.is_steady = True
