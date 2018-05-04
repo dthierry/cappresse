@@ -18,7 +18,8 @@ def main():
     controls = ["u1"]
     u_bounds = {"u1": (0, 1000)}
     ref_state = {("Ca", (0,)): 0.010}
-    e = NmpcGen_DAE(cstr_rodrigo_dae, 2, states, controls,
+    mod = cstr_rodrigo_dae(1, 1)
+    e = NmpcGen_DAE(mod, 2, states, controls,
                     u_bounds=u_bounds,
                     ref_state=ref_state,
                     override_solver_check=True)

@@ -79,12 +79,18 @@ def fe_compute(time_set, t):
     return fe
 
 
-def augment_model(d_mod, new_timeset_bounds=None, given_name=None, skip_suffixes=False):
+def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, skip_suffixes=False):
     """Attach Suffixes, and more to a base model
 
     Args:
         d_mod(ConcreteModel): Model of interest.
     """
+    if hasattr(d_mod, "nfe") or hasattr(d_mod, "ncp"):
+        print('Warning: redefining nfe and ncp')
+
+    d_mod.nfe_t = nfe
+    d_mod.ncp_t = ncp
+
     if hasattr(d_mod, 'is_steady'):
         #: keep it steady
         if d_mod.is_steady:
@@ -119,7 +125,6 @@ def augment_model(d_mod, new_timeset_bounds=None, given_name=None, skip_suffixes
                 if o.index_set() is cs:
                     pass
                 else:
-                    # print(o)
                     o.reconstruct()
                     continue
             else:
@@ -130,6 +135,7 @@ def augment_model(d_mod, new_timeset_bounds=None, given_name=None, skip_suffixes
                     continue
             o.clear()
             o.construct()
+            o.reconstruct()
 
     if isinstance(given_name, str):
         d_mod.name = given_name
@@ -311,8 +317,7 @@ def augment_steady(dmod):
     if cs is None:
         raise RuntimeError("The model has no ContinuousSet")
     #: set new bounds on the time set
-    augment_model(dmod, new_timeset_bounds=(0,1))
-    dmod.pprint()
+    augment_model(dmod, 1, 1, new_timeset_bounds=(0,1))
     dv_list = []
     for dv in dmod.component_objects(DerivativeVar):
         dv_list.append(dv.name)  #: We have the differential variables

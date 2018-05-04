@@ -49,14 +49,13 @@ class MheGen_DAE(NmpcGen_DAE):
 
         _t_mhe = self.nfe_tmhe * self.hi_t
 
-        self.lsmhe = self.d_mod(self.nfe_tmhe, self.ncp_tmhe, _t=_t_mhe)
+        self.lsmhe = self.d_mod.clone() # (self.nfe_tmhe, self.ncp_tmhe, _t=_t_mhe)
         # self.dum_mhe = self.d_mod(1, self.ncp_tmhe, _t=self.hi_t)
 
-        self.dum_mhe = self.lsmhe.clone()
-        self.dum_mhe.pprint(filename="before")
+        self.dum_mhe = self.d_mod.clone()
 
-        augment_model(self.lsmhe)
-        augment_model(self.dum_mhe, new_timeset_bounds=(0, self.hi_t), given_name="Dummy[MHE]")
+        augment_model(self.lsmhe, self.nfe_tmhe, self.ncp_tmhe, new_timeset_bounds=(0, _t_mhe))
+        augment_model(self.dum_mhe, 1, self.ncp_tmhe, new_timeset_bounds=(0, self.hi_t), given_name="Dummy[MHE]")
 
         d = TransformationFactory('dae.collocation')
         d.apply_to(self.lsmhe, nfe=self.nfe_tmhe, ncp=self.ncp_tmhe, scheme="LAGRANGE-RADAU")
@@ -1204,4 +1203,3 @@ class MheGen_DAE(NmpcGen_DAE):
             cc.deactivate()
             con_w.deactivate()
 
-        # self.lsmhe.pprint(filename="algeb_mod.txt")

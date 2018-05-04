@@ -85,9 +85,11 @@ class DynGen_DAE(object):
         augment_steady(self.SteadyRef)
 
         self.SteadyRef2 = object()
-        self.PlantSample = self.d_mod.clone()
 
-        augment_model(self.PlantSample, new_timeset_bounds=(0, self.hi_t))  #: Augment suffixes for the model.
+        self.PlantSample = self.d_mod.clone()
+        augment_model(self.PlantSample, 1, self.ncp_t, new_timeset_bounds=(0, self.hi_t))
+        print(os.getcwd(), "!!!!!!!1")
+        self.PlantSample.pprint()
 
         discretizer = TransformationFactory('dae.collocation')
         discretizer.apply_to(self.PlantSample, nfe=1, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
@@ -525,8 +527,9 @@ class DynGen_DAE(object):
         print("-" * 120)
         print("I[[create_dyn]] Dynamic (full) model created.")
         print("-" * 120)
+
         self.dyn = self.d_mod.clone() #(self.nfe_t, self.ncp_t, _t=self._t)
-        augment_model(self.dyn, new_timeset_bounds=(0, self._t))
+        augment_model(self.dyn, self.nfe_t, self.ncp_t, new_timeset_bounds=(0, self._t))
         self.dyn.name = "full_dyn"
         # self.load_d_s(self.dyn)
         load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
@@ -536,7 +539,7 @@ class DynGen_DAE(object):
         if initialize:
             # self.load_d_s(self.PlantSample)
             load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
-            self.PlantSample.pprint()
+
             for i in range(0, self.nfe_t):
                 self.solve_dyn(self.PlantSample, mu_init=1e-08, iter_max=10, o_tee=True)
                 self.cycleSamPlant()
@@ -569,8 +572,8 @@ class DynGen_DAE(object):
         # print("-" * 120)
 
     def create_predictor(self):
-        self.PlantPred = self.d_mod  #(1, self.ncp_t, _t=self.hi_t)
-        augment_model(self.PlantPred, new_timeset_bounds=(0, self.hi_t))
+        self.PlantPred = self.d_mod.clone()  #(1, self.ncp_t, _t=self.hi_t)
+        augment_model(self.PlantPred, 1, self.ncp_t, new_timeset_bounds=(0, self.hi_t))
 
         self.PlantPred.name = "Dynamic Predictor"
         discretizer = TransformationFactory('dae.collocation')
