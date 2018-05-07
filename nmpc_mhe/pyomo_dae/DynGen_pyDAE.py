@@ -6,6 +6,7 @@ from __future__ import division
 from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix, maximize
 from pyomo.core.base import ConstraintList, ConcreteModel, TransformationFactory
 from pyomo.core.kernel.numvalue import value as value
+from pyomo.dae import *
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition, ReaderFactory, ResultsFormat
 import numpy as np
 import sys, time, re, os
@@ -215,23 +216,50 @@ class DynGen_DAE(object):
 
             self.SteadyRef.solutions.load_from(results)
 
+        if not hasattr(self.d_mod, "t"):
+            raise RuntimeError("The base model is missing a t object for the time domain")
+        if not isinstance(self.d_mod.t, ContinuousSet):
+            raise RuntimeError("The t object is not ContinuousSet\nMake t ContinuousSet.")
+        time_steady = getattr(self.SteadyRef, "t")
         # Gather the keys for a given state and form the state_vars dictionary
         for x in self.states:
-            # BUG: Is this a tuple? A: Yes
             self.state_vars[x] = []
             try:
                 xv = getattr(self.SteadyRef, x)
             except AttributeError:  # delete this
-                continue
-            for j in xv.keys():
-                #: pyomo.dae only has one index for time
-                if xv[j].stale:
-                    continue
-                if isinstance(j[1:], tuple):
-                    self.state_vars[x].append(j[1:])
+                raise RuntimeError("State {} does not exists as a Var".format(x))
+            if xv._implicit_subsets is None:
+                if not xv.index_set() is time_steady:
+                    raise RuntimeError("Var {} does not have t as part of its index set\n"
+                                       "It can not be a State".format(x))
                 else:
-                    self.state_vars[x].append((j[1:],))
+                    self.state_vars[x] = ((),)
+            else:
+                if time_steady in xv._implicit_subsets:
+                    pass
+                else:
+                    raise RuntimeError("State {} does not contain the ContinuousSet t")
 
+            # BUG: Is this a tuple? A: Yes
+
+            remaining_set = xv._implicit_subsets[1]
+            for j in range(2, len(xv._implicit_subsets)):
+                remaining_set *= xv._implicit_subsets[j]
+            for index in remaining_set:
+                if isinstance(index, tuple):
+                    self.state_vars[x].append(index)
+                else:
+                    self.state_vars[x].append((index,))
+
+            # for j in xv.keys():
+            #     #: pyomo.dae only has one index for time
+            #     if xv[j].stale:
+            #         continue
+            #     if isinstance(j[1:], tuple):
+            #         self.state_vars[x].append(j[1:])
+            #     else:
+            #         self.state_vars[x].append((j[1:],))
+        print(self.state_vars)
         # Get values for reference states and controls
         for x in self.states:
             try:

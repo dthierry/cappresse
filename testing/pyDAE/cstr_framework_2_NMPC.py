@@ -9,7 +9,7 @@ from nmpc_mhe.pyomo_dae.NMPCGen_pyDAE import NmpcGen_DAE
 from nmpc_mhe.aux.utils import load_iguess
 from nmpc_mhe.aux.utils import reconcile_nvars_mequations
 import matplotlib.pyplot as plt
-import sys
+import sys, os
 
 __author__ = "David Thierry @dthierry" #: March 2018
 
@@ -45,6 +45,7 @@ if __name__ == '__main__':
     e.update_soi_sp_nmpc()
     e.preparation_phase_nmpc(as_strategy=False, make_prediction=False, plant_state=True)
     # e.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
+    e.olnmpc.pprint(filename="new_framework.txt")
     stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300,
                             jacobian_regularization_value=1e-04, tag="olnmpc",
                             keepsolve=False, wantparams=False)
