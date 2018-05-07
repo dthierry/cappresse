@@ -16,10 +16,13 @@ __author__ = "David Thierry @dthierry" #: March 2018
 def main():
     states = ["Ca", "T", "Tj"]
     controls = ["u1"]
-    u_bounds = {"u1": (0, 1000)}
+    u_bounds = {"u1": (200, 1000)}
+    state_bounds = {"Ca": (0.0, None), "T":(2.0E+02, None), "Tj":(2.0E+02, None)}
+
     ref_state = {("Ca", (0,)): 0.010}
     mod = cstr_rodrigo_dae(1, 1)
     e = NmpcGen_DAE(mod, 2, states, controls,
+                    var_bounds=state_bounds,
                     u_bounds=u_bounds,
                     ref_state=ref_state,
                     override_solver_check=True)
@@ -49,13 +52,15 @@ if __name__ == '__main__':
     stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300,
                             jacobian_regularization_value=1e-04, tag="olnmpc",
                             keepsolve=False, wantparams=False)
+    e.olnmpc.objfun_nmpc.pprint()
+    e.olnmpc.xmpc_ref_nmpc.display()
 
     e.print_r_nmpc()
     e.update_u(e.olnmpc)  #: Get the resulting input for k+1
     e.cycleSamPlant(plant_step=True)
     e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
     # e.noisy_plant_manager(sigma=0.001, action="apply", update_level=True)
-    for i in range(0, 100):
+    for i in range(0, 500):
         if i in [30 * (j * 2) for j in range(0, 100)]:
             ref_state = {("Ca", (0,)): 0.019}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
@@ -73,7 +78,8 @@ if __name__ == '__main__':
         stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300,
                                 jacobian_regularization_value=1e-04, tag="olnmpc",
                                 keepsolve=False, wantparams=False)
-
+        if stat_nmpc != 0:
+            sys.exit()
         e.print_r_nmpc()
         e.update_u(e.olnmpc)  #: Get the resulting input for k+1
         e.cycleSamPlant(plant_step=True)

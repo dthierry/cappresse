@@ -14,7 +14,7 @@ from pyutilib.common._exceptions import ApplicationError
 import datetime
 from shutil import copyfile
 from nmpc_mhe.aux.utils import t_ij, load_iguess, augment_model, augment_steady
-
+from nmpc_mhe.aux.utils import clone_the_model
 __author__ = "David Thierry @dthierry" #: March 2018
 
 
@@ -65,6 +65,8 @@ class DynGen_DAE(object):
         self.dot_driver_executable = kwargs.get('dot_driver_executable', None)
         override_solver_check = kwargs.get('override_solver_check', False)
 
+        self.var_bounds = kwargs.get("var_bounds", None)
+
         self.hi_t = hi_t
 
         self._t = hi_t * self.nfe_t
@@ -82,12 +84,12 @@ class DynGen_DAE(object):
         self.res_file_suf = str(int(time.time()))
         self._reftime = time.time()
 
-        self.SteadyRef = self.d_mod.clone()
+        self.SteadyRef = clone_the_model(self.d_mod)
         augment_steady(self.SteadyRef)
 
         self.SteadyRef2 = object()
 
-        self.PlantSample = self.d_mod.clone()
+        self.PlantSample = clone_the_model(self.d_mod)
         augment_model(self.PlantSample, 1, self.ncp_t, new_timeset_bounds=(0, self.hi_t))
         print(os.getcwd(), "!!!!!!!1")
         self.PlantSample.pprint()
@@ -556,7 +558,7 @@ class DynGen_DAE(object):
         print("I[[create_dyn]] Dynamic (full) model created.")
         print("-" * 120)
 
-        self.dyn = self.d_mod.clone() #(self.nfe_t, self.ncp_t, _t=self._t)
+        self.dyn = clone_the_model(self.d_mod) #(self.nfe_t, self.ncp_t, _t=self._t)
         augment_model(self.dyn, self.nfe_t, self.ncp_t, new_timeset_bounds=(0, self._t))
         self.dyn.name = "full_dyn"
         # self.load_d_s(self.dyn)
@@ -600,7 +602,7 @@ class DynGen_DAE(object):
         # print("-" * 120)
 
     def create_predictor(self):
-        self.PlantPred = self.d_mod.clone()  #(1, self.ncp_t, _t=self.hi_t)
+        self.PlantPred = clone_the_model(self.d_mod)  #(1, self.ncp_t, _t=self.hi_t)
         augment_model(self.PlantPred, 1, self.ncp_t, new_timeset_bounds=(0, self.hi_t))
 
         self.PlantPred.name = "Dynamic Predictor"

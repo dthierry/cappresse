@@ -3,6 +3,7 @@ from __future__ import print_function
 from __future__ import division
 from pyomo.dae import ContinuousSet, DerivativeVar
 from pyomo.core.base import Suffix, ConcreteModel, Var, Suffix, Constraint, TransformationFactory, ConstraintList
+from pyomo.dae import *
 from pyomo.opt import ProblemFormat
 from pyomo.core.kernel.numvalue import value
 from os import getcwd, remove
@@ -344,3 +345,47 @@ def augment_steady(dmod):
         pass
     if hasattr(dmod, 'is_steady'):
         dmod.is_steady = True
+
+
+
+def aug_discretization(d_mod, nfe, ncp):
+    collocation = TransformationFactory("dae.collocation")
+    collocation.apply_to(d_mod, nfe=nfe, ncp=ncp, scheme="LAGRANGE-RADAU")
+
+
+
+def create_bounds(d_mod, bounds=None, clear=False, pre_clear_check=True):
+    if pre_clear_check:
+        for i in d_mod.component_data_objects(Var):
+            i.setlb(None)
+            i.setub(None)
+    if bounds is None:
+        return
+    elif isinstance(bounds, dict):
+        print("Model: {} Bounds activated".format(d_mod.name))
+        for var_name in bounds.keys():
+            try:
+                var = getattr(d_mod, var_name)
+            except AttributeError:
+                print("The variable {} is not part of the model.".format(var_name))
+                raise RuntimeError("Error in the bounds dictionary")
+            if not isinstance(bounds[var_name], tuple):
+                raise RuntimeError("The value for {} key is not tuple; all values must be tuples (None, None)")
+            for i in var.keys():
+                if clear:
+                    var[i].setlb(None)
+                    var[i].setub(None)
+                else:
+                    var[i].setlb(bounds[var_name][0])
+                    var[i].setub(bounds[var_name][1])
+    else:
+        raise RuntimeWarning("bounds is of type {} and it should be of type dict, no bounds declared".format(type(bounds)))
+
+
+def clone_the_model(d_mod):
+    src_id = id(d_mod)
+    new_mod = d_mod.clone()
+    nm_id = id(new_mod)
+    assert(src_id != nm_id)
+    print("New model at {}".format(nm_id))
+    return new_mod

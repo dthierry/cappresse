@@ -11,8 +11,8 @@ import numpy as np
 import sys, os, time
 from six import iterkeys
 from nmpc_mhe.aux.utils import t_ij
-from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model, augment_steady
-
+from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model, augment_steady, aug_discretization, create_bounds
+from nmpc_mhe.aux.utils import clone_the_model
 __author__ = "David Thierry @dthierry" #: March 2018
 
 """This version does not necesarily have the same time horizon/discretization as the MHE"""
@@ -62,20 +62,17 @@ class NmpcGen_DAE(DynGen_DAE):
         self.journalist('W', self._iteration_count, "Initializing NMPC",
                         "With {:d} fe and {:d} cp".format(self.nfe_tnmpc, self.ncp_tnmpc))
         _tnmpc = self.hi_t * self.nfe_tnmpc
-        self.olnmpc = self.d_mod.clone() #(self.nfe_tnmpc, self.ncp_tnmpc, _t=_tnmpc)
+        self.olnmpc = clone_the_model(self.d_mod) #(self.nfe_tnmpc, self.ncp_tnmpc, _t=_tnmpc)
         self.olnmpc.name = "olnmpc (Open-Loop NMPC)"
-        self.olnmpc.create_bounds()
+        # self.olnmpc.create_bounds()
 
         augment_model(self.olnmpc, self.nfe_tnmpc, self.ncp_tnmpc, new_timeset_bounds=(0, _tnmpc))
-        discretizer = TransformationFactory('dae.collocation')
-        discretizer.apply_to(self.olnmpc, nfe=self.nfe_tnmpc, ncp=self.ncp_tnmpc, scheme="LAGRANGE-RADAU")
 
-        for k in self.olnmpc.Ca.keys():
-            self.olnmpc.Ca[k].setlb(0.00E+00)
-        for k in self.olnmpc.T.keys():
-            self.olnmpc.T[k].setlb(2.0E+02)
-        for k in self.olnmpc.Tj.keys():
-            self.olnmpc.Tj[k].setlb(2.0E+02)
+        aug_discretization(self.olnmpc, self.nfe_tnmpc, self.ncp_tnmpc)
+        # create_bounds(self.olnmpc, bounds=self.var_bounds)
+
+        # discretizer = TransformationFactory('dae.collocation')
+        # discretizer.apply_to(self.olnmpc, nfe=self.nfe_tnmpc, ncp=self.ncp_tnmpc, scheme="LAGRANGE-RADAU")
 
         self.olnmpc.fe_t = Set(initialize=[i for i in range(0, self.nfe_tnmpc)])  #: Set for the NMPC stuff
 
@@ -202,17 +199,12 @@ class NmpcGen_DAE(DynGen_DAE):
             self.journalist("E", self._iteration_count, "initialize_olnmpc", "SRC not given")
             raise ValueError("Unexpected src_kind %s" % src_kind)
 
-        dum = self.d_mod.clone() #(1, self.ncp_tnmpc, _t=self.hi_t)
+        dum = clone_the_model(self.d_mod) #(1, self.ncp_tnmpc, _t=self.hi_t)
         augment_model(dum, 1, self.ncp_tnmpc, new_timeset_bounds=(0, self.hi_t))
-        discretizer = TransformationFactory('dae.collocation')
-        discretizer.apply_to(dum, nfe=1, ncp=self.ncp_tnmpc, scheme="LAGRANGE-RADAU")
-        dum.create_bounds()
-        for k in dum.Ca.keys():
-            dum.Ca[k].setlb(0.00E+00)
-        for k in dum.T.keys():
-            dum.T[k].setlb(2.0E+02)
-        for k in dum.Tj.keys():
-            dum.Tj[k].setlb(2.0E+02)
+        #discretizer = TransformationFactory('dae.collocation')
+        #discretizer.apply_to(dum, nfe=1, ncp=self.ncp_tnmpc, scheme="LAGRANGE-RADAU")
+        aug_discretization(dum, 1, self.ncp_tnmpc) 
+        create_bounds(dum, bounds=self.var_bounds)
         #: Load current solution
         # self.load_iguess_single(ref, dum, 0, 0)
         load_iguess(ref, dum, 0, 0)
@@ -533,9 +525,11 @@ class NmpcGen_DAE(DynGen_DAE):
         self.journalist("I", self._iteration_count, "find_target_ss", "Attempting to find steady state")
 
         del self.SteadyRef2
-        self.SteadyRef2 = self.d_mod.clone() # (1, 1)
-        augment_steady(self.SteadyRef2)
+        self.SteadyRef2 = clone_the_model(self.d_mod) # (1, 1)
         self.SteadyRef2.name = "SteadyRef2 (reference)"
+        augment_steady(self.SteadyRef2)
+        create_bounds(self.SteadyRef2, bounds=self.var_bounds)
+
         for u in self.u:
             cv = getattr(self.SteadyRef2, u)  #: Get the param
             c_val = value(cv[1])  #: Current value
@@ -563,7 +557,7 @@ class NmpcGen_DAE(DynGen_DAE):
             dumm_eq.rule = lambda m, i: cv[i] == control_var[i]
             dumm_eq.reconstruct()
 
-        self.SteadyRef2.create_bounds()
+        #self.SteadyRef2.create_bounds()
         # self.SteadyRef2.equalize_u(direction="r_to_u")
 
         for vs in self.SteadyRef.component_objects(Var, active=True):  #: Load_guess
