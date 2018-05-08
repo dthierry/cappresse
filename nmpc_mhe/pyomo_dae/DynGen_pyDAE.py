@@ -54,16 +54,18 @@ class DynGen_DAE(object):
 
         # Base model
         self.d_mod = d_mod
-
+        #: Discretization info
         self.nfe_t = kwargs.pop('nfe_t', 5)
         self.ncp_t = kwargs.pop('ncp_t', 3)
-        # self.k_aug_executable = None
+
         self.k_aug_executable = kwargs.get('k_aug_executable', None)
         self.ipopt_executable = kwargs.get('ipopt_executable', None)
         self.dot_driver_executable = kwargs.get('dot_driver_executable', None)
         override_solver_check = kwargs.get('override_solver_check', False)
 
+
         self.var_bounds = kwargs.get("var_bounds", None)
+        create_bounds(self.d_mod, pre_clear_check=True)
 
         self.hi_t = hi_t
 

@@ -347,11 +347,9 @@ def augment_steady(dmod):
         dmod.is_steady = True
 
 
-
 def aug_discretization(d_mod, nfe, ncp):
     collocation = TransformationFactory("dae.collocation")
     collocation.apply_to(d_mod, nfe=nfe, ncp=ncp, scheme="LAGRANGE-RADAU")
-
 
 
 def create_bounds(d_mod, bounds=None, clear=False, pre_clear_check=True):
@@ -380,7 +378,6 @@ def create_bounds(d_mod, bounds=None, clear=False, pre_clear_check=True):
                     var[i].setub(bounds[var_name][1])
     else:
         raise RuntimeWarning("bounds is of type {} and it should be of type dict, no bounds declared".format(type(bounds)))
-
 
 def clone_the_model(d_mod):
     src_id = id(d_mod)

@@ -9,8 +9,11 @@ from nmpc_mhe.aux.utils import reconcile_nvars_mequations  #: counts n_var and m
 from nmpc_mhe.pyomo_dae.MHEGen_pyDAE import MheGen_DAE
 from sample_mods.cstr_rodrigo.cstr_c_nmpc import cstr_rodrigo_dae
 import os, sys
+import matplotlib.pyplot as plt
 
-__author__ = "David Thierry @dthierry" #: March 2018
+__author__ = "David Thierry @dthierry" #: May 2018
+#: FULL controller ideal-ideal nmpc-mhe
+
 
 def main():
     states = ["Ca", "T", "Tj"]
@@ -61,17 +64,38 @@ def main():
                 max_cpu_time=600,
                 ma57_pre_alloc=5, tag="lsmhe")  #: Pre-loaded mhe solve
 
-    e.check_active_bound_noisy()
-    e.load_covariance_prior()
-    e.set_state_covariance()
-
-    e.regen_objective_fun()  #: Regen erate the obj fun
+    e.prior_phase()
     e.deact_icc_mhe()  #: Remove the initial conditions
 
-    for i in range(0, 20):  #: Five steps
+    e.find_target_ss()
+
+    #: NMPC
+    e.create_nmpc()
+    e.create_suffixes_nmpc()
+    e.update_targets_nmpc()
+    e.compute_QR_nmpc(n=-1)
+    e.new_weights_olnmpc(1E-04, 1e+06)
+
+    for i in range(0, 300):  #: Five steps
+        #: set-point change
+        if i in [30 * (j * 2) for j in range(0, 100)]:
+            ref_state = {("Ca", (0,)): 0.019}
+            e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
+            e.compute_QR_nmpc(n=-1)
+            e.new_weights_olnmpc(1e-04, 1e+06)
+        #: set point change
+        elif i in [30 * (j * 2 + 1) for j in range(0, 100)]:
+            ref_state = {("Ca", (0,)): 0.01}
+            e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
+            e.compute_QR_nmpc(n=-1)
+            e.new_weights_olnmpc(1e-04, 1e+06)
+
+
         e.solve_dyn(e.PlantSample, stop_if_nopt=True)
 
         e.update_state_real()  # update the current state
+        e.update_soi_sp_nmpc()  #: To keep track of the state of interest.
+
         e.update_measurement()
         e.compute_y_offset()  #: Get the offset for y
         e.preparation_phase_mhe(as_strategy=False)
@@ -94,8 +118,24 @@ def main():
         e.update_state_mhe()  #: get the state from mhe
         #: At this point computing and loading the Covariance is not going to affect the sens update of MHE
         e.prior_phase()
+
         e.print_r_mhe()
         e.print_r_dyn()
+        #: NMPC
+        e.preparation_phase_nmpc(as_strategy=False, make_prediction=False)
+        stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300, tag="olnmpc")
+        if stat_nmpc != 0:
+            sys.exit()
+        e.print_r_nmpc()  #: TODO: if this is not here there is no update on soi?
+        e.update_u(e.olnmpc)
+
+        #: Plant cycle
+        e.cycleSamPlant(plant_step=True)
+        e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
+    #: print our state of interest
+    plt.plot(e.soi_dict[("Ca", (0,))])
+    plt.show()
+    #: TODO: plot something cooler here.
 
     return e
 

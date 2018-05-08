@@ -64,15 +64,9 @@ class NmpcGen_DAE(DynGen_DAE):
         _tnmpc = self.hi_t * self.nfe_tnmpc
         self.olnmpc = clone_the_model(self.d_mod) #(self.nfe_tnmpc, self.ncp_tnmpc, _t=_tnmpc)
         self.olnmpc.name = "olnmpc (Open-Loop NMPC)"
-        # self.olnmpc.create_bounds()
 
         augment_model(self.olnmpc, self.nfe_tnmpc, self.ncp_tnmpc, new_timeset_bounds=(0, _tnmpc))
-
         aug_discretization(self.olnmpc, self.nfe_tnmpc, self.ncp_tnmpc)
-        # create_bounds(self.olnmpc, bounds=self.var_bounds)
-
-        # discretizer = TransformationFactory('dae.collocation')
-        # discretizer.apply_to(self.olnmpc, nfe=self.nfe_tnmpc, ncp=self.ncp_tnmpc, scheme="LAGRANGE-RADAU")
 
         self.olnmpc.fe_t = Set(initialize=[i for i in range(0, self.nfe_tnmpc)])  #: Set for the NMPC stuff
 
@@ -201,9 +195,7 @@ class NmpcGen_DAE(DynGen_DAE):
 
         dum = clone_the_model(self.d_mod) #(1, self.ncp_tnmpc, _t=self.hi_t)
         augment_model(dum, 1, self.ncp_tnmpc, new_timeset_bounds=(0, self.hi_t))
-        #discretizer = TransformationFactory('dae.collocation')
-        #discretizer.apply_to(dum, nfe=1, ncp=self.ncp_tnmpc, scheme="LAGRANGE-RADAU")
-        aug_discretization(dum, 1, self.ncp_tnmpc) 
+        aug_discretization(dum, 1, self.ncp_tnmpc)
         create_bounds(dum, bounds=self.var_bounds)
         #: Load current solution
         # self.load_iguess_single(ref, dum, 0, 0)
@@ -658,6 +650,7 @@ class NmpcGen_DAE(DynGen_DAE):
                     self.curr_state_offset[(x, j)] = self.curr_rstate[(x, j)] - self.curr_pstate[(x, j)]
 
     def print_r_nmpc(self):
+        """This updates the soi for some reason"""
         self.journalist("I", self._iteration_count, "print_r_nmpc", "Results at" + os.getcwd())
         self.journalist("I", self._iteration_count, "print_r_nmpc", "Results suffix " + self.res_file_suf)
         for k in self.ref_state.keys():
