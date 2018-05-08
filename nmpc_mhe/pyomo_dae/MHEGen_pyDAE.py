@@ -14,7 +14,7 @@ from pyomo.core.kernel.numvalue import value as value
 from pyutilib.common._exceptions import ApplicationError
 
 from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model
-from nmpc_mhe.aux.utils import t_ij
+from nmpc_mhe.aux.utils import t_ij, clone_the_model, aug_discretization, create_bounds
 from nmpc_mhe.pyomo_dae.NMPCGen_pyDAE import NmpcGen_DAE
 
 __author__ = "David Thierry @dthierry" #: March 2018
@@ -49,19 +49,16 @@ class MheGen_DAE(NmpcGen_DAE):
 
         _t_mhe = self.nfe_tmhe * self.hi_t
 
-        self.lsmhe = self.d_mod.clone() # (self.nfe_tmhe, self.ncp_tmhe, _t=_t_mhe)
+        self.lsmhe = clone_the_model(self.d_mod) # (self.nfe_tmhe, self.ncp_tmhe, _t=_t_mhe)
         # self.dum_mhe = self.d_mod(1, self.ncp_tmhe, _t=self.hi_t)
 
-        self.dum_mhe = self.d_mod.clone()
+        self.dum_mhe = clone_the_model(self.d_mod)
 
         augment_model(self.lsmhe, self.nfe_tmhe, self.ncp_tmhe, new_timeset_bounds=(0, _t_mhe))
         augment_model(self.dum_mhe, 1, self.ncp_tmhe, new_timeset_bounds=(0, self.hi_t), given_name="Dummy[MHE]")
-
-        d = TransformationFactory('dae.collocation')
-        d.apply_to(self.lsmhe, nfe=self.nfe_tmhe, ncp=self.ncp_tmhe, scheme="LAGRANGE-RADAU")
-
+        aug_discretization(self.lsmhe, self.nfe_tmhe, self.ncp_tmhe)  
         self.lsmhe.name = "LSMHE (Least-Squares MHE)"
-        self.lsmhe.create_bounds()
+        create_bounds(self.lsmhe, bounds=self.var_bounds)
         #: create x_pi constraint
         #: Create list of noisy-states vars
         self.xkN_l = []
@@ -321,8 +318,7 @@ class MheGen_DAE(NmpcGen_DAE):
         self.journalist("I", self._iteration_count, "init_lsmhe_prep", "Preparation phase MHE")
         dum = self.dum_mhe
         if not 'tau_points' in dum.t.get_discretization_info().keys():
-            d = TransformationFactory('dae.collocation')
-            d.apply_to(dum, nfe=1, ncp=self.ncp_tmhe, scheme='LAGRANGE-RADAU')
+            aug_discretization(self.dum_mhe, 1, self.ncp_tmhe)
 
         #: Load current solution
         load_iguess(ref, dum, 0, 0)

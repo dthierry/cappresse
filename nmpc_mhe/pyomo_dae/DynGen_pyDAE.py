@@ -14,7 +14,7 @@ from pyutilib.common._exceptions import ApplicationError
 import datetime
 from shutil import copyfile
 from nmpc_mhe.aux.utils import t_ij, load_iguess, augment_model, augment_steady
-from nmpc_mhe.aux.utils import clone_the_model
+from nmpc_mhe.aux.utils import clone_the_model, aug_discretization, create_bounds
 __author__ = "David Thierry @dthierry" #: March 2018
 
 
@@ -53,8 +53,6 @@ class DynGen_DAE(object):
     def __init__(self, d_mod, hi_t, states, controls, **kwargs):
 
         # Base model
-        if not d_mod:
-            print("Warning no model declared")
         self.d_mod = d_mod
 
         self.nfe_t = kwargs.pop('nfe_t', 5)
@@ -91,11 +89,11 @@ class DynGen_DAE(object):
 
         self.PlantSample = clone_the_model(self.d_mod)
         augment_model(self.PlantSample, 1, self.ncp_t, new_timeset_bounds=(0, self.hi_t))
-        print(os.getcwd(), "!!!!!!!1")
-        self.PlantSample.pprint()
 
-        discretizer = TransformationFactory('dae.collocation')
-        discretizer.apply_to(self.PlantSample, nfe=1, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
+        aug_discretization(self.PlantSample, nfe=1, ncp=self.ncp_t)
+        create_bounds(self.PlantSample, bounds=self.var_bounds, clear=True)
+        # discretizer = TransformationFactory('dae.collocation')
+        # discretizer.apply_to(self.PlantSample, nfe=1, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
 
         self.PlantPred = None
         self.SteadyRef.name = "SteadyRef"
@@ -563,8 +561,9 @@ class DynGen_DAE(object):
         self.dyn.name = "full_dyn"
         # self.load_d_s(self.dyn)
         load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
-        discretizer = TransformationFactory('dae.collocation')
-        discretizer.apply_to(self.dyn, nfe=self.nfe_t, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
+        aug_discretization(self.dyn, nfe=self.nfe_t, ncp=self.ncp_t)
+        # discretizer = TransformationFactory('dae.collocation')
+        # discretizer.apply_to(self.dyn, nfe=self.nfe_t, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
 
         if initialize:
             # self.load_d_s(self.PlantSample)
@@ -606,8 +605,9 @@ class DynGen_DAE(object):
         augment_model(self.PlantPred, 1, self.ncp_t, new_timeset_bounds=(0, self.hi_t))
 
         self.PlantPred.name = "Dynamic Predictor"
-        discretizer = TransformationFactory('dae.collocation')
-        discretizer.apply_to(self.PlantPred, nfe=1, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
+        aug_discretization(self.PlantPred, nfe=1, ncp=self.ncp_t)
+        # discretizer = TransformationFactory('dae.collocation')
+        # discretizer.apply_to(self.PlantPred, nfe=1, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
 
     def predictor_step(self, ref, state_dict, **kwargs):
         """Predicted-state computation by forward simulation.
