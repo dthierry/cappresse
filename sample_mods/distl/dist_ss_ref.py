@@ -4,7 +4,7 @@ from __future__ import division
 from __future__ import print_function
 from pyomo.core.base import ConcreteModel, Set, Constraint, Var,\
     Param, Objective, minimize, sqrt, exp, value
-import re
+import re, six
 
 def dist_col_Rodrigo_ss(init0, bnd_set):
     # collocation polynomial parameters
@@ -620,7 +620,7 @@ somemodel.display(filename="somefile0.txt")
 
 for var in somemodel.component_objects(Var, active=True):
     vx = getattr(somemodel, str(var))
-    for v, k in var.iteritems():
+    for v, k in six.iteritems(var):
         # print(str(var), v)
         try:
             vx[v] = somedict[str(var), v]

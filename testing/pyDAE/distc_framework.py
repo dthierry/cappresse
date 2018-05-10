@@ -7,18 +7,35 @@ from __future__ import print_function
 
 from nmpc_mhe.pyomo_dae.MHEGen_pyDAE import MheGen_DAE
 from sample_mods.distc_pyDAE.distcpydaemod import mod
-from nmpc_mhe.aux.utils import load_iguess
-
-
+from nmpc_mhe.aux.utils import load_iguess, create_bounds
+from pyomo.opt import SolverFactory
+from numpy import random
 __author__ = "David Thierry"
 
 
 def main():
     states = ["x", "M"]
-    state_bounds = {"x": (0, 1), "M":(0, None)}
+
+    state_bounds = {"M": (1.0, 1e+07),
+                    "T": (200, 500),
+                    "pm": (1.0, 5e+07),
+                    "pn": (1.0, 5e+07),
+                    "L": (0.0, 1e+03),
+                    "V": (0.0, 1e+03),
+                    "x": (0.0, 1.0),
+                    "y": (0.0, 1.0),
+                    "hl": (1.0, 1e+07),
+                    "hv": (1.0, 1e+07),
+                    "Qc": (0.0, 1e+08),
+                    "D": (0.0, 1e+04),
+                    "Vm": (0.0, 1e+04),
+                    "Mv": (0.155 + 1e-06, 1e+04),
+                    "Mv1": (8.5 + 1e-06, 1e+04),
+                    "Mvn": (0.17 + 1e-06, 1e+04)}
+
     measurements = ["T", "Mv", "Mv1", "Mvn"]
     controls = ["u1", "u2"]
-    u_bounds = {"u1": (0000.1, 99.999), "u2": (0, 1e+08)}
+    u_bounds = {"u1": (0000.1, 99.999), "u2": (0, None)}
     ref_state = {("T", (29,)): 343.15, ("T", (14,)): 361.15}
 
     e = MheGen_DAE(mod, 100, states, controls, states, measurements,
@@ -45,6 +62,16 @@ def main():
     e.create_rh_sfx()
 
     e.get_state_vars()
+
+    create_bounds(e.SteadyRef, bounds=state_bounds)
+    for i in range(1,2):
+        ipopt = SolverFactory('ipopt')
+        ipopt.options["OF_start_with_resto"] = "yes"
+        ipopt.solve(e.SteadyRef, tee=True)
+        ipopt.options["OF_start_with_resto"] = "no"
+        ipopt.solve(e.SteadyRef, tee=True)
+        bp = random.random(1)
+        ipopt.options["OF_bound_push"] = bp[0]
     e.load_iguess_steady()
     load_iguess(e.SteadyRef, e.PlantSample, 0, 0)
 

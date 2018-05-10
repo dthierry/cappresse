@@ -333,8 +333,6 @@ def augment_steady(dmod):
         dv_list.append(dv.name)  #: We have the differential variables
 
     coll = TransformationFactory('dae.collocation')
-    print(dir(coll))
-    print(type(coll))
     coll.apply_to(dmod, nfe=1, ncp=1)
 
     #: Deactivate collocation constraint
@@ -342,9 +340,10 @@ def augment_steady(dmod):
         col_con = getattr(dmod, dv + "_disc_eq")
         col_con.deactivate()
         #: Check whether we need icc cons
-        if hasattr(dmod, dv + "_icc"):
-            icc_con = getattr(dmod, dv + "_icc")
+        if hasattr(dmod, dv.split("dot")[0] + "_icc"):
+            icc_con = getattr(dmod, dv.split("dot")[0] + "_icc")
             icc_con.deactivate()
+    print(dv_list)
     dmod.add_component("dvs_steady", ConstraintList())
     clist = getattr(dmod, "dvs_steady")
     for dv in dv_list:
@@ -363,6 +362,7 @@ def aug_discretization(d_mod, nfe, ncp):
 
 
 def create_bounds(d_mod, bounds=None, clear=False, pre_clear_check=True):
+    #: might want to do something about fixed variables
     if pre_clear_check:
         for i in d_mod.component_data_objects(Var):
             i.setlb(None)

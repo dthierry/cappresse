@@ -122,7 +122,7 @@ class DynGen_DAE(object):
                 elif override_solver_check:
                     pass
                 else:
-                    raise Exception
+                    raise RuntimeError("k_aug not found")
 
         if self.dot_driver_executable:
             self.dot_driver = SolverFactory("dot_driver",
@@ -136,7 +136,7 @@ class DynGen_DAE(object):
                 elif override_solver_check:
                     pass
                 else:
-                    raise Exception
+                    raise RuntimeError("k_aug not found")
 
         # self.k_aug.options["eig_rh"] = ""
         self.asl_ipopt.options["halt_on_ampl_error"] = "yes"
@@ -188,9 +188,9 @@ class DynGen_DAE(object):
 
     def load_iguess_steady(self):
         """"Call the method for loading initial guess from steady-state"""
-        retval = self.solve_dyn(self.SteadyRef)
+        retval = self.solve_dyn(self.SteadyRef, bound_push=1e-07)
         if retval:
-            raise Exception
+            raise RuntimeError("The solution of the Steady-state problem failed")
 
 
     def get_state_vars(self, skip_solve=False):
@@ -410,7 +410,6 @@ class DynGen_DAE(object):
         with open("ipopt.opt", "w") as f:
             f.write("print_info_string\tyes\n")
             f.write("max_iter\t" + str(iter_max) + "\n")
-
             f.write("max_cpu_time\t" + str(max_cpu_time) + "\n")
             f.write("linear_solver\t" + linear_solver + "\n")
             f.write("ma57_pre_alloc\t" + str(ma57_pre_alloc) + "\n")
