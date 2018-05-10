@@ -224,18 +224,18 @@ def hydN(m, i):
 def dvm(m, i, k):
     if i > 0:
         return m.Vm[i, k] == m.x[i, k] * ((1/2288) * 0.2685**(1 + (1 - m.T[i, k]/512.4)**0.2453)) + \
-               (1 - m.x[i, k]) * ((1/1235) * 0.27136**(1 + (1 - m.T[k]/536.4)**0.24))
+               (1 - m.x[i, k]) * ((1/1235) * 0.27136**(1 + (1 - m.T[i, k]/536.4)**0.24))
     else:
         return Constraint.Skip
 
 
 # Initial conditions for the given noisy-filter
 def acm(m, k):
-    return m.M[1, 0, k] == m.M_ic[k]
+    return m.M[0, k] == m.M_ic[k]
 
 
 def acx(m, k):
-    return m.x[1, 0, k] == m.x_ic[k]
+    return m.x[0, k] == m.x_ic[k]
 
 # ---------------------------------------------------------------------------------------------------------------------
 mod = ConcreteModel()
@@ -338,7 +338,7 @@ def __m_init(m, i, k):
 #: Liquid hold-up
 mod.M = Var(mod.t, mod.tray, initialize=__m_init)
 #: Mole-fraction
-mod.x = Var(mod.t, mod.tray, initialize=lambda m, i, j, k: 0.999 * k / m.Ntray)
+mod.x = Var(mod.t, mod.tray, initialize=lambda m, i, k: 0.999 * k / m.Ntray)
 
 #: Initial state-Param
 mod.M_ic = Param(mod.tray, initialize=0.0, mutable=True)
@@ -351,7 +351,7 @@ mod.dx_dt = DerivativeVar(mod.x, initialize=0.0)
 # States (algebraic) section
 # Tray temperature
 mod.T = Var(mod.t, mod.tray,
-            initialize=lambda m, i, j, k: ((370.781 - 335.753) / m.Ntray) * k + 370.781)
+            initialize=lambda m, i, k: ((370.781 - 335.753) / m.Ntray) * k + 370.781)
 mod.Tdot = Var(mod.t, mod.tray, initialize=1e-05)  #: Not really a der_var
 
 # saturation pressures
@@ -374,7 +374,7 @@ mod.L = Var(mod.t, mod.tray, initialize=_l_init)
 
 # Vapor mole frac & diff var
 mod.y = Var(mod.t, mod.tray,
-             initialize=lambda m, i, j, k: ((0.99 - 0.005) / m.Ntray) * k + 0.005)
+             initialize=lambda m, i, k: ((0.99 - 0.005) / m.Ntray) * k + 0.005)
 
 # Liquid enthalpy # enthalpy
 mod.hl = Var(mod.t, mod.tray, initialize=10000.)
@@ -388,7 +388,7 @@ mod.D = Var(mod.t, initialize=18.33)
 mod.Vm = Var(mod.t, mod.tray, initialize=6e-05)
 
 mod.Mv = Var(mod.t, mod.tray,
-              initialize=lambda m, i, j, k: 0.23 if 1 < k < m.Ntray else 0.0)
+              initialize=lambda m, i, k: 0.23 if 1 < k < m.Ntray else 0.0)
 mod.Mv1 = Var(mod.t, initialize=8.57)
 mod.Mvn = Var(mod.t, initialize=0.203)
 
@@ -441,8 +441,8 @@ mod.dvself = Constraint(mod.t, mod.tray, rule=dvm)
 mod.u1_e = Expression(mod.t, rule=lambda m, i: mod.Rec[i])
 mod.u2_e = Expression(mod.t, rule=lambda m, i: mod.Qr[i])
 
-mod.u1_c = Constraint(mod.t, rule=lambda m, i: mod.u1[i] == mod.u1_e[i])
-mod.u2_c = Constraint(mod.t, rule=lambda m, i: mod.u2[i] == mod.u2_e[i])
+mod.u1_cdummy = Constraint(mod.t, rule=lambda m, i: mod.u1[i] == mod.u1_e[i])
+mod.u2_cdummy = Constraint(mod.t, rule=lambda m, i: mod.u2[i] == mod.u2_e[i])
 # --------------------------------------------------------------------------------------------------------------
 #: Suffixes
 mod.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
