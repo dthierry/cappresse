@@ -11,13 +11,13 @@ __author__ = 'David Thierry'  #: May 2018
 # mass balances
 def m_ode(m, i, k):
     if i > 0 and 1 < k < m.Ntray:
-        return m.dM_dt[i, k] == \
+        return m.Mdot[i, k] == \
                (m.V[i, k - 1] - m.V[i, k] + m.L[i, k + 1] - m.L[i, k] + m.feed[k])
     elif i > 0 and k == 1:
-        return m.dM_dt[i, 1] == \
+        return m.Mdot[i, 1] == \
                (m.L[i, 2] - m.L[i, 1] - m.V[i, 1])
     elif i > 0 and k == m.Ntray:
-        return m.dM_dt[i, m.Ntray] == \
+        return m.Mdot[i, m.Ntray] == \
                (m.V[i, m.Ntray - 1] - m.L[i, m.Ntray] - m.D[i])
     else:
         return Constraint.Skip
@@ -25,17 +25,17 @@ def m_ode(m, i, k):
 
 def x_ode(m, i, k):
     if i > 0 and 1 < k < m.Ntray:
-        return m.M[i, k] * m.dx_dt[i, k] == \
+        return m.M[i, k] * m.xdot[i, k] == \
                (m.V[i, k - 1] * (m.y[i, k - 1] - m.x[i, k]) +
                 m.L[i, k + 1] * (m.x[i, k + 1] - m.x[i, k]) -
                 m.V[i, k] * (m.y[i, k] - m.x[i, k]) +
                 m.feed[k] * (m.xf - m.x[i, k]))
     elif i > 0 and k == 1:
-        return m.M[i, 1] * m.dx_dt[i, 1] == \
+        return m.M[i, 1] * m.xdot[i, 1] == \
                (m.L[i, 2] * (m.x[i, 2] - m.x[i, 1]) -
                 m.V[i, 1] * (m.y[i, 1] - m.x[i, 1]))
     elif i > 0 and k == m.Ntray:
-        return m.M[i, m.Ntray] * m.dx_dt[i, m.Ntray] == \
+        return m.M[i, m.Ntray] * m.xdot[i, m.Ntray] == \
                (m.V[i, m.Ntray - 1] * (m.y[i, m.Ntray - 1] - m.x[i, m.Ntray]))
     else:
         return Constraint.Skip
@@ -52,7 +52,7 @@ def hrc(m, i):
 def gh(m, i, k):
     if i > 0 and 1 < k < m.Ntray:
         return m.M[i, k] * (
-            m.dx_dt[i, k] * (
+            m.xdot[i, k] * (
                 (m.hlm0 - m.hln0) * (m.T[i, k]**3) +
                 (m.hlma - m.hlna) * (m.T[i, k]**2) +
                 (m.hlmb - m.hlnb) * m.T[i, k] + m.hlmc - m.hlnc) +
@@ -71,7 +71,7 @@ def gh(m, i, k):
 
 def ghb(m, i):
     if i > 0:
-        return m.M[i, 1] * (m.dx_dt[i, 1] * ((m.hlm0 - m.hln0) * m.T[i, 1]**3 + (m.hlma - m.hlna)*m.T[i, 1]**2 +
+        return m.M[i, 1] * (m.xdot[i, 1] * ((m.hlm0 - m.hln0) * m.T[i, 1]**3 + (m.hlma - m.hlna)*m.T[i, 1]**2 +
                                              (m.hlmb - m.hlnb)*m.T[i, 1] +
                                              m.hlmc - m.hlnc)
                             + m.Tdot[i, 1] * (3 * m.hln0 * m.T[i, 1]**2 + 2 * m.hlna * m.T[i, 1] + m.hlnb +
@@ -87,7 +87,7 @@ def ghb(m, i):
 
 def ghc(m, i):
     if i > 0:
-        return m.M[i, m.Ntray] * (m.dx_dt[i, m.Ntray] * ((m.hlm0 - m.hln0) * m.T[i, m.Ntray]**3 +
+        return m.M[i, m.Ntray] * (m.xdot[i, m.Ntray] * ((m.hlm0 - m.hln0) * m.T[i, m.Ntray]**3 +
                                                          (m.hlma - m.hlna) * m.T[i, m.Ntray]**2 +
                                                          (m.hlmb - m.hlnb) * m.T[i, m.Ntray] +
                                                          m.hlmc - m.hlnc) + m.Tdot[i, m.Ntray] *
@@ -155,7 +155,7 @@ def dp(m, i, k):
 def lTdot(m, i, k):
     if i > 0:
         return m.Tdot[i, k]  ==\
-               -(m.pm[i, k] - m.pn[i, k]) * m.dx_dt[i, k] / \
+               -(m.pm[i, k] - m.pn[i, k]) * m.xdot[i, k] / \
                (m.x[i, k] *
                 exp(m.CapAm - m.CapBm/(m.T[i, k] + m.CapCm)) * m.CapBm/(m.T[i, k] + m.CapCm)**2 +
                 (1 - m.x[i, k]) *
@@ -324,7 +324,7 @@ mod.alpha = Param(mod.tray,
                   initialize=lambda m, k: 0.62 if k <= 21 else 0.35)
 
 # --------------------------------------------------------------------------------------------------------------
-#: First define differential state variables (state: x, ic-Param: x_ic, derivative-Var:dx_dt
+#: First define differential state variables (state: x, ic-Param: x_ic, derivative-Var:xdot
 #: States (differential) section
 
 def __m_init(m, i, k):
@@ -341,12 +341,12 @@ mod.M = Var(mod.t, mod.tray, initialize=__m_init)
 mod.x = Var(mod.t, mod.tray, initialize=lambda m, i, k: 0.999 * k / m.Ntray)
 
 #: Initial state-Param
-mod.M_ic = Param(mod.tray, initialize=0.0, mutable=True)
-mod.x_ic = Param(mod.tray, initialize=0.0, mutable=True)
+mod.M_ic = Param(mod.tray, default=0.0, mutable=True)
+mod.x_ic = Param(mod.tray, default=0.0, mutable=True)
 
 #:  Derivative-var
-mod.dM_dt = DerivativeVar(mod.M, initialize=0.0)
-mod.dx_dt = DerivativeVar(mod.x, initialize=0.0)
+mod.Mdot = DerivativeVar(mod.M, initialize=0.0)
+mod.xdot = DerivativeVar(mod.x, initialize=0.0)
 # --------------------------------------------------------------------------------------------------------------
 # States (algebraic) section
 # Tray temperature
@@ -394,8 +394,8 @@ mod.Mvn = Var(mod.t, initialize=0.203)
 
 # --------------------------------------------------------------------------------------------------------------
 #: Controls
-mod.u1 = Param(mod.t, initialize=7.72700925775773761472464684629813E-01, mutable=True)  #: Dummy
-mod.u2 = Param(mod.t, initialize=1.78604740940007800236344337463379E+06, mutable=True)  #: Dummy
+mod.u1 = Param(mod.t, default=7.72700925775773761472464684629813E-01, mutable=True)  #: Dummy
+mod.u2 = Param(mod.t, default=1.78604740940007800236344337463379E+06, mutable=True)  #: Dummy
 
 mod.Rec = Var(mod.t, initialize=7.72700925775773761472464684629813E-01)
 mod.Qr = Var(mod.t, initialize=1.78604740940007800236344337463379E+06)
@@ -438,16 +438,15 @@ mod.dvself = Constraint(mod.t, mod.tray, rule=dvm)
 
 # --------------------------------------------------------------------------------------------------------------
 #: Control constraint
-mod.u1_e = Expression(mod.t, rule=lambda m, i: mod.Rec[i])
-mod.u2_e = Expression(mod.t, rule=lambda m, i: mod.Qr[i])
+mod.u1_e = Expression(mod.t, rule=lambda m, i: m.Rec[i])
+mod.u2_e = Expression(mod.t, rule=lambda m, i: m.Qr[i])
 
-mod.u1_cdummy = Constraint(mod.t, rule=lambda m, i: mod.u1[i] == mod.u1_e[i])
-mod.u2_cdummy = Constraint(mod.t, rule=lambda m, i: mod.u2[i] == mod.u2_e[i])
+def u1_rule(m, i):
+    return m.u1[i] == m.Rec[i]
+
+def u2_rule(m, i):
+    return m.u1[i] == m.Qr[i]
+
+mod.u1_cdummy = Constraint(mod.t, rule=u1_rule)
+mod.u2_cdummy = Constraint(mod.t, rule=u2_rule)
 # --------------------------------------------------------------------------------------------------------------
-#: Suffixes
-mod.dual = Suffix(direction=Suffix.IMPORT_EXPORT)
-mod.ipopt_zL_out = Suffix(direction=Suffix.IMPORT)
-mod.ipopt_zU_out = Suffix(direction=Suffix.IMPORT)
-mod.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
-mod.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
-
