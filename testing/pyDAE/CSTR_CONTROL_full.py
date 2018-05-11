@@ -22,7 +22,7 @@ def main():
     u_bounds = {"u1": (200, 1000)}
     state_bounds = {"Ca": (0.0, None), "T":(2.0E+02, None), "Tj":(2.0E+02, None)}
     ref_state = {("Ca", (0,)): 0.010}
-    mod = cstr_rodrigo_dae(2,2) #: Some model
+    mod = cstr_rodrigo_dae(2, 2) #: Some model
     #: MHE-NMPC class
     e = MheGen_DAE(mod, 2, states, controls, states, measurements,
                    u_bounds=u_bounds,
@@ -70,13 +70,13 @@ def main():
     for i in range(0, 300):  #: Five steps
         #: set-point change
         if i in [30 * (j * 2) for j in range(0, 100)]:
-            ref_state = {("Ca", (0,)): 0.019}
+            ref_state = {("Ca", (0,)): 0.018}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
             e.new_weights_olnmpc(1e-04, 1e+06)
         #: set point change
         elif i in [30 * (j * 2 + 1) for j in range(0, 100)]:
-            ref_state = {("Ca", (0,)): 0.01}
+            ref_state = {("Ca", (0,)): 0.021}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
             e.new_weights_olnmpc(1e-04, 1e+06)
@@ -114,6 +114,7 @@ def main():
         #: Plant cycle
         e.cycleSamPlant(plant_step=True)
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
+        e.noisy_plant_manager(sigma=0.0015, action="apply", update_level=True)
 
     #: print our state of interest
     plt.plot(e.soi_dict[("Ca", (0,))])
@@ -124,7 +125,7 @@ def main():
 if __name__ == '__main__':
     e = main()
     #: Cleanup
-    file_resmhe = "res_mhe_label_" + e.res_file_suf + ".txt"
-    file_resdyn = "res_dyn_label_" + e.res_file_suf + ".txt"
-    os.remove(file_resdyn)
-    os.remove(file_resmhe)
+    # file_resmhe = "res_mhe_label_" + e.res_file_suf + ".txt"
+    # file_resdyn = "res_dyn_label_" + e.res_file_suf + ".txt"
+    # os.remove(file_resdyn)
+    # os.remove(file_resmhe)
