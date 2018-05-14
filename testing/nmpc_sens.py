@@ -46,7 +46,7 @@ def main():
     # States -- (5 * 3 + 6) * fe_x * cp_x.
     # For fe_x = 5 and cp_x = 3 we will have 315 differential-states.
     #: 1600 was proven to be solveable
-    e = MheGen(bfb_dae, 1600/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
+    e = MheGen(bfb_dae, 3200/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
                nfe_tmhe=nfe_mhe, ncp_tmhe=1,
                nfe_tnmpc=nfe_mhe, ncp_tnmpc=1,
                ref_state=ref_state, u_bounds=u_bounds,
@@ -190,13 +190,13 @@ def main():
         e.preparation_phase_nmpc(as_strategy=True, make_prediction=True, plant_state=True)
         # e.initialize_olnmpc(e.PlantSample, "estimated")
         # e.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
-        stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300,
+        stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=600,
                                 jacobian_regularization_value=1e-04, tag="olnmpc",
                                 keepsolve=keepsolve, wantparams=wantparams)
         if stat_nmpc != 0:
             e.olnmpc.write_nl(name="bad.nl")
-            e.solve_dyn(e.olnmpc, skip_update=False,
-                        max_cpu_time=600, jacobian_regularization_value=1e-04, linear_scaling_on_demand=True,
+            stat = e.solve_dyn(e.olnmpc, skip_update=False,
+                        max_cpu_time=900, jacobian_regularization_value=1e-04, linear_scaling_on_demand=True,
                         tag="olnmpc")
             if stat != 0:
                 sys.exit()
