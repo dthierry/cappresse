@@ -99,22 +99,22 @@ def main():
     e.create_rh_sfx()  #: Reduced hessian computation
 
 
-    e.init_lsmhe_prep(e.PlantSample)
-    e.shift_mhe()
-    e.init_step_mhe()
-    e.solve_dyn(e.lsmhe,
-                skip_update=False,
-                max_cpu_time=600,
-                ma57_pre_alloc=5, tag="lsmhe")  #: Pre-loaded mhe solve
-
-    e.check_active_bound_noisy()
-    e.load_covariance_prior()
-    e.set_state_covariance()
-
-    e.regen_objective_fun()  #: Regen erate the obj fun
-    e.deact_icc_mhe()  #: Remove the initial conditions
-
-    e.set_prior_state_from_prior_mhe()  #: Update prior-state
+    # e.init_lsmhe_prep(e.PlantSample)
+    # e.shift_mhe()
+    # e.init_step_mhe()
+    # e.solve_dyn(e.lsmhe,
+    #             skip_update=False,
+    #             max_cpu_time=600,
+    #             ma57_pre_alloc=5, tag="lsmhe")  #: Pre-loaded mhe solve
+    #
+    # e.check_active_bound_noisy()
+    # e.load_covariance_prior()
+    # e.set_state_covariance()
+    #
+    # e.regen_objective_fun()  #: Regen erate the obj fun
+    # e.deact_icc_mhe()  #: Remove the initial conditions
+    #
+    # e.set_prior_state_from_prior_mhe()  #: Update prior-state
     e.find_target_ss()  #: Compute target-steady state (beforehand)
 
     #: Create NMPC
@@ -161,31 +161,31 @@ def main():
         e.compute_y_offset()  #: Get the offset for y
 
 
-        e.preparation_phase_mhe(as_strategy=False)
-
-        stat = e.solve_dyn(e.lsmhe,
-                         skip_update=False, iter_max=500,
-                         jacobian_regularization_value=1e-04,
-                         max_cpu_time=600, tag="lsmhe", keepsolve=keepsolve, wantparams=wantparams)
-
-        if stat == 1:  #: Try again
-            e.lsmhe.write_nl(name="bad_mhe.nl")
-            stat = e.solve_dyn(e.lsmhe,
-                             skip_update=True,
-                             max_cpu_time=600,
-                             stop_if_nopt=True,
-                             jacobian_regularization_value=1e-02,
-                             linear_scaling_on_demand=True, tag="lsmhe")
-            if stat != 0:
-                sys.exit()
-        e.update_state_mhe()  #: get the state from mhe
-        #: At this point computing and loading the Covariance is not going to affect the sens update of MHE
-        e.prior_phase()
+        # e.preparation_phase_mhe(as_strategy=False)
         #
-        e.print_r_mhe()
+        # stat = e.solve_dyn(e.lsmhe,
+        #                  skip_update=False, iter_max=500,
+        #                  jacobian_regularization_value=1e-04,
+        #                  max_cpu_time=600, tag="lsmhe", keepsolve=keepsolve, wantparams=wantparams)
+        #
+        # if stat == 1:  #: Try again
+        #     e.lsmhe.write_nl(name="bad_mhe.nl")
+        #     stat = e.solve_dyn(e.lsmhe,
+        #                      skip_update=True,
+        #                      max_cpu_time=600,
+        #                      stop_if_nopt=True,
+        #                      jacobian_regularization_value=1e-02,
+        #                      linear_scaling_on_demand=True, tag="lsmhe")
+        #     if stat != 0:
+        #         sys.exit()
+        # e.update_state_mhe()  #: get the state from mhe
+        # #: At this point computing and loading the Covariance is not going to affect the sens update of MHE
+        # e.prior_phase()
+        # #
+        # e.print_r_mhe()
         e.print_r_dyn()
         #
-        e.preparation_phase_nmpc(as_strategy=False, make_prediction=False)
+        e.preparation_phase_nmpc(as_strategy=False, make_prediction=False, plant_state=True)
         # e.initialize_olnmpc(e.PlantSample, "estimated")
         # e.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
         stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300,
@@ -207,8 +207,6 @@ def main():
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
         e.noisy_plant_manager(sigma=0.001, action="apply", update_level=True)
         j += 1
-
-
 
 if __name__ == "__main__":
     main()

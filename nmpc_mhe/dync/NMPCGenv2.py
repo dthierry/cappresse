@@ -217,22 +217,31 @@ class NmpcGen(DynGen):
 
     def preparation_phase_nmpc(self, as_strategy=False, make_prediction=False, plant_state=False):
         """By default we assume mhe is providing the state"""
-        if plant_state:
-            #: use the plant state instead
-            #: Not yet implemented
-            return None
+        #: use the plant state instead
+        #: Not yet implemented
         if as_strategy:
             if make_prediction:
-                self.update_state_predicted(src="estimated")
+                if plant_state:
+                    self.update_state_predicted(src="real")
+                else:
+                    self.update_state_predicted(src="estimated")
                 self.initialize_olnmpc(self.PlantPred, "predicted")
                 self.load_init_state_nmpc(src_kind="state_dict", state_dict="predicted")
             else:
+                if plant_state:
+                    self.initialize_olnmpc(self.PlantSample, "real")
+                    self.load_init_state_nmpc(src_kind="state_dict", state_dict="real")
+                else:
+                    self.initialize_olnmpc(self.PlantSample, "estimated")
+                    self.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
+        else:
+            if plant_state:
+                self.initialize_olnmpc(self.PlantSample, "real")
+                self.load_init_state_nmpc(src_kind="state_dict", state_dict="real")
+            else:
+                #: Similar to as_strategy w/o prediction just to prevent ambiguity
                 self.initialize_olnmpc(self.PlantSample, "estimated")
                 self.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
-        else:
-            #: Similar to as_strategy w/o prediction just to prevent ambiguity
-            self.initialize_olnmpc(self.PlantSample, "estimated")
-            self.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
 
     def load_init_state_nmpc(self, src_kind, **kwargs):
         """Loads ref state for set-point
