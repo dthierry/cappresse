@@ -5,7 +5,7 @@ from __future__ import division
 from nmpc_mhe.dync.MHEGenv2 import MheGen
 from sample_mods.bfb.nob5_hi_t import bfb_dae
 import itertools, sys
-
+import time
 """Testing the new preparation phases with ideal strategies"""
 
 def main():
@@ -16,7 +16,7 @@ def main():
     u_bounds = {"u1":(162.183495794 * 0.0005, 162.183495794 * 10000)}
     ref_state = {("c_capture", ((),)): 0.50}
 
-    nfe_mhe = 20
+    nfe_mhe = 10
     y = ["Tgb", "vg"]
     nfet = 10
     ncpx = 3
@@ -45,8 +45,8 @@ def main():
 
     # States -- (5 * 3 + 6) * fe_x * cp_x.
     # For fe_x = 5 and cp_x = 3 we will have 315 differential-states.
-    #: 1600 was proven to be solveable
-    e = MheGen(bfb_dae, 3200/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
+    #: 1600  was proven to be solveable
+    e = MheGen(bfb_dae, 600/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
                nfe_tmhe=nfe_mhe, ncp_tmhe=1,
                nfe_tnmpc=nfe_mhe, ncp_tnmpc=1,
                ref_state=ref_state, u_bounds=u_bounds,
@@ -195,14 +195,12 @@ def main():
                                 keepsolve=keepsolve, wantparams=wantparams)
         if stat_nmpc != 0:
             e.olnmpc.write_nl(name="bad.nl")
-            stat = e.solve_dyn(e.olnmpc, skip_update=False,
-                        max_cpu_time=900, jacobian_regularization_value=1e-04, linear_scaling_on_demand=True,
-                        tag="olnmpc")
+            stat = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=1200,
+                               jacobian_regularization_value=1e-04, linear_scaling_on_demand=True,
+                               tag="olnmpc")
             if stat != 0:
                 sys.exit()
         e.sens_k_aug_nmpc()  # sensitivity matrix for nmpc
-        # e.update_u(e.olnmpc)  #: Get the resulting input for k+1
-
         e.print_r_nmpc()
         #
         e.cycleSamPlant(plant_step=True)
@@ -211,4 +209,31 @@ def main():
         j += 1
 
 if __name__ == "__main__":
-    main()
+    attempt = 0
+    done = False
+    f = open("log.x", "w")
+    f.write("start")
+    t = time.localtime(time.time())
+    t = time.asctime(t)
+    f.write('\t')
+    f.write(t)
+    f.write('\n')
+    with open("log.x", "a") as f:
+        while not done:
+            try:
+                main()
+                done = True
+            except ValueError:
+                f.write("attempt\t{}".format(attempt))
+                t = time.localtime(time.time())
+                t = time.asctime(t)
+                f.write('\t')
+                f.write(t)
+                f.write('\n')
+                attempt += 1
+
+
+
+
+
+

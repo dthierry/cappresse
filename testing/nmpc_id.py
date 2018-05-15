@@ -5,6 +5,7 @@ from __future__ import division
 from nmpc_mhe.dync.MHEGenv2 import MheGen
 from sample_mods.bfb.nob5_hi_t import bfb_dae
 import itertools, sys
+import time
 
 """Testing the new preparation phases with ideal strategies"""
 
@@ -14,9 +15,9 @@ def main():
     x_noisy = ["Hgc", "Nsc", "Hsc", "Hge", "Nse", "Hse"]
     u = ["u1"]
     u_bounds = {"u1":(162.183495794 * 0.0005, 162.183495794 * 10000)}
-    ref_state = {("c_capture", ((),)): 0.50}
+    ref_state = {("c_capture", ((),)): 0.63}
 
-    nfe_mhe = 20
+    nfe_mhe = 10
     y = ["Tgb", "vg"]
     nfet = 10
     ncpx = 3
@@ -46,11 +47,11 @@ def main():
     # States -- (5 * 3 + 6) * fe_x * cp_x.
     # For fe_x = 5 and cp_x = 3 we will have 315 differential-states.
     #: 1600 was proven to be solveable
-    e = MheGen(bfb_dae, 3200/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
+    e = MheGen(bfb_dae, 600/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
                nfe_tmhe=nfe_mhe, ncp_tmhe=1,
                nfe_tnmpc=nfe_mhe, ncp_tnmpc=1,
                ref_state=ref_state, u_bounds=u_bounds,
-               nfe_t=5, ncp_t=1,
+               nfe_t=nfe_mhe, ncp_t=1,
                k_aug_executable="/home/dav0/k_aug/src/k_aug/k_aug",
                dot_driver_executable="/home/dav0/k_aug/src/k_aug/dot_driver/dot_driver"
                )
@@ -137,13 +138,13 @@ def main():
             wantparams=False
         if i == 200:
             j = 1
-            ref_state = {("c_capture", ((),)): 0.63}
+            ref_state = {("c_capture", ((),)): 0.5}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
             e.new_weights_olnmpc(u_weight, 1e+06)
         elif i == 400:
             j = 1
-            ref_state = {("c_capture", ((),)): 0.5}
+            ref_state = {("c_capture", ((),)): 0.63}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
             e.new_weights_olnmpc(u_weight, 1e+06)
@@ -209,4 +210,30 @@ def main():
         j += 1
 
 if __name__ == "__main__":
-    main()
+    attempt = 0
+    done = False
+    f = open("log.x", "w")
+    f.write("start")
+    t = time.localtime(time.time())
+    t = time.asctime(t)
+    f.write('\t')
+    f.write(t)
+    f.write('\n')
+    with open("log.x", "a") as f:
+        while not done:
+            try:
+                main()
+                done = True
+            except ValueError:
+                f.write("attempt\t{}".format(attempt))
+                t = time.localtime(time.time())
+                t = time.asctime(t)
+                f.write('\t')
+                f.write(t)
+                f.write('\n')
+                attempt += 1
+
+
+
+
+
