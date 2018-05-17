@@ -20,7 +20,7 @@ for ((i=$START_SESSION; i<$END_SESSION; i++))
                 cp ./nmpc_mhe_q/testing/nmpc_sens.py ./run$i/
                 cd ./run$i/
                 sed -i.bak "s|/home/dav0/k_aug/src/k_aug/k_aug|/home/dav0/devzone/k_aug/cmake-build-k_aug/bin/k_aug|g" nmpc_sens.py
-                sed -i.bak "s|/home/dav0/k_aug/src/k_aug/dot_driver/dot_driver|/home/dav0/devzone/k_aug/src/k_aug/dot_driver|g" nmpc_sens.py
+                sed -i.bak "s|/home/dav0/k_aug/src/k_aug/dot_driver/dot_driver|/home/dav0/devzone/k_aug/src/k_aug/dot_driver/dot_driver|g" nmpc_sens.py
                 cd ..
                 cp ./nmpc_mhe_q/testing/ref_ss.sol ./run$i/
                 tmux new -s d$ROUND\_$i -d

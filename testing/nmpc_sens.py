@@ -14,7 +14,7 @@ def main():
     x_noisy = ["Hgc", "Nsc", "Hsc", "Hge", "Nse", "Hse"]
     u = ["u1"]
     u_bounds = {"u1":(162.183495794 * 0.0005, 162.183495794 * 10000)}
-    ref_state = {("c_capture", ((),)): 0.50}
+    ref_state = {("c_capture", ((),)): 0.63}
 
     nfe_mhe = 10
     y = ["Tgb", "vg"]
@@ -137,13 +137,13 @@ def main():
             wantparams=False
         if i == 200:
             j = 1
-            ref_state = {("c_capture", ((),)): 0.63}
+            ref_state = {("c_capture", ((),)): 0.5}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
             e.new_weights_olnmpc(u_weight, 1e+06)
         elif i == 400:
             j = 1
-            ref_state = {("c_capture", ((),)): 0.5}
+            ref_state = {("c_capture", ((),)): 0.63}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
             e.new_weights_olnmpc(u_weight, 1e+06)
