@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-ROUND=0
+ROUND=1
 START_SESSION=0
 END_SESSION=5
 
@@ -17,10 +17,13 @@ cd ..
 for ((i=$START_SESSION; i<$END_SESSION; i++))
         do
                 mkdir ./run$i
+                cp ./nmpc_mhe_q/testing/nmpc_sens.py ./run$i/
+                sed -i.bak "s|/home/dav0/k_aug/src/k_aug/k_aug|/home/dav0/devzone/k_aug/cmake-build-k_aug/bin/k_aug|g" nmpc_sens.py
+                sed -i.bak "s|/home/dav0/k_aug/src/k_aug/dot_driver/dot_driver|/home/dav0/devzone/k_aug/src/k_aug/dot_driver|g" nmpc_sens.py
+                cp ./nmpc_mhe_q/testing/ref_ss.sol ./run$i/
                 tmux new -s d$ROUND\_$i -d
+                tmux send-keys -t d$ROUND\_$i "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/dav0/devzone/k_aug/thirdparty/openblas/OpenBLAS" C-m
                 tmux send-keys -t d$ROUND\_$i "source ./nmpc_mhe_q/running_framework/bin/activate" C-m
-                tmux send-keys -t d$ROUND\_$i "cp ./nmpc_mhe_q/testing/nmpc_as.py ./run$i/" C-m
-                tmux send-keys -t d$ROUND\_$i "cp ./nmpc_mhe_q/testing/ref_ss.sol ./run$i/" C-m
                 tmux send-keys -t d$ROUND\_$i "cd ./run$i" C-m
-                tmux send-keys -t d$ROUND\_$i "python nmpc_as.py" C-m
+                tmux send-keys -t d$ROUND\_$i "python nmpc_sens.py" C-m
         done
