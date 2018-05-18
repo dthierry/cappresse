@@ -27,6 +27,7 @@ for ((i=$START_SESSION; i<$END_SESSION; i++))
                 cp ./nmpc_mhe_q/testing/ref_ss.sol ./run$i/
                 tmux new -s d$ROUND\_$i -d
                 tmux send-keys -t d$ROUND\_$i "export LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/dmolinat/k_aug/thirdparty/openblas/OpenBLAS" C-m
+                tmux send-keys -t d$ROUND\_$i "export OMP_NUM_THREADS=1" C-m
                 tmux send-keys -t d$ROUND\_$i "source ./nmpc_mhe_q/running_framework/bin/activate" C-m
                 tmux send-keys -t d$ROUND\_$i "cd ./run$i" C-m
                 tmux send-keys -t d$ROUND\_$i "python nmpc_sens.py" C-m
