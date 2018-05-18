@@ -6,6 +6,7 @@ from nmpc_mhe.dync.MHEGenv2 import MheGen
 from sample_mods.bfb.nob5_hi_t import bfb_dae
 import itertools, sys
 import time
+
 """Testing the new preparation phases with ideal strategies"""
 
 def main():
@@ -50,10 +51,9 @@ def main():
                nfe_tmhe=nfe_mhe, ncp_tmhe=1,
                nfe_tnmpc=nfe_mhe, ncp_tnmpc=1,
                ref_state=ref_state, u_bounds=u_bounds,
-               nfe_t=5, ncp_t=1,
-               k_aug_executable="/home/dav0/k_aug/src/k_aug/k_aug",
-               dot_driver_executable="/home/dav0/k_aug/src/k_aug/dot_driver/dot_driver"
-               )
+               nfe_t=nfe_mhe, ncp_t=1,
+               k_aug_executable="/home/dav0/devzone/k_aug/cmake-build-k_aug/bin/k_aug",
+               dot_driver_executable="/home/dav0/devzone/k_aug/src/k_aug/dot_driver/dot_driver")
 
     e.load_solfile(e.SteadyRef, "ref_ss.sol")  #: Loads solfile snap
     results = e.ipopt.solve(e.SteadyRef, tee=True, load_solutions=True, report_timing=True)
