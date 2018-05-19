@@ -8,7 +8,7 @@ END_SESSION=4
 
 set -e
 
-git clone https://github.com/dthierry/nmpc_mhe_q.git -b LarryTest
+git clone https://github.com/dthierry/nmpc_mhe_q.git -b Larrytestv2
 cd ./nmpc_mhe_q/
 virtualenv running_framework
 source ./running_framework/bin/activate
