@@ -211,31 +211,4 @@ def main():
         j += 1
 
 if __name__ == "__main__":
-    attempt = 0
-    done = False
-    f = open("log.x", "w")
-    f.write("start")
-    t = time.localtime(time.time())
-    t = time.asctime(t)
-    f.write('\t')
-    f.write(t)
-    f.write('\n')
-    with open("log.x", "a") as f:
-        while not done:
-            try:
-                main()
-                done = True
-            except ValueError:
-                f.write("attempt\t{}".format(attempt))
-                t = time.localtime(time.time())
-                t = time.asctime(t)
-                f.write('\t')
-                f.write(t)
-                f.write('\n')
-                attempt += 1
-
-
-
-
-
-
+    main()

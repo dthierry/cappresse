@@ -145,6 +145,7 @@ class NmpcGen(DynGen):
         self.journalist("I", self._iteration_count, "initialize_olnmpc", "src_kind=" + src_kind)
         # self.load_init_state_nmpc(src_kind="mod", ref=ref, fe=1, cp=self.ncp_t)
 
+        #: Load the state to dum
         if src_kind == "real":
             self.load_init_state_nmpc(src_kind="dict", state_dict="real")
         elif src_kind == "estimated":
@@ -180,7 +181,7 @@ class NmpcGen(DynGen):
                     sys.exit()
             else:
                 self.load_init_state_gen(dum, src_kind="mod", ref=dum, fe=0)
-
+            tst1 = 0
             tst = self.solve_dyn(dum,
                                o_tee=False,
                                tol=1e-04,
@@ -195,17 +196,20 @@ class NmpcGen(DynGen):
                              tol=1e-03,
                              iter_max=1000,
                              stop_if_nopt=False,
-                             jacobian_regularization_value=1e-04,
+                             jacobian_regularization_value=1.0,
                              ma57_small_pivot_flag=1,
                              ma57_pre_alloc=5,
                              linear_scaling_on_demand="yes", ma57_pivtol=1e-12,
                              output_file="dummy_ip.log")
                 if tst1 != 0:
-                    # sys.exit()
-                    print("Too bad :(", file=sys.stderr)
+                    print("Too bad :( Exit fe initialization, good luck!", file=sys.stderr)
                 k_notopt += 1
             #: Patch
-            self.load_iguess_dyndyn(dum, self.olnmpc, finite_elem)
+            if tst1 != 0:
+                break
+            else:
+                for i in range(finite_elem, self.nfe_tnmpc):
+                    self.load_iguess_dyndyn(dum, self.olnmpc, i)
 
 
             for u in self.u:

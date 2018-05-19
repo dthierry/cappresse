@@ -47,7 +47,7 @@ def main():
     # States -- (5 * 3 + 6) * fe_x * cp_x.
     # For fe_x = 5 and cp_x = 3 we will have 315 differential-states.
     #: 1600  was proven to be solveable
-    e = MheGen(bfb_dae, 1600/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
+    e = MheGen(bfb_dae, 600/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
                nfe_tmhe=nfe_mhe, ncp_tmhe=1,
                nfe_tnmpc=nfe_mhe, ncp_tnmpc=1,
                ref_state=ref_state, u_bounds=u_bounds,
@@ -162,34 +162,9 @@ def main():
         if i > 1:
             e.sens_dot_nmpc()
         e.update_u(e.olnmpc)  #: Get the resulting input for k+1
-
-        # e.preparation_phase_mhe(as_strategy=False)
-        #
-        # stat = e.solve_dyn(e.lsmhe,
-        #                  skip_update=False, iter_max=500,
-        #                  jacobian_regularization_value=1e-04,
-        #                  max_cpu_time=600, tag="lsmhe", keepsolve=keepsolve, wantparams=wantparams)
-        #
-        # if stat == 1:  #: Try again
-        #     e.lsmhe.write_nl(name="bad_mhe.nl")
-        #     stat = e.solve_dyn(e.lsmhe,
-        #                      skip_update=True,
-        #                      max_cpu_time=600,
-        #                      stop_if_nopt=True,
-        #                      jacobian_regularization_value=1e-02,
-        #                      linear_scaling_on_demand=True, tag="lsmhe")
-        #     if stat != 0:
-        #         sys.exit()
-        # e.update_state_mhe()  #: get the state from mhe
-        # #: At this point computing and loading the Covariance is not going to affect the sens update of MHE
-        # e.prior_phase()
-        # #
-        # e.print_r_mhe()
         e.print_r_dyn()
         #
         e.preparation_phase_nmpc(as_strategy=True, make_prediction=True, plant_state=True)
-        # e.initialize_olnmpc(e.PlantSample, "estimated")
-        # e.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
         stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=600,
                                 jacobian_regularization_value=1e-04, tag="olnmpc",
                                 keepsolve=keepsolve, wantparams=wantparams)
@@ -209,31 +184,4 @@ def main():
         j += 1
 
 if __name__ == "__main__":
-    attempt = 0
-    done = False
-    f = open("log.x", "w")
-    f.write("start")
-    t = time.localtime(time.time())
-    t = time.asctime(t)
-    f.write('\t')
-    f.write(t)
-    f.write('\n')
-    with open("log.x", "a") as f:
-        while not done:
-            try:
-                main()
-                done = True
-            except ValueError:
-                f.write("attempt\t{}".format(attempt))
-                t = time.localtime(time.time())
-                t = time.asctime(t)
-                f.write('\t')
-                f.write(t)
-                f.write('\n')
-                attempt += 1
-
-
-
-
-
-
+    main()
