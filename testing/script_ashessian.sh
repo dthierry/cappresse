@@ -33,4 +33,3 @@ for ((i=$START_SESSION; i<$END_SESSION; i++))
                 tmux send-keys -t d$ROUND\_$i "python nmpc_sens.py" C-m
         done
 
-j

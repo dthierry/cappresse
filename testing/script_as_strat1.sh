@@ -2,9 +2,9 @@
 
 #/home/dmolinat/k_aug/bin
 
-ROUND=1
+ROUND=2
 START_SESSION=0
-END_SESSION=5
+END_SESSION=4
 
 set -e
 
@@ -21,8 +21,6 @@ for ((i=$START_SESSION; i<$END_SESSION; i++))
                 mkdir ./run$i
                 cp ./nmpc_mhe_q/testing/nmpc_sens_strat1.py ./run$i/
                 cd ./run$i/
-                sed -i.bak "s|/home/dav0/devzone/k_aug/cmake-build-k_aug/bin/k_aug|/home/dmolinat/k_aug/bin/k_aug|g" nmpc_sens_strat1.py
-                sed -i.bak "s|/home/dav0/devzone/k_aug/src/k_aug/dot_driver/dot_driver|/home/dmolinat/k_aug/src/k_aug/dot_driver/dot_driver|g" nmpc_sens_strat1.py
                 cd ..
                 cp ./nmpc_mhe_q/testing/ref_ss.sol ./run$i/
                 tmux new -s d$ROUND\_$i -d
