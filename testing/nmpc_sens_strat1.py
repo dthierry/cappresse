@@ -47,7 +47,7 @@ def main():
     # States -- (5 * 3 + 6) * fe_x * cp_x.
     # For fe_x = 5 and cp_x = 3 we will have 315 differential-states.
     #: 1600  was proven to be solveable
-    e = MheGen(bfb_dae, 1600/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
+    e = MheGen(bfb_dae, 600/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
                nfe_tmhe=nfe_mhe, ncp_tmhe=1,
                nfe_tnmpc=nfe_mhe, ncp_tnmpc=1,
                ref_state=ref_state, u_bounds=u_bounds,
@@ -197,7 +197,7 @@ def main():
         if stat_nmpc != 0:
             e.olnmpc.write_nl(name="bad.nl")
             stat = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=1200,
-                               jacobian_regularization_value=1, linear_scaling_on_demand=False,
+                               jacobian_regularization_value=1.0, linear_scaling_on_demand=False,
                                tag="olnmpc")
         if stat != 0:
             print("Warning!!!")
