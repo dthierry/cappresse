@@ -193,7 +193,7 @@ def main():
         stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=600,
                                 jacobian_regularization_value=1e-04, tag="olnmpc",
                                 keepsolve=keepsolve, wantparams=wantparams)
-        stat = 1
+        stat = 0
         if stat_nmpc != 0:
             e.olnmpc.write_nl(name="bad.nl")
             stat = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=1200,
