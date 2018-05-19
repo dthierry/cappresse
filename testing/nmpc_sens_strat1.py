@@ -197,7 +197,7 @@ def main():
         if stat_nmpc != 0:
             e.olnmpc.write_nl(name="bad.nl")
             stat = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=1200,
-                               jacobian_regularization_value=1, linear_scaling_on_demand=False,
+                               jacobian_regularization_value=1.0, linear_scaling_on_demand=False,
                                tag="olnmpc")
         if stat != 0:
             print("Warning!!!")
