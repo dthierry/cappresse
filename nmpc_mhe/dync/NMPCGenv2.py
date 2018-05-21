@@ -755,3 +755,31 @@ class NmpcGen(DynGen):
 
     def method_for_nmpc_simulation(self):
         pass
+
+    @staticmethod
+    def keep_timings_sens():
+        try:
+            with open("timings_k_aug.txt", "r") as f:
+                with open("timing_k_aug_abs.txt", "a") as ftabs:
+                    lines = f.readlines()
+                    for i in lines:
+                        ftabs.write(i)
+                    ftabs.close()
+                f.close()
+        except IOError:
+            print("File not found k_aug")
+
+
+        try:
+            with open("timings_dot_driver.txt", "r") as f:
+                with open("timing_dot_driver_abs.txt", "a") as ftabs:
+                    lines = f.readlines()
+                    for i in lines:
+                        ftabs.write(i)
+                    ftabs.close()
+                f.close()
+        except IOError:
+            print("File not found dot_sens")
+
+
+

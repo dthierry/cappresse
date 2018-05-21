@@ -161,6 +161,7 @@ def main():
         e.compute_y_offset()  #: Get the offset for y
         if i > 1:
             e.sens_dot_nmpc()
+            e.keep_timings_sens()
         e.update_u(e.olnmpc)  #: Get the resulting input for k+1
 
         # e.preparation_phase_mhe(as_strategy=False)
