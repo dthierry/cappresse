@@ -338,18 +338,28 @@ def augment_steady(dmod):
     #: Deactivate collocation constraint
     for dv in dv_list:
         col_con = getattr(dmod, dv + "_disc_eq")
-        col_con.deactivate()
+        # col_con.deactivate()
+        dmod.del_component(col_con)
         #: Check whether we need icc cons
         if hasattr(dmod, dv.split("dot")[0] + "_icc"):
             icc_con = getattr(dmod, dv.split("dot")[0] + "_icc")
-            icc_con.deactivate()
-    print(dv_list)
-    dmod.add_component("dvs_steady", ConstraintList())
-    clist = getattr(dmod, "dvs_steady")
+            # icc_con.deactivate()
+            dmod.del_component(icc_con)
+
+    # print(dv_list)
+    #: Fix dvs to 0
+    # dmod.add_component("dvs_steady", ConstraintList())
+    # clist = getattr(dmod, "dvs_steady")
+    # for dv in dv_list:
+    #     dvar = getattr(dmod, dv)
+    #     for key in dvar.keys():
+    #         clist.add(dvar[key] == 0)
     for dv in dv_list:
         dvar = getattr(dmod, dv)
-        for key in dvar.keys():
-            clist.add(dvar[key] == 0)
+        for v in dvar.itervalues():
+            v.set_value(0)
+            v.fix()
+
     if hasattr(dmod, 'name'):
         pass
     if hasattr(dmod, 'is_steady'):

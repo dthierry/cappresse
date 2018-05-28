@@ -1,21 +1,38 @@
 #!/usr/bin/env python
 # -*- coding: utf-8
-
-
 from __future__ import division
 from __future__ import print_function
 
 from nmpc_mhe.pyomo_dae.MHEGen_pyDAE import MheGen_DAE
 from sample_mods.distc_pyDAE.distcpydaemod import mod
 from nmpc_mhe.aux.utils import load_iguess, create_bounds
+from pyomo.core.base import Var, Constraint
 from pyomo.opt import SolverFactory
 from numpy import random
+import sys
+
 __author__ = "David Thierry"
 
+def disp_vars(mod, file):
+    if not file is None:
+        with open(file, "w") as f:
+            for i in mod.component_objects(Var):
+                i.display(ostream=f)
+    else:
+        for i in mod.component_objects(Var):
+            i.display()
+
+def disp_cons(mod, file):
+    if not file is None:
+        with open(file, "w") as f:
+            for i in mod.component_objects(Constraint):
+                i.pprint(ostream=f)
+    else:
+        for i in mod.component_objects(Constraint):
+            i.pprint()
 
 def main():
     states = ["x", "M"]
-
     state_bounds = {"M": (1.0, 1e+07),
                     "T": (200, 500),
                     "pm": (1.0, 5e+07),
@@ -31,7 +48,8 @@ def main():
                     "Vm": (0.0, 1e+04),
                     "Mv": (0.155 + 1e-06, 1e+04),
                     "Mv1": (8.5 + 1e-06, 1e+04),
-                    "Mvn": (0.17 + 1e-06, 1e+04)}
+                    "Mvn": (0.17 + 1e-06, 1e+04)
+                    }
 
     measurements = ["T", "Mv", "Mv1", "Mvn"]
     controls = ["u1", "u2"]
@@ -64,19 +82,41 @@ def main():
     e.get_state_vars()
 
     create_bounds(e.SteadyRef, bounds=state_bounds)
-    for i in range(1,2):
-        ipopt = SolverFactory('ipopt')
+    ipopt = SolverFactory('ipopt')
+    for i in range(1, 2):
+        ipopt.options["print_user_options"] = "yes"
         ipopt.options["OF_start_with_resto"] = "yes"
+        ipopt.options["OF_bound_relax_factor"] = 1e-12
+        ipopt.options["OF_honor_original_bounds"] = "no"
         ipopt.solve(e.SteadyRef, tee=True)
+        disp_vars(e.SteadyRef, "my_vars")
+        disp_cons(e.SteadyRef, "my_cons")
+        # e.SteadyRef.Tdot.fix(0)gt
         ipopt.options["OF_start_with_resto"] = "no"
         ipopt.solve(e.SteadyRef, tee=True)
         bp = random.random(1)
         ipopt.options["OF_bound_push"] = bp[0]
+
+    ipopt.options["OF_start_with_resto"] = "no"
+    # ipopt.options["OF_bound_relax_factor"] = 1e-12
+    ipopt.options["OF_honor_original_bounds"] = "no"
+    ipopt.options["bound_push"] = 1e-07
+    ipopt.solve(e.SteadyRef, tee=True)
+    disp_vars(e.SteadyRef, "my_vars")
+    disp_cons(e.SteadyRef, "my_cons")
+
+    # create_bounds(e.SteadyRef, bounds=dict(), clear=True)
+    # ip2 = SolverFactory('ipopt')
+    # ip2.options["halt_on_ampl_error"] = "yes"
+    # ip2.solve(e.SteadyRef, tee=True, symbolic_solver_labels=True)
+
+
     e.load_iguess_steady()
     load_iguess(e.SteadyRef, e.PlantSample, 0, 0)
-
     # reconcile_nvars_mequations(e.lsmhe)
-    e.solve_dyn(e.PlantSample)
+    create_bounds(e.PlantSample, bounds=e.var_bounds, clear=False)
+    e.PlantSample.display(filename="plant.txt")
+    e.solve_dyn(e.PlantSample, bound_push=1e-07)
 
     e.init_lsmhe_prep(e.PlantSample)
     e.shift_mhe()

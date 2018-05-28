@@ -445,7 +445,7 @@ def u1_rule(m, i):
     return m.u1[i] == m.Rec[i]
 
 def u2_rule(m, i):
-    return m.u1[i] == m.Qr[i]
+    return m.u2[i] == m.Qr[i]
 
 mod.u1_cdummy = Constraint(mod.t, rule=u1_rule)
 mod.u2_cdummy = Constraint(mod.t, rule=u2_rule)
