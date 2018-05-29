@@ -189,6 +189,8 @@ class DynGen_DAE(object):
     def load_iguess_steady(self):
         """"Call the method for loading initial guess from steady-state"""
         retval = self.solve_dyn(self.SteadyRef, bound_push=1e-07)
+        load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
+        self.cycleSamPlant()
         if retval:
             raise RuntimeError("The solution of the Steady-state problem failed")
 

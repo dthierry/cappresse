@@ -6,8 +6,8 @@ from __future__ import print_function
 from nmpc_mhe.pyomo_dae.MHEGen_pyDAE import MheGen_DAE
 from sample_mods.distc_pyDAE.distcpydaemod import mod
 from nmpc_mhe.aux.utils import load_iguess, create_bounds
-from pyomo.core.base import Var, Constraint
-from pyomo.opt import SolverFactory
+from pyomo.core.base import Var, Constraint, Param
+from pyomo.opt import SolverFactory, ProblemFormat
 from numpy import random
 import sys
 
@@ -30,6 +30,16 @@ def disp_cons(mod, file):
     else:
         for i in mod.component_objects(Constraint):
             i.pprint()
+
+def disp_params(mod, file):
+    if not file is None:
+        with open(file, "w") as f:
+            for i in mod.component_objects(Param):
+                i.pprint(ostream=f)
+    else:
+        for i in mod.component_objects(Param):
+            i.pprint()
+
 
 def main():
     states = ["x", "M"]
@@ -61,7 +71,8 @@ def main():
                    ref_state=ref_state,
                    override_solver_check=True,
                    var_bounds=state_bounds,
-                   k_aug_executable="")
+                   k_aug_executable='/home/dav0/devzone/k_aug/cmake-build-k_aug/bin/k_aug',
+                   dot_driver_executable='/home/dav0/devzone/k_aug/src/k_aug/dot_driver')
     Q = {}
     U = {}
     R = {}
@@ -84,6 +95,7 @@ def main():
     create_bounds(e.SteadyRef, bounds=state_bounds)
     ipopt = SolverFactory('ipopt')
     for i in range(1, 2):
+        continue
         ipopt.options["print_user_options"] = "yes"
         ipopt.options["OF_start_with_resto"] = "yes"
         ipopt.options["OF_bound_relax_factor"] = 1e-12
@@ -95,15 +107,15 @@ def main():
         ipopt.options["OF_start_with_resto"] = "no"
         ipopt.solve(e.SteadyRef, tee=True)
         bp = random.random(1)
-        ipopt.options["OF_bound_push"] = bp[0]
+        # ipopt.options["OF_bound_push"] = bp[0]
 
     ipopt.options["OF_start_with_resto"] = "no"
     # ipopt.options["OF_bound_relax_factor"] = 1e-12
     ipopt.options["OF_honor_original_bounds"] = "no"
     ipopt.options["bound_push"] = 1e-07
     ipopt.solve(e.SteadyRef, tee=True)
-    disp_vars(e.SteadyRef, "my_vars")
-    disp_cons(e.SteadyRef, "my_cons")
+    # disp_vars(e.SteadyRef, "my_vars")
+    # disp_cons(e.SteadyRef, "my_cons")
 
     # create_bounds(e.SteadyRef, bounds=dict(), clear=True)
     # ip2 = SolverFactory('ipopt')
@@ -112,20 +124,33 @@ def main():
 
 
     e.load_iguess_steady()
-    load_iguess(e.SteadyRef, e.PlantSample, 0, 0)
+    # load_iguess(e.SteadyRef, e.PlantSample, 0, 0)
+    # e.cycleSamPlant()
     # reconcile_nvars_mequations(e.lsmhe)
     create_bounds(e.PlantSample, bounds=e.var_bounds, clear=False)
-    e.PlantSample.display(filename="plant.txt")
-    e.solve_dyn(e.PlantSample, bound_push=1e-07)
 
+    ipopt.options["halt_on_ampl_error"] = "yes"
+    ipopt.options["bound_push"] = 1e-07
+    ipopt.solve(e.PlantSample, tee=True, symbolic_solver_labels=True)
+
+    ip2 = SolverFactory('ipopt')
+    ip2.solve(e.PlantSample, tee=True, symbolic_solver_labels=True)
+    disp_vars(e.PlantSample, "my_vars")
+    disp_cons(e.PlantSample, "my_cons")
+    disp_params(e.PlantSample, "my_params")
+
+    # e.solve_dyn(e.PlantSample)
+    # sys.exit()
     e.init_lsmhe_prep(e.PlantSample)
     e.shift_mhe()
     e.init_step_mhe()
+    e.lsmhe.pprint(filename="lsmhe.txt")
     e.solve_dyn(e.lsmhe,
                 skip_update=False,
                 max_cpu_time=600,
                 ma57_pre_alloc=5, tag="lsmhe")  #: Pre-loaded mhe solve
-
+    disp_vars(e.lsmhe, "vars_mhe")
+    e.lsmhe.write("lsmhe.nl", format=ProblemFormat.nl, io_options={'symbolic_solver_labels': True})
     e.prior_phase()
     e.deact_icc_mhe()  #: Remove the initial conditions
 

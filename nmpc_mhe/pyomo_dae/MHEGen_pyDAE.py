@@ -288,7 +288,9 @@ class MheGen_DAE(NmpcGen_DAE):
         self.lsmhe.obfun_mhe_first.deactivate()
 
         self.lsmhe.obfun_mhe = Objective(sense=minimize,
-                                         expr=self.lsmhe.Arrival_e_mhe + self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe +
+                                         expr=self.lsmhe.Arrival_e_mhe +
+                                              self.lsmhe.R_e_mhe +
+                                              self.lsmhe.Q_e_mhe +
                                               self.lsmhe.U_e_mhe)
         self.lsmhe.obfun_mhe.deactivate()
 
@@ -574,14 +576,19 @@ class MheGen_DAE(NmpcGen_DAE):
                     continue
             else:
                 if self.lsmhe.t in v._implicit_subsets:
-                    remaining_set = set(product(v._implicit_subsets[1:], repeat=len(v._implicit_subsets[1:])))
-                    for rs in remaining_set:
+                    # remaining_set = set(product(v._implicit_subsets[1:], repeat=len(v._implicit_subsets[1:])+1))
+                    remaining_set = v._implicit_subsets[1]
+                    for j in range(2, len(v._implicit_subsets)):
+                        remaining_set *= v._implicit_subsets[j]
+                    for index in remaining_set:
+                        print(index)
                         for i in range(0, self.nfe_tmhe - 1):
                             for j in range(0, self.ncp_tmhe + 1):
                                 t_dash_i = t_ij(self.lsmhe.t, i, j)
                                 t = t_ij(self.lsmhe.t, i + 1, j)
-                                val = value(v[(t,) + rs])
-                                v[(t_dash_i,) + rs].set_value(val)
+                                index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
+                                val = value(v[(t,) + index])
+                                v[(t_dash_i,) + index].set_value(val)
                 else:
                     continue
 
@@ -800,7 +807,7 @@ class MheGen_DAE(NmpcGen_DAE):
             self.k_aug.solve(self.lsmhe, tee=True)
         except ApplicationError:
             self.journalist("E", self._iteration_count, "load_covariance_prior", "K_AUG failed; no covariance info was loaded")
-            self.lsmhe.write_nl(name="failed_covariance.nl")
+            # self.lsmhe.write_nl(name="failed_covariance.nl")
             return 1
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
 
