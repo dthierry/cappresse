@@ -94,7 +94,7 @@ def main():
 
     create_bounds(e.SteadyRef, bounds=state_bounds)
     ipopt = SolverFactory('ipopt')
-    for i in range(1, 2):
+    for i in range(1, 1):
         continue
         ipopt.options["print_user_options"] = "yes"
         ipopt.options["OF_start_with_resto"] = "yes"
@@ -109,9 +109,9 @@ def main():
         bp = random.random(1)
         # ipopt.options["OF_bound_push"] = bp[0]
 
-    ipopt.options["OF_start_with_resto"] = "no"
+    # ipopt.options["OF_start_with_resto"] = "no"
     # ipopt.options["OF_bound_relax_factor"] = 1e-12
-    ipopt.options["OF_honor_original_bounds"] = "no"
+    # ipopt.options["OF_honor_original_bounds"] = "no"
     ipopt.options["bound_push"] = 1e-07
     ipopt.solve(e.SteadyRef, tee=True)
     # disp_vars(e.SteadyRef, "my_vars")
@@ -127,17 +127,17 @@ def main():
     # load_iguess(e.SteadyRef, e.PlantSample, 0, 0)
     # e.cycleSamPlant()
     # reconcile_nvars_mequations(e.lsmhe)
-    create_bounds(e.PlantSample, bounds=e.var_bounds, clear=False)
+    # create_bounds(e.PlantSample, bounds=e.var_bounds, clear=False)
+    #
+    # ipopt.options["halt_on_ampl_error"] = "yes"
+    # ipopt.options["bound_push"] = 1e-07
+    ipopt.solve(e.PlantSample,
+                tee=True,
+                symbolic_solver_labels=True)
 
-    ipopt.options["halt_on_ampl_error"] = "yes"
-    ipopt.options["bound_push"] = 1e-07
-    ipopt.solve(e.PlantSample, tee=True, symbolic_solver_labels=True)
-
-    ip2 = SolverFactory('ipopt')
-    ip2.solve(e.PlantSample, tee=True, symbolic_solver_labels=True)
-    disp_vars(e.PlantSample, "my_vars")
-    disp_cons(e.PlantSample, "my_cons")
-    disp_params(e.PlantSample, "my_params")
+    # disp_vars(e.PlantSample, "my_vars")
+    # disp_cons(e.PlantSample, "my_cons")
+    # disp_params(e.PlantSample, "my_params")
 
     # e.solve_dyn(e.PlantSample)
     # sys.exit()
@@ -145,12 +145,20 @@ def main():
     e.shift_mhe()
     e.init_step_mhe()
     e.lsmhe.pprint(filename="lsmhe.txt")
+
     e.solve_dyn(e.lsmhe,
                 skip_update=False,
                 max_cpu_time=600,
                 ma57_pre_alloc=5, tag="lsmhe")  #: Pre-loaded mhe solve
     disp_vars(e.lsmhe, "vars_mhe")
+
     e.lsmhe.write("lsmhe.nl", format=ProblemFormat.nl, io_options={'symbolic_solver_labels': True})
+
+    ipopt.options["print_user_options"] = "yes"
+    ipopt.options["OF_start_with_resto"] = "yes"
+    ipopt.options["OF_honor_original_bounds"] = "no"
+    ipopt.options["bound_push"] = 1e-02
+    ipopt.solve(e.lsmhe, tee=True, symbolic_solver_labels=True)
     e.prior_phase()
     e.deact_icc_mhe()  #: Remove the initial conditions
 
