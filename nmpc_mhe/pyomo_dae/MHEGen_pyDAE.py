@@ -70,12 +70,15 @@ class MheGen_DAE(NmpcGen_DAE):
             n_s = getattr(self.lsmhe, x)  #: Noisy-state
             self.x_vars[x] = list()
             if not n_s._implicit_subsets:
-                raise Exception("not right")
-            if tS_mhe not in n_s._implicit_subsets:
-                raise Exception("not right")
-            remaining_set = n_s._implicit_subsets[1]
-            for jth_set in range(2, len(n_s._implicit_subsets)):
-                remaining_set *= jth_set
+                if not n_s.index_set() is tS_mhe:
+                    raise RuntimeError("Time is not part of the set of state {}".format(x))
+                remaining_set = [tuple()]
+            else:
+                if tS_mhe not in n_s._implicit_subsets:
+                    raise RuntimeError("Time is not part of the set of state {}".format(x))
+                remaining_set = n_s._implicit_subsets[1]
+                for jth_set in range(2, len(n_s._implicit_subsets)):
+                    remaining_set *= jth_set
             # for jth in self.lsmhe.fe_t:  #: the jth variable
             for kth in remaining_set:
                 kth = kth if isinstance(kth, tuple) else (kth,)
@@ -102,38 +105,58 @@ class MheGen_DAE(NmpcGen_DAE):
         self.yk_key = {}
         k = 0
         self.yk_l[0] = []
+        t = t_ij(tS_mhe, 0, self.ncp_tmhe)
         for y in self.y:
+            remaining_set = [tuple()]
             m_v = getattr(self.lsmhe, y)  #: Measured "state"
             self.y_vars[y] = list()
             if not m_v._implicit_subsets:
-                raise Exception("not right")
-            if tS_mhe not in m_v._implicit_subsets:
-                raise Exception("not right")
-            remaining_set = m_v._implicit_subsets[1]
-            for jth_set in range(2, len(m_v._implicit_subsets)):
-                remaining_set *= jth_set
-            # for jth in self.lsmhe.fe_t:  #: the jth variable
-            t = t_ij(tS_mhe, 0, self.ncp_tmhe)
+                if not m_v.index_set() is tS_mhe:
+                    raise RuntimeError("Time is not part of the set of measurement {}".format(y))
+                remaining_set = [tuple()]
+                # kth = tuple()
+                # self.y_vars[y].append(kth)
+                # self.yk_l[0].append(m_v[(t,) + kth])
+                # #: position of the variable in the list
+                # self.yk_key[(y,) + kth] = k  #: The key needs to be created only once, that is why the loop was split
+                # k += 1
+            else:
+                if tS_mhe not in m_v._implicit_subsets:
+                    raise RuntimeError("Time is not part of the set of measurement {}".format(y))
+                remaining_set = m_v._implicit_subsets[1]
+                for jth_set in range(2, len(m_v._implicit_subsets)):
+                    remaining_set *= jth_set
+                # for jth in self.lsmhe.fe_t:  #: the jth variable
             for kth in remaining_set:
                 kth = kth if isinstance(kth, tuple) else (kth,)
                 self.y_vars[y].append(kth)
                 self.yk_l[0].append(m_v[(t,) + kth])
                 #: position of the variable in the list
-                self.yk_key[(y,) + kth] = k  #: The key needs to be created only once, that is why the loop was split
+                #: The key needs to be created only once, that is why the loop was split
+                self.yk_key[(y,) + kth] = k
                 k += 1
 
         for fe in self.lsmhe.fe_t:
             if fe == 0:
                 continue
+            t = t_ij(tS_mhe, fe, self.ncp_tmhe)
             self.yk_l[fe] = []
             for y in self.y:
+                remaining_set = [tuple()]
                 m_v = getattr(self.lsmhe, y)  #: Measured "state"
-                remaining_set = m_v._implicit_subsets[1]
-                for jth_set in range(2, len(m_v._implicit_subsets)):
-                    remaining_set *= jth_set
-                t = t_ij(tS_mhe, fe, self.ncp_tmhe)
+                if not m_v._implicit_subsets:
+                    remaining_set = [tuple()]
+                    # kth = tuple()
+                    # self.y_vars[y].append(kth)
+                    # self.yk_l[fe].append(m_v[(t,) + kth])
+                else:
+                    remaining_set = m_v._implicit_subsets[1]
+                    for jth_set in range(2, len(m_v._implicit_subsets)):
+                        remaining_set *= jth_set
+                    # for jth in self.lsmhe.fe_t:  #: the jth variable
                 for kth in remaining_set:
                     kth = kth if isinstance(kth, tuple) else (kth,)
+                    self.y_vars[y].append(kth)
                     self.yk_l[fe].append(m_v[(t,) + kth])
 
         self.lsmhe.ykk_mhe = Set(initialize=[i for i in range(0, len(self.yk_l[0]))])  #: Create set of measured_vars
@@ -166,6 +189,7 @@ class MheGen_DAE(NmpcGen_DAE):
             if isinstance(control_var, Var): #: all good
                 pass
             else:
+                print(type(control_var))
                 raise ValueError  #: Some exception here
             self.lsmhe.del_component(dumm_eq)  #: Delete the dummy_eqn
             self.lsmhe.del_component(cv)  #: Delete the dummy_param
@@ -264,7 +288,9 @@ class MheGen_DAE(NmpcGen_DAE):
         self.lsmhe.obfun_mhe_first.deactivate()
 
         self.lsmhe.obfun_mhe = Objective(sense=minimize,
-                                         expr=self.lsmhe.Arrival_e_mhe + self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe +
+                                         expr=self.lsmhe.Arrival_e_mhe +
+                                              self.lsmhe.R_e_mhe +
+                                              self.lsmhe.Q_e_mhe +
                                               self.lsmhe.U_e_mhe)
         self.lsmhe.obfun_mhe.deactivate()
 
@@ -347,6 +373,8 @@ class MheGen_DAE(NmpcGen_DAE):
             #: Patch
             load_iguess(dum, self.lsmhe, 0, finite_elem)
             self.patch_input_mhe("mod", src=dum, fe=finite_elem)
+            with open('meas.txt_' + str(finite_elem), 'w') as f:
+                self.lsmhe.yk0_mhe.pprint(ostream=f)
 
         self.lsmhe.name = "Preparation MHE"   #: Pretty much simulation
         tst = self.solve_dyn(self.lsmhe,
@@ -359,6 +387,7 @@ class MheGen_DAE(NmpcGen_DAE):
                              output_file="prep_mhe.txt",
                              mu_strategy="adaptive",
                              ma57_pre_alloc=5)
+
 
         if tst != 0:
             self.lsmhe.write_nl(name="failed_mhe.nl")
@@ -434,19 +463,14 @@ class MheGen_DAE(NmpcGen_DAE):
             lm = []
             var = getattr(src, y)
             for j in self.y_vars[y]:
-                # self.curr_meas[(y, j)] = value(var[(0, cpa,) + j])
+                k = self.yk_key[(y,) + j]
                 lm.append(value(var[(tcpa,) + j]))
-                l.append(value(var[(tcpa,) + j]))
+                y0dest[fe, k].value = value(var[(tcpa,) + j])
             meas_dic[y] = lm
             
         # if not skip_update:  #: Update the mhe model
         self.journalist("I", self._iteration_count, "patch_meas_mhe", "Measurement to:" + str(fe))
 
-        for i in self.y:
-            for j in self.y_vars[i]:
-                k = self.yk_key[(i,) + j]
-                #: Adding noise to the mhe measurement
-                y0dest[fe, k].value = l[k] + self.curr_m_noise[(i, j)] if noisy else l[k]
         return meas_dic
 
     def adjust_nu0_mhe(self):
@@ -455,8 +479,9 @@ class MheGen_DAE(NmpcGen_DAE):
             k = 0
             for i in self.y:
                 for j in self.y_vars[i]:
-                    target = value(self.lsmhe.yk0_mhe[t, k]) - value(self.yk_l[t][k])
-                    self.lsmhe.nuk_mhe[t, k].set_value(target)
+                    kk = self.yk_key[(i,) + j]
+                    target = value(self.lsmhe.yk0_mhe[t, kk]) - value(self.yk_l[t][kk])
+                    self.lsmhe.nuk_mhe[t, kk].set_value(target)
                     k += 1
 
     def adjust_w_mhe(self):
@@ -549,14 +574,18 @@ class MheGen_DAE(NmpcGen_DAE):
                     continue
             else:
                 if self.lsmhe.t in v._implicit_subsets:
-                    remaining_set = set(product(v._implicit_subsets[1:], repeat=len(v._implicit_subsets[1:])))
-                    for rs in remaining_set:
+                    # remaining_set = set(product(v._implicit_subsets[1:], repeat=len(v._implicit_subsets[1:])+1))
+                    remaining_set = v._implicit_subsets[1]
+                    for j in range(2, len(v._implicit_subsets)):
+                        remaining_set *= v._implicit_subsets[j]
+                    for index in remaining_set:
                         for i in range(0, self.nfe_tmhe - 1):
                             for j in range(0, self.ncp_tmhe + 1):
                                 t_dash_i = t_ij(self.lsmhe.t, i, j)
                                 t = t_ij(self.lsmhe.t, i + 1, j)
-                                val = value(v[(t,) + rs])
-                                v[(t_dash_i,) + rs].set_value(val)
+                                index = index if isinstance(index, tuple) else (index,)  #: Transform to tuple
+                                val = value(v[(t,) + index])
+                                v[(t_dash_i,) + index].set_value(val)
                 else:
                     continue
 
@@ -775,7 +804,7 @@ class MheGen_DAE(NmpcGen_DAE):
             self.k_aug.solve(self.lsmhe, tee=True)
         except ApplicationError:
             self.journalist("E", self._iteration_count, "load_covariance_prior", "K_AUG failed; no covariance info was loaded")
-            self.lsmhe.write_nl(name="failed_covariance.nl")
+            # self.lsmhe.write_nl(name="failed_covariance.nl")
             return 1
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
 
@@ -860,6 +889,7 @@ class MheGen_DAE(NmpcGen_DAE):
         """Encapsulates all the prior-state related issues, like collection, covariance computation and update"""
         # Prior-Covariance stuff
         self.check_active_bound_noisy()
+        print(self._PI)
         self.load_covariance_prior()
         self.set_state_covariance()
         self.regen_objective_fun()

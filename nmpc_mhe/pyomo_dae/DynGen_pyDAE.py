@@ -9,13 +9,17 @@ from pyomo.core.kernel.numvalue import value as value
 from pyomo.dae import *
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition, ReaderFactory, ResultsFormat
 import numpy as np
-import sys, time, re, os
+# import sys, time, re, os
 from pyutilib.common._exceptions import ApplicationError
 import datetime
 from shutil import copyfile
 from nmpc_mhe.aux.utils import t_ij, load_iguess, augment_model, augment_steady
 from nmpc_mhe.aux.utils import clone_the_model, aug_discretization, create_bounds
-__author__ = "David Thierry @dthierry" #: March 2018
+import sys
+import time
+import re
+import os
+__author__ = "David Thierry @dthierry"  #: March 2018
 
 
 
@@ -122,7 +126,7 @@ class DynGen_DAE(object):
                 elif override_solver_check:
                     pass
                 else:
-                    raise Exception
+                    raise RuntimeError("k_aug not found")
 
         if self.dot_driver_executable:
             self.dot_driver = SolverFactory("dot_driver",
@@ -136,7 +140,7 @@ class DynGen_DAE(object):
                 elif override_solver_check:
                     pass
                 else:
-                    raise Exception
+                    raise RuntimeError("k_aug not found")
 
         # self.k_aug.options["eig_rh"] = ""
         self.asl_ipopt.options["halt_on_ampl_error"] = "yes"
@@ -188,9 +192,11 @@ class DynGen_DAE(object):
 
     def load_iguess_steady(self):
         """"Call the method for loading initial guess from steady-state"""
-        retval = self.solve_dyn(self.SteadyRef)
+        retval = self.solve_dyn(self.SteadyRef, bound_push=1e-07)
+        load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
+        self.cycleSamPlant()
         if retval:
-            raise Exception
+            raise RuntimeError("The solution of the Steady-state problem failed")
 
 
     def get_state_vars(self, skip_solve=False):
@@ -410,7 +416,6 @@ class DynGen_DAE(object):
         with open("ipopt.opt", "w") as f:
             f.write("print_info_string\tyes\n")
             f.write("max_iter\t" + str(iter_max) + "\n")
-
             f.write("max_cpu_time\t" + str(max_cpu_time) + "\n")
             f.write("linear_solver\t" + linear_solver + "\n")
             f.write("ma57_pre_alloc\t" + str(ma57_pre_alloc) + "\n")
@@ -580,30 +585,30 @@ class DynGen_DAE(object):
             print("I[[create_dyn]] Dynamic (full) model initialized.")
 
     @staticmethod
-    def journalist(flag, iter, phase, message):
+    def journalist(flag, i, phase, message):
         """Method that writes a little message
         Args:
             flag (str): The flag
-            iter (int): The current iteration
+            i (int): The current iteration
             phase (str): The phase
             message (str): The text message to display
         Returns:
             None"""
-        iter = str(iter)
+        i = str(i)
         print("-==-" * 15)
 
         if flag == 'W':
-            print(flag + iter + "[[" + phase + "]]" + message + ".", file=sys.stderr)
+            print(flag + i + "[[" + phase + "]]" + message + ".", file=sys.stderr)
         # print to file warning
         elif flag == 'E':
             print("Fatal error", file=sys.stderr)
-            print(flag + iter + "[[" + phase + "]]" + message + "." + "-" * 20)
+            print(flag + i + "[[" + phase + "]]" + message + "." + "-" * 20)
         else:
-            print(flag + iter + "[[" + phase + "]]" + message + "." + "-" * 20)
+            print(flag + i + "[[" + phase + "]]" + message + "." + "-" * 20)
         # print("-" * 120)
 
     def create_predictor(self):
-        self.PlantPred = clone_the_model(self.d_mod)  #(1, self.ncp_t, _t=self.hi_t)
+        self.PlantPred = clone_the_model(self.d_mod)  # (1, self.ncp_t, _t=self.hi_t)
         augment_model(self.PlantPred, 1, self.ncp_t, new_timeset_bounds=(0, self.hi_t))
 
         self.PlantPred.name = "Dynamic Predictor"

@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import print_function
 from __future__ import division
-from pyomo.dae import ContinuousSet, DerivativeVar
-from pyomo.core.base import Suffix, ConcreteModel, Var, Suffix, Constraint, TransformationFactory, ConstraintList
 from pyomo.dae import *
+from pyomo.environ import *
+# from pyomo.dae import ContinuousSet, DerivativeVar
+from pyomo.core.base import Suffix, ConcreteModel, Var, Suffix, Constraint, ConstraintList, TransformationFactory
 from pyomo.opt import ProblemFormat
 from pyomo.core.kernel.numvalue import value
 from os import getcwd, remove
@@ -56,7 +57,7 @@ def fe_cp(time_set, t):
             cp = j
             break
         j += 1
-    return (fe, cp)
+    return fe, cp
 
 
 def fe_compute(time_set, t):
@@ -119,24 +120,32 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
         cs._bounds = new_timeset_bounds
         cs.clear()
         cs.construct()
+        for component in [Var, DerivativeVar, Param, Expression, Constraint]:
+            for o in d_mod.component_objects(component):
+                # print(o)
+                #: This series of if conditions are in place to avoid some weird behaviour
+                if o._implicit_subsets is None:
+                    if o.index_set() is cs:
+                        pass
+                    else:
+                        if isinstance(o, Param):
+                            if not o._mutable:
+                                o.construct()
+                                continue
+                        o.reconstruct()
+                        continue
+                else:
+                    if cs in o._implicit_subsets:
+                        pass
+                    else:
+                        o.reconstruct()
+                        continue
+                o.clear()
+                o.construct()
+                o.reconstruct()
 
-        for o in d_mod.component_objects([Var, DerivativeVar, Constraint]):
-            #: This series of if conditions are in place to avoid some weird behaviour
-            if o._implicit_subsets is None:
-                if o.index_set() is cs:
-                    pass
-                else:
-                    o.reconstruct()
-                    continue
-            else:
-                if cs in o._implicit_subsets:
-                    pass
-                else:
-                    o.reconstruct()
-                    continue
-            o.clear()
-            o.construct()
-            o.reconstruct()
+                # if isinstance(o, Var):
+                #     o.reconstruct()
 
     if isinstance(given_name, str):
         d_mod.name = given_name
@@ -185,7 +194,7 @@ def reconcile_nvars_mequations(d_mod, keep_nl=False, **kwargs):
         pass
     else:
         remove(fullpth)
-    return (nvar, meqn)
+    return nvar, meqn
 
 
 def load_iguess(src, tgt, fe_src, fe_tgt):
@@ -318,29 +327,39 @@ def augment_steady(dmod):
     if cs is None:
         raise RuntimeError("The model has no ContinuousSet")
     #: set new bounds on the time set
-    augment_model(dmod, 1, 1, new_timeset_bounds=(0,1))
+    augment_model(dmod, 1, 1, new_timeset_bounds=(0, 1))
     dv_list = []
     for dv in dmod.component_objects(DerivativeVar):
         dv_list.append(dv.name)  #: We have the differential variables
 
-    #: Search for collocation equations
-    dae = TransformationFactory('dae.collocation')
-    dae.apply_to(dmod, nfe=1, ncp=1)
+    coll = TransformationFactory('dae.collocation')
+    coll.apply_to(dmod, nfe=1, ncp=1)
 
     #: Deactivate collocation constraint
     for dv in dv_list:
         col_con = getattr(dmod, dv + "_disc_eq")
-        col_con.deactivate()
+        # col_con.deactivate()
+        dmod.del_component(col_con)
         #: Check whether we need icc cons
-        if hasattr(dmod, dv + "_icc"):
-            icc_con = getattr(dmod, dv + "_icc")
-            icc_con.deactivate()
-    dmod.add_component("dvs_steady", ConstraintList())
-    clist = getattr(dmod, "dvs_steady")
+        if hasattr(dmod, dv.split("dot")[0] + "_icc"):
+            icc_con = getattr(dmod, dv.split("dot")[0] + "_icc")
+            # icc_con.deactivate()
+            dmod.del_component(icc_con)
+
+    # print(dv_list)
+    #: Fix dvs to 0
+    # dmod.add_component("dvs_steady", ConstraintList())
+    # clist = getattr(dmod, "dvs_steady")
+    # for dv in dv_list:
+    #     dvar = getattr(dmod, dv)
+    #     for key in dvar.keys():
+    #         clist.add(dvar[key] == 0)
     for dv in dv_list:
         dvar = getattr(dmod, dv)
-        for key in dvar.keys():
-            clist.add(dvar[key] == 0)
+        for v in dvar.itervalues():
+            v.set_value(0)
+            v.fix()
+
     if hasattr(dmod, 'name'):
         pass
     if hasattr(dmod, 'is_steady'):
@@ -353,6 +372,7 @@ def aug_discretization(d_mod, nfe, ncp):
 
 
 def create_bounds(d_mod, bounds=None, clear=False, pre_clear_check=True):
+    #: might want to do something about fixed variables
     if pre_clear_check:
         for i in d_mod.component_data_objects(Var):
             i.setlb(None)
@@ -377,12 +397,14 @@ def create_bounds(d_mod, bounds=None, clear=False, pre_clear_check=True):
                     var[i].setlb(bounds[var_name][0])
                     var[i].setub(bounds[var_name][1])
     else:
-        raise RuntimeWarning("bounds is of type {} and it should be of type dict, no bounds declared".format(type(bounds)))
+        raise RuntimeWarning(
+            "bounds is of type {} and it should be of type dict, no bounds declared".format(type(bounds)))
+
 
 def clone_the_model(d_mod):
     src_id = id(d_mod)
     new_mod = d_mod.clone()
     nm_id = id(new_mod)
-    assert(src_id != nm_id)
+    assert (src_id != nm_id)
     print("New model at {}".format(nm_id))
     return new_mod
