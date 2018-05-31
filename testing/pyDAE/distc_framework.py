@@ -77,7 +77,7 @@ def main():
     U = {}
     R = {}
     Q["x"] = 1e-05
-    Q["M"] = 0.5
+    Q["M"] = 1
     R["T"] = 6.25e-02
     R["Mv"] = 10e-08
     R["Mv1"] = 10e-08
@@ -135,42 +135,68 @@ def main():
                 tee=True,
                 symbolic_solver_labels=True)
 
-    # disp_vars(e.PlantSample, "my_vars")
-    # disp_cons(e.PlantSample, "my_cons")
-    # disp_params(e.PlantSample, "my_params")
 
-    # e.solve_dyn(e.PlantSample)
-    # sys.exit()
     e.init_lsmhe_prep(e.PlantSample)
     e.shift_mhe()
     e.init_step_mhe()
-    e.lsmhe.pprint(filename="lsmhe.txt")
-
     e.solve_dyn(e.lsmhe,
                 skip_update=False,
                 max_cpu_time=600,
-                ma57_pre_alloc=5, tag="lsmhe")  #: Pre-loaded mhe solve
+                ma57_pre_alloc=5, tag="lsmhe")
     disp_vars(e.lsmhe, "vars_mhe")
+    disp_params(e.lsmhe, "parm_mhe")
 
-    e.lsmhe.write("lsmhe.nl", format=ProblemFormat.nl, io_options={'symbolic_solver_labels': True})
+    # e.lsmhe.write("lsmhe.nl", format=ProblemFormat.nl, io_options={'symbolic_solver_labels': True})
 
-    ipopt.options["print_user_options"] = "yes"
-    ipopt.options["OF_start_with_resto"] = "yes"
-    ipopt.options["OF_honor_original_bounds"] = "no"
-    ipopt.options["bound_push"] = 1e-02
-    ipopt.solve(e.lsmhe, tee=True, symbolic_solver_labels=True)
     e.prior_phase()
     e.deact_icc_mhe()  #: Remove the initial conditions
-
+    #: Prepare NMPC
     e.find_target_ss()
-
-    #: NMPC
     e.create_nmpc()
     e.create_suffixes_nmpc()
     e.update_targets_nmpc()
     e.compute_QR_nmpc(n=-1)
     e.new_weights_olnmpc(1E-04, 1e+06)
+    #: Problem loop
+
+    for i in range(0, 300):  #: Five steps
+        #: set-point change
+
+        #: Plant
+        e.solve_dyn(e.PlantSample, stop_if_nopt=True)
+
+        e.update_state_real()  # Update the current state
+        e.update_soi_sp_nmpc()  #: To keep track of the state of interest.
+
+        e.update_measurement()  # Update the current measurement
+        e.compute_y_offset()  #: Get the offset for y
+        #: State-estimation MHE
+        e.preparation_phase_mhe(as_strategy=False)
+        stat = e.solve_dyn(e.lsmhe,
+                           skip_update=False, iter_max=500,
+                           jacobian_regularization_value=1e-04,
+                           max_cpu_time=10000, tag="lsmhe", keepsolve=False, wantparams=False)
+        e.lsmhe.display(filename="whatnot.txt")
+        if stat != 0:
+            sys.exit()
+        #: Prior-phase and arrival cost
+        e.update_state_mhe()  #: get the state from mhe
+        e.prior_phase()
+
+        e.print_r_mhe()
+        e.print_r_dyn()
+        #: Control NMPC
+        e.preparation_phase_nmpc(as_strategy=False, make_prediction=False)
+        stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300, tag="olnmpc")
+        if stat_nmpc != 0:
+            sys.exit()
+        e.print_r_nmpc()
+        e.update_u(e.olnmpc)
+        #: Plant cycle
+        e.cycleSamPlant(plant_step=True)
+        e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
+        e.noisy_plant_manager(sigma=0.0015, action="apply", update_level=True)
 
 
 if __name__ == '__main__':
-    main()
+    e = main()

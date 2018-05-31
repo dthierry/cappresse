@@ -373,6 +373,8 @@ class MheGen_DAE(NmpcGen_DAE):
             #: Patch
             load_iguess(dum, self.lsmhe, 0, finite_elem)
             self.patch_input_mhe("mod", src=dum, fe=finite_elem)
+            with open('meas.txt_' + str(finite_elem), 'w') as f:
+                self.lsmhe.yk0_mhe.pprint(ostream=f)
 
         self.lsmhe.name = "Preparation MHE"   #: Pretty much simulation
         tst = self.solve_dyn(self.lsmhe,
@@ -385,6 +387,7 @@ class MheGen_DAE(NmpcGen_DAE):
                              output_file="prep_mhe.txt",
                              mu_strategy="adaptive",
                              ma57_pre_alloc=5)
+
 
         if tst != 0:
             self.lsmhe.write_nl(name="failed_mhe.nl")
@@ -460,19 +463,14 @@ class MheGen_DAE(NmpcGen_DAE):
             lm = []
             var = getattr(src, y)
             for j in self.y_vars[y]:
-                # self.curr_meas[(y, j)] = value(var[(0, cpa,) + j])
+                k = self.yk_key[(y,) + j]
                 lm.append(value(var[(tcpa,) + j]))
-                l.append(value(var[(tcpa,) + j]))
+                y0dest[fe, k].value = value(var[(tcpa,) + j])
             meas_dic[y] = lm
             
         # if not skip_update:  #: Update the mhe model
         self.journalist("I", self._iteration_count, "patch_meas_mhe", "Measurement to:" + str(fe))
 
-        for i in self.y:
-            for j in self.y_vars[i]:
-                k = self.yk_key[(i,) + j]
-                #: Adding noise to the mhe measurement
-                y0dest[fe, k].value = l[k] + self.curr_m_noise[(i, j)] if noisy else l[k]
         return meas_dic
 
     def adjust_nu0_mhe(self):
@@ -581,7 +579,6 @@ class MheGen_DAE(NmpcGen_DAE):
                     for j in range(2, len(v._implicit_subsets)):
                         remaining_set *= v._implicit_subsets[j]
                     for index in remaining_set:
-                        print(index)
                         for i in range(0, self.nfe_tmhe - 1):
                             for j in range(0, self.ncp_tmhe + 1):
                                 t_dash_i = t_ij(self.lsmhe.t, i, j)
@@ -892,6 +889,7 @@ class MheGen_DAE(NmpcGen_DAE):
         """Encapsulates all the prior-state related issues, like collection, covariance computation and update"""
         # Prior-Covariance stuff
         self.check_active_bound_noisy()
+        print(self._PI)
         self.load_covariance_prior()
         self.set_state_covariance()
         self.regen_objective_fun()
