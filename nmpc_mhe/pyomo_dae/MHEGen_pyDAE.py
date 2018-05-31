@@ -889,7 +889,6 @@ class MheGen_DAE(NmpcGen_DAE):
         """Encapsulates all the prior-state related issues, like collection, covariance computation and update"""
         # Prior-Covariance stuff
         self.check_active_bound_noisy()
-        print(self._PI)
         self.load_covariance_prior()
         self.set_state_covariance()
         self.regen_objective_fun()
@@ -1058,9 +1057,6 @@ class MheGen_DAE(NmpcGen_DAE):
                 f.write('\t')
             f.write('\n')
             f.close()
-
-
-
 
         with open("res_mhe_unoise_" + self.res_file_suf + ".txt", "a") as f:
             for u in self.u:

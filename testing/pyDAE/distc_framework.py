@@ -71,8 +71,7 @@ def main():
                    ref_state=ref_state,
                    override_solver_check=True,
                    var_bounds=state_bounds,
-                   k_aug_executable='/home/dav0/devzone/k_aug/cmake-build-k_aug/bin/k_aug',
-                   dot_driver_executable='/home/dav0/devzone/k_aug/src/k_aug/dot_driver')
+                   k_aug_executable='/home/dav0/devzone/k_aug/cmake-build-k_aug/bin/k_aug')
     Q = {}
     U = {}
     R = {}
@@ -94,32 +93,13 @@ def main():
 
     create_bounds(e.SteadyRef, bounds=state_bounds)
     ipopt = SolverFactory('ipopt')
-
-    # ipopt.options["OF_start_with_resto"] = "no"
-    # ipopt.options["OF_bound_relax_factor"] = 1e-12
-    # ipopt.options["OF_honor_original_bounds"] = "no"
     ipopt.options["bound_push"] = 1e-07
     ipopt.solve(e.SteadyRef, tee=True)
-    # disp_vars(e.SteadyRef, "my_vars")
-    # disp_cons(e.SteadyRef, "my_cons")
-
-    # create_bounds(e.SteadyRef, bounds=dict(), clear=True)
-    # ip2 = SolverFactory('ipopt')
-    # ip2.options["halt_on_ampl_error"] = "yes"
-    # ip2.solve(e.SteadyRef, tee=True, symbolic_solver_labels=True)
 
     e.load_iguess_steady()
-    # load_iguess(e.SteadyRef, e.PlantSample, 0, 0)
-    # e.cycleSamPlant()
-    # reconcile_nvars_mequations(e.lsmhe)
-    # create_bounds(e.PlantSample, bounds=e.var_bounds, clear=False)
-    #
-    # ipopt.options["halt_on_ampl_error"] = "yes"
-    # ipopt.options["bound_push"] = 1e-07
     ipopt.solve(e.PlantSample,
                 tee=True,
                 symbolic_solver_labels=True)
-
 
     e.init_lsmhe_prep(e.PlantSample)
     e.shift_mhe()
@@ -131,8 +111,6 @@ def main():
     disp_vars(e.lsmhe, "vars_mhe")
     disp_params(e.lsmhe, "parm_mhe")
 
-    # e.lsmhe.write("lsmhe.nl", format=ProblemFormat.nl, io_options={'symbolic_solver_labels': True})
-
     e.prior_phase()
     e.deact_icc_mhe()  #: Remove the initial conditions
     #: Prepare NMPC
@@ -142,10 +120,9 @@ def main():
     e.update_targets_nmpc()
     e.compute_QR_nmpc(n=-1)
     e.new_weights_olnmpc(1E-04, 1e+06)
-    #: Problem loop
 
-    for i in range(0, 300):  #: Five steps
-        #: set-point change
+    #: Problem loop
+    for i in range(0, 300):
 
         #: Plant
         e.solve_dyn(e.PlantSample, stop_if_nopt=True)
@@ -160,8 +137,10 @@ def main():
         stat = e.solve_dyn(e.lsmhe,
                            skip_update=False, iter_max=500,
                            jacobian_regularization_value=1e-04,
-                           max_cpu_time=10000, tag="lsmhe", keepsolve=False, wantparams=False)
-        e.lsmhe.display(filename="whatnot.txt")
+                           max_cpu_time=600,
+                           tag="lsmhe",
+                           keepsolve=False,
+                           wantparams=False)
         if stat != 0:
             sys.exit()
         #: Prior-phase and arrival cost
@@ -172,7 +151,10 @@ def main():
         e.print_r_dyn()
         #: Control NMPC
         e.preparation_phase_nmpc(as_strategy=False, make_prediction=False)
-        stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300, tag="olnmpc")
+        stat_nmpc = e.solve_dyn(e.olnmpc,
+                                skip_update=False,
+                                max_cpu_time=300,
+                                tag="olnmpc")
         if stat_nmpc != 0:
             sys.exit()
         e.print_r_nmpc()
@@ -180,7 +162,7 @@ def main():
         #: Plant cycle
         e.cycleSamPlant(plant_step=True)
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
-        e.noisy_plant_manager(sigma=0.0015, action="apply", update_level=True)
+        # e.noisy_plant_manager(sigma=0.0, action="apply", update_level=True)
 
 
 if __name__ == '__main__':
