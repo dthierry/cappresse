@@ -184,13 +184,6 @@ class cstr_rodrigo_dae(ConcreteModel):
         # self.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
         # self.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
 
-    def create_bounds(self):
-        for k in self.Ca.keys():
-            self.Ca[k].setlb(0.00E+00)
-        for k in self.T.keys():
-            self.T[k].setlb(2.0E+02)
-        for k in self.Tj.keys():
-            self.Tj[k].setlb(2.0E+02)
 
     def write_nl(self):
         pass

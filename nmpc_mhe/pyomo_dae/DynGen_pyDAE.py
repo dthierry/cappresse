@@ -6,15 +6,20 @@ from __future__ import division
 from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix, maximize
 from pyomo.core.base import ConstraintList, ConcreteModel, TransformationFactory
 from pyomo.core.kernel.numvalue import value as value
+from pyomo.dae import *
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition, ReaderFactory, ResultsFormat
 import numpy as np
-import sys, time, re, os
+# import sys, time, re, os
 from pyutilib.common._exceptions import ApplicationError
 import datetime
 from shutil import copyfile
-from nmpc_mhe.aux.utils import t_ij, load_iguess, augment_model
-
-__author__ = "David Thierry @dthierry" #: March 2018
+from nmpc_mhe.aux.utils import t_ij, load_iguess, augment_model, augment_steady
+from nmpc_mhe.aux.utils import clone_the_model, aug_discretization, create_bounds
+import sys
+import time
+import re
+import os
+__author__ = "David Thierry @dthierry"  #: March 2018
 
 
 
@@ -52,17 +57,19 @@ class DynGen_DAE(object):
     def __init__(self, d_mod, hi_t, states, controls, **kwargs):
 
         # Base model
-        if not d_mod:
-            print("Warning no model declared")
         self.d_mod = d_mod
-
+        #: Discretization info
         self.nfe_t = kwargs.pop('nfe_t', 5)
         self.ncp_t = kwargs.pop('ncp_t', 3)
-        # self.k_aug_executable = None
+
         self.k_aug_executable = kwargs.get('k_aug_executable', None)
         self.ipopt_executable = kwargs.get('ipopt_executable', None)
         self.dot_driver_executable = kwargs.get('dot_driver_executable', None)
         override_solver_check = kwargs.get('override_solver_check', False)
+
+
+        self.var_bounds = kwargs.get("var_bounds", None)
+        create_bounds(self.d_mod, pre_clear_check=True)
 
         self.hi_t = hi_t
 
@@ -81,15 +88,18 @@ class DynGen_DAE(object):
         self.res_file_suf = str(int(time.time()))
         self._reftime = time.time()
 
+        self.SteadyRef = clone_the_model(self.d_mod)
+        augment_steady(self.SteadyRef)
 
-        self.SteadyRef = self.d_mod(1, 1, steady=True)
         self.SteadyRef2 = object()
-        self.PlantSample = self.d_mod(1, self.ncp_t, _t=self.hi_t)
-        augment_model(self.PlantSample)  #: Augment suffixes for the model.
-        # self.PlantSample.discretize()
 
-        discretizer = TransformationFactory('dae.collocation')
-        discretizer.apply_to(self.PlantSample, nfe=1, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
+        self.PlantSample = clone_the_model(self.d_mod)
+        augment_model(self.PlantSample, 1, self.ncp_t, new_timeset_bounds=(0, self.hi_t))
+
+        aug_discretization(self.PlantSample, nfe=1, ncp=self.ncp_t)
+        create_bounds(self.PlantSample, bounds=self.var_bounds, clear=True)
+        # discretizer = TransformationFactory('dae.collocation')
+        # discretizer.apply_to(self.PlantSample, nfe=1, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
 
         self.PlantPred = None
         self.SteadyRef.name = "SteadyRef"
@@ -116,7 +126,7 @@ class DynGen_DAE(object):
                 elif override_solver_check:
                     pass
                 else:
-                    raise Exception
+                    raise RuntimeError("k_aug not found")
 
         if self.dot_driver_executable:
             self.dot_driver = SolverFactory("dot_driver",
@@ -130,7 +140,7 @@ class DynGen_DAE(object):
                 elif override_solver_check:
                     pass
                 else:
-                    raise Exception
+                    raise RuntimeError("k_aug not found")
 
         # self.k_aug.options["eig_rh"] = ""
         self.asl_ipopt.options["halt_on_ampl_error"] = "yes"
@@ -182,9 +192,11 @@ class DynGen_DAE(object):
 
     def load_iguess_steady(self):
         """"Call the method for loading initial guess from steady-state"""
-        retval = self.solve_dyn(self.SteadyRef)
+        retval = self.solve_dyn(self.SteadyRef, bound_push=1e-07)
+        load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
+        self.cycleSamPlant()
         if retval:
-            raise Exception
+            raise RuntimeError("The solution of the Steady-state problem failed")
 
 
     def get_state_vars(self, skip_solve=False):
@@ -212,23 +224,50 @@ class DynGen_DAE(object):
 
             self.SteadyRef.solutions.load_from(results)
 
+        if not hasattr(self.d_mod, "t"):
+            raise RuntimeError("The base model is missing a t object for the time domain")
+        if not isinstance(self.d_mod.t, ContinuousSet):
+            raise RuntimeError("The t object is not ContinuousSet\nMake t ContinuousSet.")
+        time_steady = getattr(self.SteadyRef, "t")
         # Gather the keys for a given state and form the state_vars dictionary
         for x in self.states:
-            # BUG: Is this a tuple? A: Yes
             self.state_vars[x] = []
             try:
                 xv = getattr(self.SteadyRef, x)
             except AttributeError:  # delete this
-                continue
-            for j in xv.keys():
-                #: pyomo.dae only has one index for time
-                if xv[j].stale:
-                    continue
-                if isinstance(j[1:], tuple):
-                    self.state_vars[x].append(j[1:])
+                raise RuntimeError("State {} does not exists as a Var".format(x))
+            if xv._implicit_subsets is None:
+                if not xv.index_set() is time_steady:
+                    raise RuntimeError("Var {} does not have t as part of its index set\n"
+                                       "It can not be a State".format(x))
                 else:
-                    self.state_vars[x].append((j[1:],))
+                    self.state_vars[x] = ((),)
+            else:
+                if time_steady in xv._implicit_subsets:
+                    pass
+                else:
+                    raise RuntimeError("State {} does not contain the ContinuousSet t")
 
+            # BUG: Is this a tuple? A: Yes
+
+            remaining_set = xv._implicit_subsets[1]
+            for j in range(2, len(xv._implicit_subsets)):
+                remaining_set *= xv._implicit_subsets[j]
+            for index in remaining_set:
+                if isinstance(index, tuple):
+                    self.state_vars[x].append(index)
+                else:
+                    self.state_vars[x].append((index,))
+
+            # for j in xv.keys():
+            #     #: pyomo.dae only has one index for time
+            #     if xv[j].stale:
+            #         continue
+            #     if isinstance(j[1:], tuple):
+            #         self.state_vars[x].append(j[1:])
+            #     else:
+            #         self.state_vars[x].append((j[1:],))
+        print(self.state_vars)
         # Get values for reference states and controls
         for x in self.states:
             try:
@@ -377,7 +416,6 @@ class DynGen_DAE(object):
         with open("ipopt.opt", "w") as f:
             f.write("print_info_string\tyes\n")
             f.write("max_iter\t" + str(iter_max) + "\n")
-
             f.write("max_cpu_time\t" + str(max_cpu_time) + "\n")
             f.write("linear_solver\t" + linear_solver + "\n")
             f.write("ma57_pre_alloc\t" + str(ma57_pre_alloc) + "\n")
@@ -524,17 +562,20 @@ class DynGen_DAE(object):
         print("-" * 120)
         print("I[[create_dyn]] Dynamic (full) model created.")
         print("-" * 120)
-        self.dyn = self.d_mod(self.nfe_t, self.ncp_t, _t=self._t)
+
+        self.dyn = clone_the_model(self.d_mod) #(self.nfe_t, self.ncp_t, _t=self._t)
+        augment_model(self.dyn, self.nfe_t, self.ncp_t, new_timeset_bounds=(0, self._t))
         self.dyn.name = "full_dyn"
-        augment_model(self.dyn)
         # self.load_d_s(self.dyn)
         load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
-        discretizer = TransformationFactory('dae.collocation')
-        discretizer.apply_to(self.dyn, nfe=self.nfe_t, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
+        aug_discretization(self.dyn, nfe=self.nfe_t, ncp=self.ncp_t)
+        # discretizer = TransformationFactory('dae.collocation')
+        # discretizer.apply_to(self.dyn, nfe=self.nfe_t, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
 
         if initialize:
             # self.load_d_s(self.PlantSample)
             load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
+
             for i in range(0, self.nfe_t):
                 self.solve_dyn(self.PlantSample, mu_init=1e-08, iter_max=10, o_tee=True)
                 self.cycleSamPlant()
@@ -544,33 +585,36 @@ class DynGen_DAE(object):
             print("I[[create_dyn]] Dynamic (full) model initialized.")
 
     @staticmethod
-    def journalist(flag, iter, phase, message):
+    def journalist(flag, i, phase, message):
         """Method that writes a little message
         Args:
             flag (str): The flag
-            iter (int): The current iteration
+            i (int): The current iteration
             phase (str): The phase
             message (str): The text message to display
         Returns:
             None"""
-        iter = str(iter)
+        i = str(i)
         print("-==-" * 15)
 
         if flag == 'W':
-            print(flag + iter + "[[" + phase + "]]" + message + ".", file=sys.stderr)
+            print(flag + i + "[[" + phase + "]]" + message + ".", file=sys.stderr)
         # print to file warning
         elif flag == 'E':
             print("Fatal error", file=sys.stderr)
-            print(flag + iter + "[[" + phase + "]]" + message + "." + "-" * 20)
+            print(flag + i + "[[" + phase + "]]" + message + "." + "-" * 20)
         else:
-            print(flag + iter + "[[" + phase + "]]" + message + "." + "-" * 20)
+            print(flag + i + "[[" + phase + "]]" + message + "." + "-" * 20)
         # print("-" * 120)
 
     def create_predictor(self):
-        self.PlantPred = self.d_mod(1, self.ncp_t, _t=self.hi_t)
+        self.PlantPred = clone_the_model(self.d_mod)  # (1, self.ncp_t, _t=self.hi_t)
+        augment_model(self.PlantPred, 1, self.ncp_t, new_timeset_bounds=(0, self.hi_t))
+
         self.PlantPred.name = "Dynamic Predictor"
-        discretizer = TransformationFactory('dae.collocation')
-        discretizer.apply_to(self.PlantPred, nfe=1, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
+        aug_discretization(self.PlantPred, nfe=1, ncp=self.ncp_t)
+        # discretizer = TransformationFactory('dae.collocation')
+        # discretizer.apply_to(self.PlantPred, nfe=1, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
 
     def predictor_step(self, ref, state_dict, **kwargs):
         """Predicted-state computation by forward simulation.

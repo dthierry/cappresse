@@ -17,25 +17,26 @@ def main():
 
     measurements = ['T']
     controls = ["u1"]
-    u_bounds = {"u1": (0, 1000)}
+    u_bounds = {"u1": (200, 1000)}
+    state_bounds = {"Ca": (0.0, None), "T":(2.0E+02, None), "Tj":(2.0E+02, None)}
     ref_state = {("Ca", (0,)): 0.010}
-    e = MheGen_DAE(cstr_rodrigo_dae, 2, states, controls, states, measurements,
+    mod = cstr_rodrigo_dae(2,2)
+   
+    e = MheGen_DAE(mod, 2, states, controls, states, measurements,
                    u_bounds=u_bounds,
                    ref_state=ref_state,
                    override_solver_check=True,
+                   var_bounds=state_bounds, 
                    k_aug_executable='/home/dav0/devzone/k_aug/cmake-build-k_aug/k_aug')
 
     #: We need k_aug to run this :(
     Q = {}
     U = {}
     R = {}
-
     Q['Ca'] = 1.11
     Q['T'] = 99.0
     Q['Tj'] = 1.1
-
     U['u1'] = 0.22
-
     R['T'] = 1.22
     e.set_covariance_disturb(Q)
     e.set_covariance_u(U)
@@ -53,14 +54,13 @@ def main():
     e.solve_dyn(e.PlantSample)
 
     e.init_lsmhe_prep(e.PlantSample)
-    # e.lsmhe.pprint(filename="f0")
     e.shift_mhe()
-    # e.lsmhe.pprint(filename="f1")
     e.init_step_mhe()
     e.solve_dyn(e.lsmhe,
                 skip_update=False,
                 max_cpu_time=600,
                 ma57_pre_alloc=5, tag="lsmhe")  #: Pre-loaded mhe solve
+
     e.check_active_bound_noisy()
     e.load_covariance_prior()
     e.set_state_covariance()
@@ -94,7 +94,6 @@ def main():
         e.update_state_mhe()  #: get the state from mhe
         #: At this point computing and loading the Covariance is not going to affect the sens update of MHE
         e.prior_phase()
-        #
         e.print_r_mhe()
         e.print_r_dyn()
 

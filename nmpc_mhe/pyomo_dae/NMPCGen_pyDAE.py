@@ -11,8 +11,8 @@ import numpy as np
 import sys, os, time
 from six import iterkeys
 from nmpc_mhe.aux.utils import t_ij
-from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model
-
+from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model, augment_steady, aug_discretization, create_bounds
+from nmpc_mhe.aux.utils import clone_the_model
 __author__ = "David Thierry @dthierry" #: March 2018
 
 """This version does not necesarily have the same time horizon/discretization as the MHE"""
@@ -62,12 +62,12 @@ class NmpcGen_DAE(DynGen_DAE):
         self.journalist('W', self._iteration_count, "Initializing NMPC",
                         "With {:d} fe and {:d} cp".format(self.nfe_tnmpc, self.ncp_tnmpc))
         _tnmpc = self.hi_t * self.nfe_tnmpc
-        self.olnmpc = self.d_mod(self.nfe_tnmpc, self.ncp_tnmpc, _t=_tnmpc)
+        self.olnmpc = clone_the_model(self.d_mod) #(self.nfe_tnmpc, self.ncp_tnmpc, _t=_tnmpc)
         self.olnmpc.name = "olnmpc (Open-Loop NMPC)"
-        self.olnmpc.create_bounds()
-        augment_model(self.olnmpc)
-        discretizer = TransformationFactory('dae.collocation')
-        discretizer.apply_to(self.olnmpc, nfe=self.nfe_tnmpc, ncp=self.ncp_tnmpc, scheme="LAGRANGE-RADAU")
+
+        augment_model(self.olnmpc, self.nfe_tnmpc, self.ncp_tnmpc, new_timeset_bounds=(0, _tnmpc))
+        aug_discretization(self.olnmpc, self.nfe_tnmpc, self.ncp_tnmpc)
+
         self.olnmpc.fe_t = Set(initialize=[i for i in range(0, self.nfe_tnmpc)])  #: Set for the NMPC stuff
 
         tfe_dic = dict()
@@ -192,11 +192,11 @@ class NmpcGen_DAE(DynGen_DAE):
         else:
             self.journalist("E", self._iteration_count, "initialize_olnmpc", "SRC not given")
             raise ValueError("Unexpected src_kind %s" % src_kind)
-        dum = self.d_mod(1, self.ncp_tnmpc, _t=self.hi_t)
-        augment_model(dum)
-        discretizer = TransformationFactory('dae.collocation')
-        discretizer.apply_to(dum, nfe=1, ncp=self.ncp_tnmpc, scheme="LAGRANGE-RADAU")
-        dum.create_bounds()
+
+        dum = clone_the_model(self.d_mod) #(1, self.ncp_tnmpc, _t=self.hi_t)
+        augment_model(dum, 1, self.ncp_tnmpc, new_timeset_bounds=(0, self.hi_t))
+        aug_discretization(dum, 1, self.ncp_tnmpc)
+        create_bounds(dum, bounds=self.var_bounds)
         #: Load current solution
         # self.load_iguess_single(ref, dum, 0, 0)
         load_iguess(ref, dum, 0, 0)
@@ -517,12 +517,17 @@ class NmpcGen_DAE(DynGen_DAE):
         self.journalist("I", self._iteration_count, "find_target_ss", "Attempting to find steady state")
 
         del self.SteadyRef2
-        self.SteadyRef2 = self.d_mod(1, 1, steady=True)
+        self.SteadyRef2 = clone_the_model(self.d_mod) # (1, 1)
         self.SteadyRef2.name = "SteadyRef2 (reference)"
+        augment_steady(self.SteadyRef2)
+        create_bounds(self.SteadyRef2, bounds=self.var_bounds)
+
         for u in self.u:
             cv = getattr(self.SteadyRef2, u)  #: Get the param
             c_val = value(cv[1])  #: Current value
             dumm_eq = getattr(self.SteadyRef2, u + '_cdummy')
+
+
             dexpr = dumm_eq[1].expr._args[0]
             control_var = getattr(self.SteadyRef2, dexpr.parent_component().name)
             if isinstance(control_var, Var):  #: all good
@@ -544,8 +549,7 @@ class NmpcGen_DAE(DynGen_DAE):
             dumm_eq.rule = lambda m, i: cv[i] == control_var[i]
             dumm_eq.reconstruct()
 
-
-        self.SteadyRef2.create_bounds()
+        #self.SteadyRef2.create_bounds()
         # self.SteadyRef2.equalize_u(direction="r_to_u")
 
         for vs in self.SteadyRef.component_objects(Var, active=True):  #: Load_guess
@@ -558,9 +562,8 @@ class NmpcGen_DAE(DynGen_DAE):
             vkey = i[1]
             ofexp += weights[i] * (v[(1,) + vkey] - self.ref_state[i])**2
         self.SteadyRef2.obfun_SteadyRef2 = Objective(expr=ofexp, sense=minimize)
-
+        self.SteadyRef2.pprint(filename="ss2ref.txt")
         tst = self.solve_dyn(self.SteadyRef2, iter_max=10000, stop_if_nopt=True, halt_on_ampl_error=False, **kwargs)
-
         if tst != 0:
             self.SteadyRef2.display(filename="failed_SteadyRef2.txt")
             self.SteadyRef2.write(filename="failed_SteadyRef2.nl",
@@ -647,6 +650,7 @@ class NmpcGen_DAE(DynGen_DAE):
                     self.curr_state_offset[(x, j)] = self.curr_rstate[(x, j)] - self.curr_pstate[(x, j)]
 
     def print_r_nmpc(self):
+        """This updates the soi for some reason"""
         self.journalist("I", self._iteration_count, "print_r_nmpc", "Results at" + os.getcwd())
         self.journalist("I", self._iteration_count, "print_r_nmpc", "Results suffix " + self.res_file_suf)
         for k in self.ref_state.keys():
