@@ -10,7 +10,7 @@ from sample_mods.cstr_rodrigo.cstr_c_nmpc import cstr_rodrigo_dae
 import os, sys
 import matplotlib.pyplot as plt
 
-__author__ = "David Thierry @dthierry" #: May 2018
+__author__ = "David Thierry @dthierry"  #: May 2018
 #: FULL controller ideal-ideal nmpc-mhe
 
 
@@ -20,7 +20,7 @@ def main():
     measurements = ['T']
     controls = ["u1"]
     u_bounds = {"u1": (200, 1000)}
-    state_bounds = {"Ca": (0.0, None), "T":(2.0E+02, None), "Tj":(2.0E+02, None)}
+    state_bounds = {"Ca": (0.0, None), "T": (2.0E+02, None), "Tj": (2.0E+02, None)}
     ref_state = {("Ca", (0,)): 0.010}
     mod = cstr_rodrigo_dae(2, 2)  #: Some model
     #: MHE-NMPC class

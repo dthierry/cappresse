@@ -57,7 +57,7 @@ def fe_cp(time_set, t):
             cp = j
             break
         j += 1
-    return (fe, cp)
+    return fe, cp
 
 
 def fe_compute(time_set, t):
@@ -194,7 +194,7 @@ def reconcile_nvars_mequations(d_mod, keep_nl=False, **kwargs):
         pass
     else:
         remove(fullpth)
-    return (nvar, meqn)
+    return nvar, meqn
 
 
 def load_iguess(src, tgt, fe_src, fe_tgt):

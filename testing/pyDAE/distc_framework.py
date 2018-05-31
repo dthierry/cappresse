@@ -94,20 +94,6 @@ def main():
 
     create_bounds(e.SteadyRef, bounds=state_bounds)
     ipopt = SolverFactory('ipopt')
-    for i in range(1, 1):
-        continue
-        ipopt.options["print_user_options"] = "yes"
-        ipopt.options["OF_start_with_resto"] = "yes"
-        ipopt.options["OF_bound_relax_factor"] = 1e-12
-        ipopt.options["OF_honor_original_bounds"] = "no"
-        ipopt.solve(e.SteadyRef, tee=True)
-        disp_vars(e.SteadyRef, "my_vars")
-        disp_cons(e.SteadyRef, "my_cons")
-        # e.SteadyRef.Tdot.fix(0)gt
-        ipopt.options["OF_start_with_resto"] = "no"
-        ipopt.solve(e.SteadyRef, tee=True)
-        bp = random.random(1)
-        # ipopt.options["OF_bound_push"] = bp[0]
 
     # ipopt.options["OF_start_with_resto"] = "no"
     # ipopt.options["OF_bound_relax_factor"] = 1e-12
@@ -121,7 +107,6 @@ def main():
     # ip2 = SolverFactory('ipopt')
     # ip2.options["halt_on_ampl_error"] = "yes"
     # ip2.solve(e.SteadyRef, tee=True, symbolic_solver_labels=True)
-
 
     e.load_iguess_steady()
     # load_iguess(e.SteadyRef, e.PlantSample, 0, 0)
