@@ -264,7 +264,7 @@ class MheGen_DAE(NmpcGen_DAE):
         expr_u_obf = 0
         for i in self.lsmhe.fe_t:
             for u in self.u:
-                var_w = getattr(self.lsmhe, "w_" + u + "_mhe")  #: Get the constraint-noisy
+                var_w = getattr(self.lsmhe, "w_" + u + "_mhe")  #: u_noise
                 expr_u_obf += self.lsmhe.U_mhe[i, u] * var_w[i] ** 2
 
         self.lsmhe.U_e_mhe = Expression(expr=0.5 * expr_u_obf)  # how about this
@@ -713,10 +713,11 @@ class MheGen_DAE(NmpcGen_DAE):
         else:
             self.lsmhe.rh_name = Suffix(direction=Suffix.IMPORT)  #: Red_hess_name
         if set_suffix:
+            t_ = t_ij(self.lsmhe.t, self.nfe_tmhe - 1, self.ncp_tmhe)
             for key in self.x_noisy:
                 var = getattr(self.lsmhe, key)
                 for j in self.x_vars[key]:
-                    var[(self.nfe_tmhe - 1, self.ncp_tmhe) + j].set_suffix_value(self.lsmhe.dof_v, 1)
+                    var[(t_,) + j].set_suffix_value(self.lsmhe.dof_v, 1)
 
     def check_active_bound_noisy(self):
         """Checks if the dof_(super-basic) have active bounds, if so, add them to the exclusion list"""
@@ -826,7 +827,6 @@ class MheGen_DAE(NmpcGen_DAE):
         print("-" * 120)
 
     def set_state_covariance(self):
-        # TODO: adjust to framework <DT, p:2>
         """Sets covariance(inverse) for the prior_state.
         Args:
             None
@@ -870,7 +870,6 @@ class MheGen_DAE(NmpcGen_DAE):
                             pikn[q0j, q0k] = 0.0
 
     def set_prior_state_from_prior_mhe(self):
-        # TODO: adjust to framework <DT, p:2>
         """Mechanism to assign a value to x0 (prior-state) from the previous mhe
         Args:
             None
@@ -897,7 +896,6 @@ class MheGen_DAE(NmpcGen_DAE):
         pass
 
     def update_noise_meas(self, cov_dict):
-        # TODO: adjust to framework <DT, p:2>
         self.journalist("I", self._iteration_count, "introduce_noise_meas", "Noise introduction")
         # f = open("m0.txt", "w")
         # f1 = open("m1.txt", "w")
@@ -1071,7 +1069,6 @@ class MheGen_DAE(NmpcGen_DAE):
             f.close()
 
     def compute_y_offset(self, noisy=False, uoff_update=True):
-        # TODO: adjust to framework <DT, p:3>
         """Gets the offset of prediction and real measurement for asMHE"""
         mhe_y = getattr(self.lsmhe, "yk0_mhe")
         t_ncp = t_ij(self.PlantSample.t, 0, self.ncp_t)
@@ -1090,7 +1087,6 @@ class MheGen_DAE(NmpcGen_DAE):
                 self.curr_u_offset[u] = self.curr_u[u] - value(mhe_u[self.nfe_tmhe-1])
                 print(self.curr_u_offset[u])
 
-
     def sens_dot_mhe(self):
         """Updates suffixes, solves using the dot_driver"""
         self.journalist("I", self._iteration_count, "sens_dot_mhe", "Set-up")
@@ -1108,14 +1104,10 @@ class MheGen_DAE(NmpcGen_DAE):
         #: Added this bit to account for the case when the last input does not match the one used
         #: For the prediction for the next measurement of the MHE problem.
         for u in self.u:
-            con_w = getattr(self.lsmhe, "w_" + u + "c_mhe")
+            con_w = getattr(self.lsmhe, u + "_cdummy_mhe")
             con_w[self.nfe_tmhe-1].set_suffix_value(self.lsmhe.npdp, self.curr_u_offset[u])
 
 
-        # with open("somefile0.txt", "w") as f:
-        #     self.lsmhe.x.display(ostream=f)
-        #     self.lsmhe.M.display(ostream=f)
-        #     f.close()
         if hasattr(self.lsmhe, "f_timestamp"):
             self.lsmhe.f_timestamp.clear()
         else:
@@ -1139,7 +1131,6 @@ class MheGen_DAE(NmpcGen_DAE):
         self._dot_timing = k[0]
 
     def sens_k_aug_mhe(self):
-        # TODO: adjust to framework <DT, p:3>
         self.journalist("I", self._iteration_count, "sens_k_aug_mhe", "k_aug sensitivity")
         self.lsmhe.ipopt_zL_in.update(self.lsmhe.ipopt_zL_out)
         self.lsmhe.ipopt_zU_in.update(self.lsmhe.ipopt_zU_out)
@@ -1164,7 +1155,6 @@ class MheGen_DAE(NmpcGen_DAE):
         self._k_timing = s.split()
 
     def update_state_mhe(self, as_nmpc_mhe_strategy=False):
-        # TODO: adjust to framework <DT, p:2>
         # Improvised strategy
         t_mhe = t_ij(self.lsmhe.t, self.nfe_tmhe-1, self.ncp_tmhe)
         if as_nmpc_mhe_strategy:

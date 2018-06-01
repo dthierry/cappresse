@@ -117,10 +117,13 @@ class DynGen_DAE(object):
         if self.k_aug_executable:
             self.k_aug = SolverFactory("k_aug",
                                        executable=self.k_aug_executable)
+            self.k_aug_sens = SolverFactory("k_aug",
+                                       executable=self.k_aug_executable)
             if self.k_aug.available():
                 pass
             else:
                 self.k_aug = SolverFactory("k_aug")
+                self.k_aug_sens = SolverFactory("k_aug")
                 if self.k_aug.available():
                     pass
                 elif override_solver_check:
@@ -247,17 +250,15 @@ class DynGen_DAE(object):
                     pass
                 else:
                     raise RuntimeError("State {} does not contain the ContinuousSet t")
-
-            # BUG: Is this a tuple? A: Yes
-
-            remaining_set = xv._implicit_subsets[1]
-            for j in range(2, len(xv._implicit_subsets)):
-                remaining_set *= xv._implicit_subsets[j]
-            for index in remaining_set:
-                if isinstance(index, tuple):
-                    self.state_vars[x].append(index)
-                else:
-                    self.state_vars[x].append((index,))
+                # BUG: Is this a tuple? A: Yes
+                remaining_set = xv._implicit_subsets[1]
+                for j in range(2, len(xv._implicit_subsets)):
+                    remaining_set *= xv._implicit_subsets[j]
+                for index in remaining_set:
+                    if isinstance(index, tuple):
+                        self.state_vars[x].append(index)
+                    else:
+                        self.state_vars[x].append((index,))
 
             # for j in xv.keys():
             #     #: pyomo.dae only has one index for time
@@ -543,11 +544,14 @@ class DynGen_DAE(object):
         for x in self.states:
             x_ic = getattr(self.PlantSample, x + "_ic")
             v_tgt = getattr(self.PlantSample, x)
-            for ks in x_ic.keys():
-                if not isinstance(ks, tuple):
-                    ks = (ks,)
-                x_ic[ks].value = value(v_tgt[(0,) + ks])
-                v_tgt[(0,) + ks].set_value(value(v_tgt[(0,) + ks]))
+            if not x_ic.is_indexed():
+                x_ic.value = value(v_tgt[0])  #: this has got to be true
+            else:
+                for ks in x_ic.keys():
+                    if not isinstance(ks, tuple):
+                        ks = (ks,)
+                    x_ic[ks].value = value(v_tgt[(0,) + ks])
+                    v_tgt[(0,) + ks].set_value(value(v_tgt[(0,) + ks]))
         if plant_step:
             self._iteration_count += 1
 

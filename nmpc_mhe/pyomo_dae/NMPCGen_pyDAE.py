@@ -6,13 +6,12 @@ from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expressio
 from pyomo.core.kernel.numvalue import value
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
 from nmpc_mhe.pyomo_dae.DynGen_pyDAE import DynGen_DAE
-
-import numpy as np
-import sys, os, time
-from six import iterkeys
 from nmpc_mhe.aux.utils import t_ij
 from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model, augment_steady, aug_discretization, create_bounds
 from nmpc_mhe.aux.utils import clone_the_model
+import sys
+import os
+import time
 __author__ = "David Thierry @dthierry" #: March 2018
 
 """This version does not necesarily have the same time horizon/discretization as the MHE"""
@@ -259,13 +258,23 @@ class NmpcGen_DAE(DynGen_DAE):
         self.journalist("I", self._iteration_count, "initialize_olnmpc", "Done, k_notopt " + str(k_notopt))
 
     def preparation_phase_nmpc(self, as_strategy=False, make_prediction=False, plant_state=False):
-        """By default we assume mhe is providing the state"""
+        # type: (bool, bool, bool) -> bool
+        """Initialization and loading initial state of the NMPC problem.
+
+        Args:
+            as_strategy (bool): True if as-NMPC is activated.
+            make_prediction (bool): True if as-NMPC is desired (prediction of state).
+            plant_state (bool): Override options to use plant states.
+
+        Returns:
+
+        """
         if plant_state:
             #: use the plant state instead
             #: Not yet implemented
             self.initialize_olnmpc(self.PlantSample, "real")
             self.load_init_state_nmpc(src_kind="state_dict", state_dict="real")
-            return None
+            return
         if as_strategy:
             if make_prediction:
                 self.update_state_predicted(src="estimated")
@@ -410,7 +419,8 @@ class NmpcGen_DAE(DynGen_DAE):
 
 
     def create_suffixes_nmpc(self):
-        """Creates the required suffixes for the olnmpc problem"""
+        """Creates the required suffixes for the advanced-step olnmpc problem (reduced-sens)
+        """
         if hasattr(self.olnmpc, "npdp"):
             pass
         else:
@@ -460,6 +470,9 @@ class NmpcGen_DAE(DynGen_DAE):
         self._dot_timing = k[0]
 
     def sens_k_aug_nmpc(self):
+        """Calls `k_aug` to compute the sensitivity matrix (reduced mode)
+
+        """
         self.journalist("I", self._iteration_count, "sens_k_aug_nmpc", "k_aug sensitivity")
         self.olnmpc.ipopt_zL_in.update(self.olnmpc.ipopt_zL_out)
         self.olnmpc.ipopt_zU_in.update(self.olnmpc.ipopt_zU_out)
@@ -475,7 +488,7 @@ class NmpcGen_DAE(DynGen_DAE):
         self.olnmpc.f_timestamp.display(ostream=sys.stderr)
         results = self.k_aug_sens.solve(self.olnmpc, tee=True, symbolic_solver_labels=True)
         self.olnmpc.solutions.load_from(results)
-        self.olnmpc.f_timestamp.display(ostream=sys.stderr)
+        #: Read the reported timings from `k_aug`
         ftimings = open("timings_k_aug.txt", "r")
         s = ftimings.readline()
         ftimings.close()
