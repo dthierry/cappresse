@@ -132,13 +132,19 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
                             if not o._mutable:
                                 o.construct()
                                 continue
-                        try:
-                            if type(Component) != Constraint:
-                                o.reconstruct()
+                        # try:
+                        if isinstance(o, Constraint):
+                            if o.is_indexed():
+                                o.clear()
                             else:
-                                o.construct()
-                        except AssertionError:
-                            o.pprint()
+                                o._data = {}   #: Why Bethany ??? :(
+                            # o.pprint()
+                            # continue
+                            o.reconstruct()
+                        else:
+                            o.reconstruct()
+                        # except AssertionError:
+                        #     o.pprint()
 
                         continue
                 else:

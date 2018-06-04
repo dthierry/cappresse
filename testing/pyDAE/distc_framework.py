@@ -119,7 +119,7 @@ def main():
     e.create_suffixes_nmpc()
     e.update_targets_nmpc()
     e.compute_QR_nmpc(n=-1)
-    e.new_weights_olnmpc(1E-04, 1e+06)
+    e.new_weights_olnmpc(1e-04, 1e+02)
 
     #: Problem loop
     for i in range(0, 300):
@@ -155,6 +155,7 @@ def main():
                                 skip_update=False,
                                 max_cpu_time=300,
                                 tag="olnmpc")
+
         if stat_nmpc != 0:
             sys.exit()
         e.print_r_nmpc()

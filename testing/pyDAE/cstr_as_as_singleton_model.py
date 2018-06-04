@@ -48,9 +48,9 @@ def main():
     #: Initial guesses
     e.load_iguess_steady()
     load_iguess(e.SteadyRef, e.PlantSample, 0, 0)
-    return e
-    e.solve_dyn(e.PlantSample)
 
+    e.solve_dyn(e.PlantSample)
+    return e
     #: Prepare MHE
     e.init_lsmhe_prep(e.PlantSample)
     e.shift_mhe()
