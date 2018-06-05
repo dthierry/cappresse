@@ -61,7 +61,7 @@ class NmpcGen_DAE(DynGen_DAE):
         self.journalist('W', self._iteration_count, "Initializing NMPC",
                         "With {:d} fe and {:d} cp".format(self.nfe_tnmpc, self.ncp_tnmpc))
         _tnmpc = self.hi_t * self.nfe_tnmpc
-        self.olnmpc = clone_the_model(self.d_mod) #(self.nfe_tnmpc, self.ncp_tnmpc, _t=_tnmpc)
+        self.olnmpc = clone_the_model(self.d_mod)
         self.olnmpc.name = "olnmpc (Open-Loop NMPC)"
 
         augment_model(self.olnmpc, self.nfe_tnmpc, self.ncp_tnmpc, new_timeset_bounds=(0, _tnmpc))
@@ -75,7 +75,7 @@ class NmpcGen_DAE(DynGen_DAE):
                 tfe_dic[t] = fe_compute(self.olnmpc.t, t-1)
             else:
                 tfe_dic[t] = fe_compute(self.olnmpc.t, t)
-
+        #: u vars and u constraints creation
         for u in self.u:  #: u only has one index
             cv = getattr(self.olnmpc, u)  #: Get the param
             t_u = [t_ij(self.olnmpc.t, i, 0) for i in range(0, self.olnmpc.nfe_t)]
@@ -92,11 +92,6 @@ class NmpcGen_DAE(DynGen_DAE):
             self.olnmpc.del_component(cv)  #: Delete the dummy_param
             self.olnmpc.del_component(dumm_eq)  #: Delete the dummy_constraint
             self.olnmpc.add_component(u, Var(self.olnmpc.fe_t, initialize=lambda m, i: c_val[i]))
-
-            # self.olnmpc.equalize_u(direction="r_to_u")
-            # cc = getattr(self.olnmpc, u + "_cdummy")  #: Get the constraint
-            # ce = getattr(self.olnmpc, u + "_e")  #: Get the expression
-
             cv = getattr(self.olnmpc, u)  #: Get the new variable
             for k in cv.keys():
                 cv[k].setlb(self.u_bounds[u][0])
@@ -417,7 +412,6 @@ class NmpcGen_DAE(DynGen_DAE):
             for fe in self.olnmpc.fe_t:
                 self.olnmpc.R_w_nmpc[fe].value = control_weight
 
-
     def create_suffixes_nmpc(self):
         """Creates the required suffixes for the advanced-step olnmpc problem (reduced-sens)
         """
@@ -541,7 +535,6 @@ class NmpcGen_DAE(DynGen_DAE):
             c_val = value(cv[1])  #: Current value
             dumm_eq = getattr(self.SteadyRef2, u + '_cdummy')
 
-
             dexpr = dumm_eq[1].expr._args[0]
             control_var = getattr(self.SteadyRef2, dexpr.parent_component().name)
             if isinstance(control_var, Var):  #: all good
@@ -552,7 +545,6 @@ class NmpcGen_DAE(DynGen_DAE):
             self.SteadyRef2.del_component(cv)  #: Delete the dummy_param
             self.SteadyRef2.del_component(dumm_eq)  #: Delete the dummy_constraint
             self.SteadyRef2.add_component(u, Var([1], initialize=lambda m, i: c_val))
-            ###
             cv = getattr(self.SteadyRef2, u)  #: Get the new variable
             for k in cv.keys():
                 cv[k].setlb(self.u_bounds[u][0])
@@ -562,9 +554,6 @@ class NmpcGen_DAE(DynGen_DAE):
             dumm_eq = getattr(self.SteadyRef2, u + '_cdummy')
             dumm_eq.rule = lambda m, i: cv[i] == control_var[i]
             dumm_eq.reconstruct()
-
-        #self.SteadyRef2.create_bounds()
-        # self.SteadyRef2.equalize_u(direction="r_to_u")
 
         for vs in self.SteadyRef.component_objects(Var, active=True):  #: Load_guess
             vt = getattr(self.SteadyRef2, vs.getname())

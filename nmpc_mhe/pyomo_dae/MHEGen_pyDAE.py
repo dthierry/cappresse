@@ -22,6 +22,18 @@ __author__ = "David Thierry @dthierry" #: March 2018
 
 class MheGen_DAE(NmpcGen_DAE):
     def __init__(self, d_mod, hi_t, states, controls, noisy_states, measurements, **kwargs):
+        # type: (ConcreteModel, float, list, list, list, list, dict) -> None
+        """Base class for moving horizon estimation.
+
+        Args:
+            d_mod:
+            hi_t:
+            states:
+            controls:
+            noisy_states:
+            measurements:
+            **kwargs:
+        """
         NmpcGen_DAE.__init__(self, d_mod, hi_t, states, controls, **kwargs)
         self.int_file_mhe_suf = int(time.time())-1
 
@@ -37,7 +49,6 @@ class MheGen_DAE(NmpcGen_DAE):
         self.diag_Q_R = kwargs.pop('diag_QR', True)  #: By default use diagonal matrices for Q and R matrices
         if self.diag_Q_R:
             self.journalist('W', self._iteration_count, "Initializing MHE", "The Q_MHE and R_MHE matrices are diagonal")
-        # self.u = kwargs.pop('u', [])
 
         self.IgnoreProcessNoise = kwargs.pop('IgnoreProcessNoise', False)
         # One can specify different discretization lenght
@@ -46,12 +57,9 @@ class MheGen_DAE(NmpcGen_DAE):
 
         # nstates = sum(len(self.x_vars[x]) for x in self.x_noisy)
         # self.journalist("I", self._iteration_count, "MHE with \t", str(nstates) + "states")
-
         _t_mhe = self.nfe_tmhe * self.hi_t
 
         self.lsmhe = clone_the_model(self.d_mod) # (self.nfe_tmhe, self.ncp_tmhe, _t=_t_mhe)
-        # self.dum_mhe = self.d_mod(1, self.ncp_tmhe, _t=self.hi_t)
-
         self.dum_mhe = clone_the_model(self.d_mod)
 
         augment_model(self.lsmhe, self.nfe_tmhe, self.ncp_tmhe, new_timeset_bounds=(0, _t_mhe))
@@ -162,12 +170,16 @@ class MheGen_DAE(NmpcGen_DAE):
         self.lsmhe.ykk_mhe = Set(initialize=[i for i in range(0, len(self.yk_l[0]))])  #: Create set of measured_vars
         self.lsmhe.nuk_mhe = Var(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, initialize=0.0)   #: Measurement noise
         self.lsmhe.yk0_mhe = Param(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, initialize=1.0, mutable=True)
-        self.lsmhe.hyk_c_mhe = Constraint(self.lsmhe.fe_t, self.lsmhe.ykk_mhe,
-                                          rule=
-                                          lambda mod, t, i:mod.yk0_mhe[t, i] - self.yk_l[t][i] - mod.nuk_mhe[t, i] == 0.0)
+        self.lsmhe.hyk_c_mhe = \
+            Constraint(self.lsmhe.fe_t,
+                       self.lsmhe.ykk_mhe,
+                       rule=lambda mod, t, i:mod.yk0_mhe[t, i] - self.yk_l[t][i] - mod.nuk_mhe[t, i] == 0.0)
         #: This will work because yk_l is indexed by fe
         self.lsmhe.hyk_c_mhe.deactivate()
-        self.lsmhe.R_mhe = Param(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, initialize=1.0, mutable=True) if self.diag_Q_R else \
+        self.lsmhe.R_mhe = Param(self.lsmhe.fe_t,
+                                 self.lsmhe.ykk_mhe,
+                                 initialize=1.0,
+                                 mutable=True) if self.diag_Q_R else \
             Param(self.lsmhe.fe_t, self.lsmhe.ykk_mhe, self.lsmhe.ykk_mhe,
                              initialize=lambda mod, t, i, ii: 1.0 if i == ii else 0.0, mutable=True)
 
@@ -235,6 +247,7 @@ class MheGen_DAE(NmpcGen_DAE):
             oc_e = getattr(self.lsmhe, i + "dot_disc_eq")
             for k in self.x_vars[i]:  #: This should keep the same order
                 for t in self.lsmhe.t:
+                    #: How about using a the tfe_dict instead of the t_ij function
                     if t == 0 or tfe_mhe_dic[t] == self.lsmhe.nfe_t - 1:
                         continue
                     e = oc_e[(t,) + k].expr
@@ -324,7 +337,6 @@ class MheGen_DAE(NmpcGen_DAE):
             self.y_real[y] = []
             self.y_noise_jrnl[y] = []
             self.yk0_jrnl[y] = []
-
 
         with open("res_mhe_label_" + self.res_file_suf + ".txt", "w") as f:
             for x in self.x_noisy:
@@ -537,7 +549,6 @@ class MheGen_DAE(NmpcGen_DAE):
                             qtarget[i, v_i] = 1 / cov_dict[x]
                         else:
                             raise ZeroDivisionError
-
         else:
             raise Exception("Not yet implemented [set_covariance_disturb]")
 
@@ -773,14 +784,17 @@ class MheGen_DAE(NmpcGen_DAE):
                         ic_con[k].deactivate()
 
     def regen_objective_fun(self):
-        # TODO: adjust to framework <DT, p:2>
+
         """Given the exclusion list, regenerate the expression for the arrival cost"""
         self.lsmhe.Arrival_e_mhe.set_value(0.5 * sum((self.xkN_l[j] - self.lsmhe.x_0_mhe[j]) *
                                                      sum(self.lsmhe.PikN_mhe[j, k] *
                                                          (self.xkN_l[k] - self.lsmhe.x_0_mhe[k]) for k in
                                                          self.lsmhe.xkNk_mhe if self.xkN_nexcl[k])
                                                      for j in self.lsmhe.xkNk_mhe if self.xkN_nexcl[j]))
-        self.lsmhe.obfun_mhe.set_value(self.lsmhe.Arrival_e_mhe + self.lsmhe.R_e_mhe + self.lsmhe.Q_e_mhe + self.lsmhe.U_e_mhe)
+        self.lsmhe.obfun_mhe.set_value(self.lsmhe.Arrival_e_mhe +
+                                       self.lsmhe.R_e_mhe +
+                                       self.lsmhe.Q_e_mhe +
+                                       self.lsmhe.U_e_mhe)
 
         if self.lsmhe.obfun_dum_mhe.active:
             self.lsmhe.obfun_dum_mhe.deactivate()
@@ -790,7 +804,6 @@ class MheGen_DAE(NmpcGen_DAE):
             self.lsmhe.hyk_c_mhe.activate()
 
     def load_covariance_prior(self):
-        # TODO: adjust to framework <DT, p:2>
         """Computes the reduced-hessian (inverse of the prior-covariance)
         Reads the result_hessian.txt file that contains the covariance information"""
         self.journalist("I", self._iteration_count, "load_covariance_prior", "K_AUG w red_hess")
@@ -893,17 +906,11 @@ class MheGen_DAE(NmpcGen_DAE):
         self.regen_objective_fun()
         # Update prior-state
         self.set_prior_state_from_prior_mhe()
-        pass
 
     def update_noise_meas(self, cov_dict):
         self.journalist("I", self._iteration_count, "introduce_noise_meas", "Noise introduction")
-        # f = open("m0.txt", "w")
-        # f1 = open("m1.txt", "w")
         for y in self.y:
-            # vy = getattr(mod,  y)
-            # vy.display(ostream=f)
             for j in self.y_vars[y]:
-                # vv = value(vy[(1, self.ncp_t) + j])
                 sigma = cov_dict[(y, j), (y, j), 1]
                 self.curr_m_noise[(y, j)] = np.random.normal(0, sigma)
                 # noise = np.random.normal(0, sigma)
@@ -1178,7 +1185,6 @@ class MheGen_DAE(NmpcGen_DAE):
             var = getattr(self.PlantSample, y)
             for j in self.y_vars[y]:
                 self.curr_meas[(y, j)] = value(var[(t_ncp,) + j])
-
 
     def method_for_mhe_simulation_step(self):
         pass
