@@ -514,6 +514,7 @@ class NmpcGen_DAE(DynGen_DAE):
                 sys.exit()
 
         weights_ref = dict.fromkeys(self.ref_state.keys())
+        #: Default weights are computed by taking the inverse of the diffference between Ref and vsoi
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef, i[0])
             vkey = i[1]
@@ -575,7 +576,6 @@ class NmpcGen_DAE(DynGen_DAE):
             vkey = i[1]
             ofexp += weights[i] * (v[(1,) + vkey] - self.ref_state[i])**2
         self.SteadyRef2.obfun_SteadyRef2 = Objective(expr=ofexp, sense=minimize)
-        self.SteadyRef2.pprint(filename="ss2ref.txt")
         tst = self.solve_dyn(self.SteadyRef2, iter_max=10000, stop_if_nopt=True, halt_on_ampl_error=False, **kwargs)
         if tst != 0:
             self.SteadyRef2.display(filename="failed_SteadyRef2.txt")
@@ -589,12 +589,15 @@ class NmpcGen_DAE(DynGen_DAE):
             v = getattr(self.SteadyRef2, i[0])
             vkey = i[1]
             val = value(v[(1,) + vkey])
-            print("target {:}".format(i[0]), "key {:}".format(i[1]), "weight {:f}".format(weights[i]),
-                  "value {:f}".format(val))
+            print("target {:}".format(i[0]),
+                  "\tkey {:}".format(i[1]),
+                  "\tweight {:f}".format(weights[i]),
+                  "\tvalue {:f}".format(val))
         for u in self.u:
             v = getattr(self.SteadyRef2, u)
             val = value(v[1])
-            print("target {:}".format(u), " value {:f}".format(val))
+            print("target {:}".format(u),
+                  "\tvalue {:f}".format(val))
         self.update_targets_nmpc()
 
     def update_targets_nmpc(self):
