@@ -65,10 +65,10 @@ def main():
     controls = ["u1", "u2"]
     u_bounds = {"u1": (0000.1, 99.999), "u2": (0, None)}
     #: ref_state = {("T", (29,)): 343.15, ("T", (14,)): 361.15}
-    ref_state = {("x", (1,)): 0.01}
+    ref_state = {("T", (29,)): 343.15, ("T", (14,)): 361.15}
 
 
-    e = MheGen_DAE(mod, 100, states, controls, states, measurements,
+    e = MheGen_DAE(mod, 6, states, controls, states, measurements,
                    u_bounds=u_bounds,
                    ref_state=ref_state,
                    override_solver_check=True,
@@ -116,7 +116,8 @@ def main():
     e.prior_phase()
     e.deact_icc_mhe()  #: Remove the initial conditions
     #: Prepare NMPC
-    e.find_target_ss(weights={("x", (1,)): 100000})
+    # e.find_target_ss(weights={("T", (14,)): 100000})
+    e.find_target_ss()
     e.create_nmpc()
     e.create_suffixes_nmpc()
     e.update_targets_nmpc()
@@ -127,6 +128,8 @@ def main():
     for i in range(0, 300):
 
         #: Plant
+        # for i in e.PlantSample.u2.itervalues():
+        #     i.value = 2*1.78604740940007800236344337463379E+06
         e.solve_dyn(e.PlantSample, stop_if_nopt=True)
         disp_params(e.PlantSample, "params.txt")
         e.update_state_real()  # Update the current state
