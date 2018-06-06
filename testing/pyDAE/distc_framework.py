@@ -176,7 +176,7 @@ def main():
         #: Plant cycle
         e.cycleSamPlant(plant_step=True)
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
-        # e.noisy_plant_manager(sigma=0.0, action="apply", update_level=True)
+        e.noisy_plant_manager(sigma=0.0, action="apply", update_level=True)
 
 
 if __name__ == '__main__':
