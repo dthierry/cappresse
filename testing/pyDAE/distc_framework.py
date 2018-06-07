@@ -68,12 +68,13 @@ def main():
 
 
 
-    e = MheGen_DAE(mod, 100, states, controls, states, measurements,
+    e = MheGen_DAE(mod, 6, states, controls, states, measurements,
                    u_bounds=u_bounds,
                    ref_state=ref_state,
                    override_solver_check=True,
                    var_bounds=state_bounds,
-                   k_aug_executable='/home/dav0/devzone/k_aug/cmake-build-k_aug/bin/k_aug')
+                   k_aug_executable='/home/dav0/devzone/k_aug/cmake-build-k_aug/bin/k_aug',
+                   nfe_t=10)
     Q = {}
     U = {}
     R = {}
@@ -176,7 +177,7 @@ def main():
         #: Plant cycle
         e.cycleSamPlant(plant_step=True)
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
-        e.noisy_plant_manager(sigma=0.0, action="apply", update_level=True)
+        e.noisy_plant_manager(sigma=0.001, action="apply", update_level=True)
 
 
 if __name__ == '__main__':
