@@ -385,8 +385,6 @@ class MheGen_DAE(NmpcGen_DAE):
             #: Patch
             load_iguess(dum, self.lsmhe, 0, finite_elem)
             self.patch_input_mhe("mod", src=dum, fe=finite_elem)
-            with open('meas.txt_' + str(finite_elem), 'w') as f:
-                self.lsmhe.yk0_mhe.pprint(ostream=f)
 
         self.lsmhe.name = "Preparation MHE"   #: Pretty much simulation
         tst = self.solve_dyn(self.lsmhe,
