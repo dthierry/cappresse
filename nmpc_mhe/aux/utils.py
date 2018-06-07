@@ -82,9 +82,15 @@ def fe_compute(time_set, t):
 
 
 def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, skip_suffixes=False):
+    # type: (ConcreteModel, int, int, tuple, str, bool) -> None
     """Attach Suffixes, and more to a base model
 
     Args:
+        nfe:
+        ncp:
+        new_timeset_bounds:
+        given_name:
+        skip_suffixes:
         d_mod(ConcreteModel): Model of interest.
     """
     if hasattr(d_mod, "nfe") or hasattr(d_mod, "ncp"):
@@ -110,6 +116,7 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
         d_mod.ipopt_zL_in = Suffix(direction=Suffix.EXPORT)
         d_mod.ipopt_zU_in = Suffix(direction=Suffix.EXPORT)
     if not new_timeset_bounds is None:
+        print("New timebounds defined!")
         cs = None
         for s in d_mod.component_objects(ContinuousSet):
             cs = s
@@ -132,7 +139,20 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
                             if not o._mutable:
                                 o.construct()
                                 continue
-                        o.reconstruct()
+                        # try:
+                        if isinstance(o, Constraint):
+                            if o.is_indexed():
+                                o.clear()
+                            else:
+                                o._data = {}   #: Why Bethany ??? :(
+                            # o.pprint()
+                            # continue
+                            o.reconstruct()
+                        else:
+                            o.reconstruct()
+                        # except AssertionError:
+                        #     o.pprint()
+
                         continue
                 else:
                     if cs in o._implicit_subsets:
@@ -152,7 +172,7 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
 
 
 def write_nl(d_mod, filename=None, labels=False):
-    # type: (ConcreteModel, str) -> str
+    # type: (ConcreteModel, str, bool) -> str
     """
     Write the nl file
     Args:

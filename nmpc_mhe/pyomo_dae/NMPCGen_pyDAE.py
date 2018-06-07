@@ -6,13 +6,12 @@ from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expressio
 from pyomo.core.kernel.numvalue import value
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
 from nmpc_mhe.pyomo_dae.DynGen_pyDAE import DynGen_DAE
-
-import numpy as np
-import sys, os, time
-from six import iterkeys
 from nmpc_mhe.aux.utils import t_ij
 from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model, augment_steady, aug_discretization, create_bounds
 from nmpc_mhe.aux.utils import clone_the_model
+import sys
+import os
+import time
 __author__ = "David Thierry @dthierry" #: March 2018
 
 """This version does not necesarily have the same time horizon/discretization as the MHE"""
@@ -62,7 +61,7 @@ class NmpcGen_DAE(DynGen_DAE):
         self.journalist('W', self._iteration_count, "Initializing NMPC",
                         "With {:d} fe and {:d} cp".format(self.nfe_tnmpc, self.ncp_tnmpc))
         _tnmpc = self.hi_t * self.nfe_tnmpc
-        self.olnmpc = clone_the_model(self.d_mod) #(self.nfe_tnmpc, self.ncp_tnmpc, _t=_tnmpc)
+        self.olnmpc = clone_the_model(self.d_mod)
         self.olnmpc.name = "olnmpc (Open-Loop NMPC)"
 
         augment_model(self.olnmpc, self.nfe_tnmpc, self.ncp_tnmpc, new_timeset_bounds=(0, _tnmpc))
@@ -76,7 +75,7 @@ class NmpcGen_DAE(DynGen_DAE):
                 tfe_dic[t] = fe_compute(self.olnmpc.t, t-1)
             else:
                 tfe_dic[t] = fe_compute(self.olnmpc.t, t)
-
+        #: u vars and u constraints creation
         for u in self.u:  #: u only has one index
             cv = getattr(self.olnmpc, u)  #: Get the param
             t_u = [t_ij(self.olnmpc.t, i, 0) for i in range(0, self.olnmpc.nfe_t)]
@@ -93,11 +92,6 @@ class NmpcGen_DAE(DynGen_DAE):
             self.olnmpc.del_component(cv)  #: Delete the dummy_param
             self.olnmpc.del_component(dumm_eq)  #: Delete the dummy_constraint
             self.olnmpc.add_component(u, Var(self.olnmpc.fe_t, initialize=lambda m, i: c_val[i]))
-
-            # self.olnmpc.equalize_u(direction="r_to_u")
-            # cc = getattr(self.olnmpc, u + "_cdummy")  #: Get the constraint
-            # ce = getattr(self.olnmpc, u + "_e")  #: Get the expression
-
             cv = getattr(self.olnmpc, u)  #: Get the new variable
             for k in cv.keys():
                 cv[k].setlb(self.u_bounds[u][0])
@@ -259,13 +253,23 @@ class NmpcGen_DAE(DynGen_DAE):
         self.journalist("I", self._iteration_count, "initialize_olnmpc", "Done, k_notopt " + str(k_notopt))
 
     def preparation_phase_nmpc(self, as_strategy=False, make_prediction=False, plant_state=False):
-        """By default we assume mhe is providing the state"""
+        # type: (bool, bool, bool) -> bool
+        """Initialization and loading initial state of the NMPC problem.
+
+        Args:
+            as_strategy (bool): True if as-NMPC is activated.
+            make_prediction (bool): True if as-NMPC is desired (prediction of state).
+            plant_state (bool): Override options to use plant states.
+
+        Returns:
+
+        """
         if plant_state:
             #: use the plant state instead
             #: Not yet implemented
             self.initialize_olnmpc(self.PlantSample, "real")
             self.load_init_state_nmpc(src_kind="state_dict", state_dict="real")
-            return None
+            return
         if as_strategy:
             if make_prediction:
                 self.update_state_predicted(src="estimated")
@@ -408,9 +412,9 @@ class NmpcGen_DAE(DynGen_DAE):
             for fe in self.olnmpc.fe_t:
                 self.olnmpc.R_w_nmpc[fe].value = control_weight
 
-
     def create_suffixes_nmpc(self):
-        """Creates the required suffixes for the olnmpc problem"""
+        """Creates the required suffixes for the advanced-step olnmpc problem (reduced-sens)
+        """
         if hasattr(self.olnmpc, "npdp"):
             pass
         else:
@@ -460,6 +464,9 @@ class NmpcGen_DAE(DynGen_DAE):
         self._dot_timing = k[0]
 
     def sens_k_aug_nmpc(self):
+        """Calls `k_aug` to compute the sensitivity matrix (reduced mode)
+
+        """
         self.journalist("I", self._iteration_count, "sens_k_aug_nmpc", "k_aug sensitivity")
         self.olnmpc.ipopt_zL_in.update(self.olnmpc.ipopt_zL_out)
         self.olnmpc.ipopt_zU_in.update(self.olnmpc.ipopt_zU_out)
@@ -475,7 +482,7 @@ class NmpcGen_DAE(DynGen_DAE):
         self.olnmpc.f_timestamp.display(ostream=sys.stderr)
         results = self.k_aug_sens.solve(self.olnmpc, tee=True, symbolic_solver_labels=True)
         self.olnmpc.solutions.load_from(results)
-        self.olnmpc.f_timestamp.display(ostream=sys.stderr)
+        #: Read the reported timings from `k_aug`
         ftimings = open("timings_k_aug.txt", "r")
         s = ftimings.readline()
         ftimings.close()
@@ -501,6 +508,7 @@ class NmpcGen_DAE(DynGen_DAE):
                 sys.exit()
 
         weights_ref = dict.fromkeys(self.ref_state.keys())
+        #: Default weights are computed by taking the inverse of the diffference between Ref and vsoi
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef, i[0])
             vkey = i[1]
@@ -527,7 +535,6 @@ class NmpcGen_DAE(DynGen_DAE):
             c_val = value(cv[1])  #: Current value
             dumm_eq = getattr(self.SteadyRef2, u + '_cdummy')
 
-
             dexpr = dumm_eq[1].expr._args[0]
             control_var = getattr(self.SteadyRef2, dexpr.parent_component().name)
             if isinstance(control_var, Var):  #: all good
@@ -538,7 +545,6 @@ class NmpcGen_DAE(DynGen_DAE):
             self.SteadyRef2.del_component(cv)  #: Delete the dummy_param
             self.SteadyRef2.del_component(dumm_eq)  #: Delete the dummy_constraint
             self.SteadyRef2.add_component(u, Var([1], initialize=lambda m, i: c_val))
-            ###
             cv = getattr(self.SteadyRef2, u)  #: Get the new variable
             for k in cv.keys():
                 cv[k].setlb(self.u_bounds[u][0])
@@ -548,9 +554,6 @@ class NmpcGen_DAE(DynGen_DAE):
             dumm_eq = getattr(self.SteadyRef2, u + '_cdummy')
             dumm_eq.rule = lambda m, i: cv[i] == control_var[i]
             dumm_eq.reconstruct()
-
-        #self.SteadyRef2.create_bounds()
-        # self.SteadyRef2.equalize_u(direction="r_to_u")
 
         for vs in self.SteadyRef.component_objects(Var, active=True):  #: Load_guess
             vt = getattr(self.SteadyRef2, vs.getname())
@@ -562,7 +565,6 @@ class NmpcGen_DAE(DynGen_DAE):
             vkey = i[1]
             ofexp += weights[i] * (v[(1,) + vkey] - self.ref_state[i])**2
         self.SteadyRef2.obfun_SteadyRef2 = Objective(expr=ofexp, sense=minimize)
-        self.SteadyRef2.pprint(filename="ss2ref.txt")
         tst = self.solve_dyn(self.SteadyRef2, iter_max=10000, stop_if_nopt=True, halt_on_ampl_error=False, **kwargs)
         if tst != 0:
             self.SteadyRef2.display(filename="failed_SteadyRef2.txt")
@@ -576,12 +578,15 @@ class NmpcGen_DAE(DynGen_DAE):
             v = getattr(self.SteadyRef2, i[0])
             vkey = i[1]
             val = value(v[(1,) + vkey])
-            print("target {:}".format(i[0]), "key {:}".format(i[1]), "weight {:f}".format(weights[i]),
-                  "value {:f}".format(val))
+            print("target {:}".format(i[0]),
+                  "\tkey {:}".format(i[1]),
+                  "\tweight {:f}".format(weights[i]),
+                  "\tvalue {:f}".format(val))
         for u in self.u:
             v = getattr(self.SteadyRef2, u)
             val = value(v[1])
-            print("target {:}".format(u), " value {:f}".format(val))
+            print("target {:}".format(u),
+                  "\tvalue {:f}".format(val))
         self.update_targets_nmpc()
 
     def update_targets_nmpc(self):

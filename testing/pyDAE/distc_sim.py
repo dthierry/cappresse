@@ -64,8 +64,8 @@ def main():
     measurements = ["T", "Mv", "Mv1", "Mvn"]
     controls = ["u1", "u2"]
     u_bounds = {"u1": (0000.1, 99.999), "u2": (0, None)}
+    #: ref_state = {("T", (29,)): 343.15, ("T", (14,)): 361.15}
     ref_state = {("T", (29,)): 343.15, ("T", (14,)): 361.15}
-
 
 
     e = MheGen_DAE(mod, 6, states, controls, states, measurements,
@@ -73,7 +73,7 @@ def main():
                    ref_state=ref_state,
                    override_solver_check=True,
                    var_bounds=state_bounds,
-                   nfe_t=10)
+                   k_aug_executable='/home/dav0/devzone/k_aug/cmake-build-k_aug/bin/k_aug')
     Q = {}
     U = {}
     R = {}
@@ -116,6 +116,7 @@ def main():
     e.prior_phase()
     e.deact_icc_mhe()  #: Remove the initial conditions
     #: Prepare NMPC
+    # e.find_target_ss(weights={("T", (14,)): 100000})
     e.find_target_ss()
     e.create_nmpc()
     e.create_suffixes_nmpc()
@@ -127,56 +128,24 @@ def main():
     for i in range(0, 300):
 
         #: Plant
+        # for i in e.PlantSample.u2.itervalues():
+        #     i.value = 2*1.78604740940007800236344337463379E+06
         e.solve_dyn(e.PlantSample, stop_if_nopt=True)
-
+        disp_params(e.PlantSample, "params.txt")
         e.update_state_real()  # Update the current state
         e.update_soi_sp_nmpc()  #: To keep track of the state of interest.
 
-        e.update_measurement()  # Update the current measurement
-        e.compute_y_offset()  #: Get the offset for y
-        #: State-estimation MHE
-        e.preparation_phase_mhe(as_strategy=False)
-        stat = e.solve_dyn(e.lsmhe,
-                           skip_update=False, iter_max=500,
-                           jacobian_regularization_value=1e-04,
-                           max_cpu_time=600,
-                           tag="lsmhe",
-                           keepsolve=False,
-                           wantparams=False)
-        if stat != 0:
-            sys.exit()
-        #: Prior-phase and arrival cost
-        e.update_state_mhe()  #: get the state from mhe
-        e.prior_phase()
 
-        e.print_r_mhe()
         e.print_r_dyn()
-        #: Control NMPC
-        e.preparation_phase_nmpc(as_strategy=False, make_prediction=False)
-        try:
-            stat_nmpc = e.solve_dyn(e.olnmpc,
-                                    skip_update=False,
-                                    max_cpu_time=300,
-                                    tag="olnmpc")
-        except ValueError:
-            stat_nmpc = e.solve_dyn(e.olnmpc,
-                                    skip_update=False,
-                                    max_cpu_time=300,
-                                    tag="olnmpc")
-
-        if stat_nmpc != 0:
-            stat_nmpc = e.solve_dyn(e.olnmpc,
-                                    skip_update=False,
-                                    max_cpu_time=300,
-                                    tag="olnmpc")
-            if stat_nmpc != 0:
-                sys.exit()
+        # e.update_u(e.olnmpc)
         e.print_r_nmpc()
-        e.update_u(e.olnmpc)
+        e.update_u(e.SteadyRef2, fe=1)
+
         #: Plant cycle
         e.cycleSamPlant(plant_step=True)
+
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
-        e.noisy_plant_manager(sigma=0.0001, action="apply", update_level=True)
+        # e.noisy_plant_manager(sigma=0.0, action="apply", update_level=True)
 
 
 if __name__ == '__main__':

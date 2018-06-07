@@ -117,10 +117,13 @@ class DynGen_DAE(object):
         if self.k_aug_executable:
             self.k_aug = SolverFactory("k_aug",
                                        executable=self.k_aug_executable)
+            self.k_aug_sens = SolverFactory("k_aug",
+                                       executable=self.k_aug_executable)
             if self.k_aug.available():
                 pass
             else:
                 self.k_aug = SolverFactory("k_aug")
+                self.k_aug_sens = SolverFactory("k_aug")
                 if self.k_aug.available():
                     pass
                 elif override_solver_check:
@@ -198,7 +201,6 @@ class DynGen_DAE(object):
         if retval:
             raise RuntimeError("The solution of the Steady-state problem failed")
 
-
     def get_state_vars(self, skip_solve=False):
         """Solves steady state model (SteadyRef)
         Args:
@@ -247,17 +249,15 @@ class DynGen_DAE(object):
                     pass
                 else:
                     raise RuntimeError("State {} does not contain the ContinuousSet t")
-
-            # BUG: Is this a tuple? A: Yes
-
-            remaining_set = xv._implicit_subsets[1]
-            for j in range(2, len(xv._implicit_subsets)):
-                remaining_set *= xv._implicit_subsets[j]
-            for index in remaining_set:
-                if isinstance(index, tuple):
-                    self.state_vars[x].append(index)
-                else:
-                    self.state_vars[x].append((index,))
+                # BUG: Is this a tuple? A: Yes
+                remaining_set = xv._implicit_subsets[1]
+                for j in range(2, len(xv._implicit_subsets)):
+                    remaining_set *= xv._implicit_subsets[j]
+                for index in remaining_set:
+                    if isinstance(index, tuple):
+                        self.state_vars[x].append(index)
+                    else:
+                        self.state_vars[x].append((index,))
 
             # for j in xv.keys():
             #     #: pyomo.dae only has one index for time
@@ -540,14 +540,18 @@ class DynGen_DAE(object):
         newtime = time.time()
         print(str(newtime - self._reftime))
         self._reftime = newtime
+        t = t_ij(self.PlantSample.t, 0, self.ncp_t)
         for x in self.states:
             x_ic = getattr(self.PlantSample, x + "_ic")
             v_tgt = getattr(self.PlantSample, x)
-            for ks in x_ic.keys():
-                if not isinstance(ks, tuple):
-                    ks = (ks,)
-                x_ic[ks].value = value(v_tgt[(0,) + ks])
-                v_tgt[(0,) + ks].set_value(value(v_tgt[(0,) + ks]))
+            if not x_ic.is_indexed():
+                x_ic.value = value(v_tgt[t])  #: this has got to be true
+            else:
+                for ks in x_ic.keys():
+                    if not isinstance(ks, tuple):
+                        ks = (ks,)
+                    x_ic[ks].value = value(v_tgt[(t,) + ks])
+                    v_tgt[(0,) + ks].set_value(value(v_tgt[(t,) + ks]))
         if plant_step:
             self._iteration_count += 1
 
@@ -613,8 +617,6 @@ class DynGen_DAE(object):
 
         self.PlantPred.name = "Dynamic Predictor"
         aug_discretization(self.PlantPred, nfe=1, ncp=self.ncp_t)
-        # discretizer = TransformationFactory('dae.collocation')
-        # discretizer.apply_to(self.PlantPred, nfe=1, ncp=self.ncp_t, scheme="LAGRANGE-RADAU")
 
     def predictor_step(self, ref, state_dict, **kwargs):
         """Predicted-state computation by forward simulation.
@@ -729,7 +731,9 @@ class DynGen_DAE(object):
                                        bound_push=0.1,
                                        tol=1e-03,
                                        output_file="failed_homotopy_d2.txt",
-                                       stop_if_nopt=sinopt, ma57_pivtol=1e-12, ma57_pre_alloc=5,
+                                       stop_if_nopt=sinopt,
+                                       ma57_pivtol=1e-12,
+                                       ma57_pre_alloc=5,
                                        linear_scaling_on_demand=True)
         for u in self.u:
             plant_var = getattr(d_mod, u)
@@ -765,14 +769,11 @@ class DynGen_DAE(object):
         else:
             print(self.PlantPred)
             self.create_predictor()
-            # self.load_d_s(self.PlantPred)
             load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
-        # print(type(self.PlantPred))
         if src == "estimated":
             self.load_init_state_gen(self.PlantPred, src_kind="dict", state_dict="estimated")  #: Load the initial state
         else:
             self.load_init_state_gen(self.PlantPred, src_kind="dict", state_dict="real")  #: Load the initial state
-
         #: See if this works
         stat = self.solve_dyn(self.PlantPred, skip_update=True,
                               iter_max=250,
@@ -797,7 +798,6 @@ class DynGen_DAE(object):
             fe (int): The required finite element
             cp (int): The required collocation point
         """
-        # src_kind = kwargs.pop("src_kind", "mod")
         self.journalist("I", self._iteration_count, "load_init_state_gen", "Load State to nmpc src_kind=" + src_kind)
         ref = kwargs.pop("ref", None)
 
