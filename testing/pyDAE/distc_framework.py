@@ -73,7 +73,8 @@ def main():
                    ref_state=ref_state,
                    override_solver_check=True,
                    var_bounds=state_bounds,
-                   nfe_t=10)
+                   nfe_t=10,
+                   k_aug_executable='/home/dav0/devzone/k_aug/bin/k_aug')
     Q = {}
     U = {}
     R = {}
@@ -124,7 +125,7 @@ def main():
     e.new_weights_olnmpc(1e-04, 1e+00)
 
     #: Problem loop
-    for i in range(0, 300):
+    for i in range(0, 600):
 
         #: Plant
         e.solve_dyn(e.PlantSample, stop_if_nopt=True)
@@ -153,30 +154,38 @@ def main():
         e.print_r_dyn()
         #: Control NMPC
         e.preparation_phase_nmpc(as_strategy=False, make_prediction=False)
-        try:
+        try: #: First try
             stat_nmpc = e.solve_dyn(e.olnmpc,
                                     skip_update=False,
                                     max_cpu_time=300,
                                     tag="olnmpc")
         except ValueError:
-            stat_nmpc = e.solve_dyn(e.olnmpc,
-                                    skip_update=False,
-                                    max_cpu_time=300,
-                                    tag="olnmpc")
+            e.preparation_phase_nmpc(as_strategy=False, make_prediction=False)
+            try: #: Second Try
+                stat_nmpc = e.solve_dyn(e.olnmpc,
+                                        skip_update=False,
+                                        max_cpu_time=300,
+                                        jacobian_regularization_value=1e-04,
+                                        tag="olnmpc")
+            except ValueError:
+                stat_nmpc = 299
 
-        if stat_nmpc != 0:
-            stat_nmpc = e.solve_dyn(e.olnmpc,
-                                    skip_update=False,
-                                    max_cpu_time=300,
-                                    tag="olnmpc")
-            if stat_nmpc != 0:
-                sys.exit()
+        # if stat_nmpc != 0:  #: Last one
+        #     stat_nmpc = e.solve_dyn(e.olnmpc,
+        #                             skip_update=False,
+        #                             max_cpu_time=300,
+        #                             jacobian_regularization_value=1e-04,
+        #                             tag="olnmpc")
+        #     if stat_nmpc != 0:
+        #         sys.exit()
+
         e.print_r_nmpc()
-        e.update_u(e.olnmpc)
+        if stat_nmpc == 0:
+            e.update_u(e.olnmpc)
         #: Plant cycle
         e.cycleSamPlant(plant_step=True)
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
-        e.noisy_plant_manager(sigma=0.0001, action="apply", update_level=True)
+        e.noisy_plant_manager(sigma=0.001, action="apply", update_level=True)
 
 
 if __name__ == '__main__':
