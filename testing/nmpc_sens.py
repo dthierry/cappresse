@@ -5,6 +5,7 @@ from __future__ import division
 from nmpc_mhe.dync.MHEGenv2 import MheGen
 from sample_mods.bfb.nob5_hi_t import bfb_dae
 import itertools, sys
+import time
 
 """Testing the new preparation phases with ideal strategies"""
 
@@ -14,9 +15,9 @@ def main():
     x_noisy = ["Hgc", "Nsc", "Hsc", "Hge", "Nse", "Hse"]
     u = ["u1"]
     u_bounds = {"u1":(162.183495794 * 0.0005, 162.183495794 * 10000)}
-    ref_state = {("c_capture", ((),)): 0.50}
+    ref_state = {("c_capture", ((),)): 0.63}
 
-    nfe_mhe = 20
+    nfe_mhe = 10
     y = ["Tgb", "vg"]
     nfet = 10
     ncpx = 3
@@ -45,15 +46,14 @@ def main():
 
     # States -- (5 * 3 + 6) * fe_x * cp_x.
     # For fe_x = 5 and cp_x = 3 we will have 315 differential-states.
-    #: 1600 was proven to be solveable
-    e = MheGen(bfb_dae, 1600/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
+    #: 1600  was proven to be solveable
+    e = MheGen(bfb_dae, 600/nfe_mhe, states, u, x_noisy, x_vars, y, y_vars,
                nfe_tmhe=nfe_mhe, ncp_tmhe=1,
                nfe_tnmpc=nfe_mhe, ncp_tnmpc=1,
                ref_state=ref_state, u_bounds=u_bounds,
-               nfe_t=5, ncp_t=1,
-               k_aug_executable="/home/dav0/k_aug/src/k_aug/k_aug",
-               dot_driver_executable="/home/dav0/k_aug/src/k_aug/dot_driver/dot_driver"
-               )
+               nfe_t=nfe_mhe, ncp_t=1,
+               k_aug_executable="/home/dav0/devzone/k_aug/cmake-build-k_aug/bin/k_aug",
+               dot_driver_executable="/home/dav0/devzone/k_aug/src/k_aug/dot_driver/dot_driver")
 
     e.load_solfile(e.SteadyRef, "ref_ss.sol")  #: Loads solfile snap
     results = e.ipopt.solve(e.SteadyRef, tee=True, load_solutions=True, report_timing=True)
@@ -99,22 +99,22 @@ def main():
     e.create_rh_sfx()  #: Reduced hessian computation
 
 
-    e.init_lsmhe_prep(e.PlantSample)
-    e.shift_mhe()
-    e.init_step_mhe()
-    e.solve_dyn(e.lsmhe,
-                skip_update=False,
-                max_cpu_time=600,
-                ma57_pre_alloc=5, tag="lsmhe")  #: Pre-loaded mhe solve
-
-    e.check_active_bound_noisy()
-    e.load_covariance_prior()
-    e.set_state_covariance()
-
-    e.regen_objective_fun()  #: Regen erate the obj fun
-    e.deact_icc_mhe()  #: Remove the initial conditions
-
-    e.set_prior_state_from_prior_mhe()  #: Update prior-state
+    # e.init_lsmhe_prep(e.PlantSample)
+    # e.shift_mhe()
+    # e.init_step_mhe()
+    # e.solve_dyn(e.lsmhe,
+    #             skip_update=False,
+    #             max_cpu_time=600,
+    #             ma57_pre_alloc=5, tag="lsmhe")  #: Pre-loaded mhe solve
+    #
+    # e.check_active_bound_noisy()
+    # e.load_covariance_prior()
+    # e.set_state_covariance()
+    #
+    # e.regen_objective_fun()  #: Regen erate the obj fun
+    # e.deact_icc_mhe()  #: Remove the initial conditions
+    #
+    # e.set_prior_state_from_prior_mhe()  #: Update prior-state
     e.find_target_ss()  #: Compute target-steady state (beforehand)
 
     #: Create NMPC
@@ -137,13 +137,13 @@ def main():
             wantparams=False
         if i == 200:
             j = 1
-            ref_state = {("c_capture", ((),)): 0.63}
+            ref_state = {("c_capture", ((),)): 0.5}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
             e.new_weights_olnmpc(u_weight, 1e+06)
         elif i == 400:
             j = 1
-            ref_state = {("c_capture", ((),)): 0.5}
+            ref_state = {("c_capture", ((),)): 0.63}
             e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
             e.compute_QR_nmpc(n=-1)
             e.new_weights_olnmpc(u_weight, 1e+06)
@@ -159,56 +159,29 @@ def main():
         e.update_noise_meas(m_cov)  #: the noise it is not being added
         e.update_measurement()
         e.compute_y_offset()  #: Get the offset for y
-
-
-        e.preparation_phase_mhe(as_strategy=False)
-
-        stat = e.solve_dyn(e.lsmhe,
-                         skip_update=False, iter_max=500,
-                         jacobian_regularization_value=1e-04,
-                         max_cpu_time=600, tag="lsmhe", keepsolve=keepsolve, wantparams=wantparams)
-
-        if stat == 1:  #: Try again
-            e.lsmhe.write_nl(name="bad_mhe.nl")
-            stat = e.solve_dyn(e.lsmhe,
-                             skip_update=True,
-                             max_cpu_time=600,
-                             stop_if_nopt=True,
-                             jacobian_regularization_value=1e-02,
-                             linear_scaling_on_demand=True, tag="lsmhe")
-            if stat != 0:
-                sys.exit()
-        e.update_state_mhe()  #: get the state from mhe
-        #: At this point computing and loading the Covariance is not going to affect the sens update of MHE
-        e.prior_phase()
-        #
-        e.print_r_mhe()
+        if i > 1:
+            e.sens_dot_nmpc()
+        e.update_u(e.olnmpc)  #: Get the resulting input for k+1
         e.print_r_dyn()
         #
-        e.preparation_phase_nmpc(as_strategy=False, make_prediction=False)
-        # e.initialize_olnmpc(e.PlantSample, "estimated")
-        # e.load_init_state_nmpc(src_kind="state_dict", state_dict="estimated")
-        stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300,
+        e.preparation_phase_nmpc(as_strategy=True, make_prediction=True, plant_state=True)
+        stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=600,
                                 jacobian_regularization_value=1e-04, tag="olnmpc",
                                 keepsolve=keepsolve, wantparams=wantparams)
         if stat_nmpc != 0:
             e.olnmpc.write_nl(name="bad.nl")
-            e.solve_dyn(e.olnmpc, skip_update=False,
-                        max_cpu_time=600, jacobian_regularization_value=1e-04, linear_scaling_on_demand=True,
-                        tag="olnmpc")
+            stat = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=1200,
+                               jacobian_regularization_value=1e-04, linear_scaling_on_demand=True,
+                               tag="olnmpc")
             if stat != 0:
                 sys.exit()
-
-        e.update_u(e.olnmpc)  #: Get the resulting input for k+1
-
+        e.sens_k_aug_nmpc()  # sensitivity matrix for nmpc
         e.print_r_nmpc()
         #
         e.cycleSamPlant(plant_step=True)
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
         e.noisy_plant_manager(sigma=0.001, action="apply", update_level=True)
         j += 1
-
-
 
 if __name__ == "__main__":
     main()
