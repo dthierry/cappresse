@@ -161,6 +161,7 @@ def main():
         e.compute_y_offset()  #: Get the offset for y
         if i > 1:
             e.sens_dot_nmpc()
+            e.keep_timings_sens()
         e.update_u(e.olnmpc)  #: Get the resulting input for k+1
 
         # e.preparation_phase_mhe(as_strategy=False)
@@ -211,31 +212,4 @@ def main():
         j += 1
 
 if __name__ == "__main__":
-    attempt = 0
-    done = False
-    f = open("log.x", "w")
-    f.write("start")
-    t = time.localtime(time.time())
-    t = time.asctime(t)
-    f.write('\t')
-    f.write(t)
-    f.write('\n')
-    with open("log.x", "a") as f:
-        while not done:
-            try:
-                main()
-                done = True
-            except ValueError:
-                f.write("attempt\t{}".format(attempt))
-                t = time.localtime(time.time())
-                t = time.asctime(t)
-                f.write('\t')
-                f.write(t)
-                f.write('\n')
-                attempt += 1
-
-
-
-
-
-
+    main()

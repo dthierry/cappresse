@@ -817,14 +817,11 @@ class DynGen(object):
 
     def update_state_predicted(self, src="estimated"):
         """Make a prediction for the next state"""
-
         if self.PlantPred:
-            print(self.PlantPred)
+            print("I[update_state_predicted]")
         else:
-            print(self.PlantPred)
             self.create_predictor()
             self.load_d_s(self.PlantPred)
-        # print(type(self.PlantPred))
         if src == "estimated":
             self.load_init_state_gen(self.PlantPred, src_kind="dict", state_dict="estimated")  #: Load the initial state
         else:
