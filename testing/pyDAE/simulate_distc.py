@@ -64,11 +64,16 @@ def main():
     measurements = ["T", "Mv", "Mv1", "Mvn"]
     controls = ["u1", "u2"]
     u_bounds = {"u1": (0000.1, 99.999), "u2": (0, None)}
-    ref_state = {("T", (29,)): 343.15, ("T", (14,)): 361.15}
+    ref_state1 = {("T", (29,)): 343.15, ("T", (14,)): 361.15}
+    ref_state2 = {("T", (29,)): 345.22, ("T", (14,)): 356.23}
+    ref_state = ref_state1
+    ds = {}
+    for k in ref_state2.keys():
+        ds[k] = ref_state1[k] - ref_state2[k]
 
 
 
-    e = MheGen_DAE(mod, 6, states, controls, states, measurements,
+    e = MheGen_DAE(mod, 60, states, controls, states, measurements,
                    u_bounds=u_bounds,
                    ref_state=ref_state,
                    override_solver_check=True,
@@ -104,88 +109,44 @@ def main():
                 tee=True,
                 symbolic_solver_labels=True)
 
-    e.init_lsmhe_prep(e.PlantSample)
-    e.shift_mhe()
-    e.init_step_mhe()
-    e.solve_dyn(e.lsmhe,
-                skip_update=False,
-                max_cpu_time=600,
-                ma57_pre_alloc=5, tag="lsmhe")
-    # disp_vars(e.lsmhe, "vars_mhe")
-    # disp_params(e.lsmhe, "parm_mhe")
 
-    e.prior_phase()
-    e.deact_icc_mhe()  #: Remove the initial conditions
     #: Prepare NMPC
     e.find_target_ss()
-    e.create_nmpc()
-    e.create_suffixes_nmpc()
-    e.update_targets_nmpc()
-    e.compute_QR_nmpc(n=-1)
-    e.new_weights_olnmpc(1e-04, 1e+00)
-
+    ii = 0
     #: Problem loop
-    for i in range(0, 600):
+    for i in range(0, 1200):
+        if i == 350:
+            ref_state = ref_state2
+            e.change_setpoint(ref_state=ref_state, keepsolve=False, wantparams=False, tag="sp")
+        elif 700 <= i < 1050:
+            ii += 1
+            ref_state = {}
+            for k in ref_state2.keys():
+                ref_state[k] = ref_state2[k] + ds[k] * ii/350
+            e.change_setpoint(ref_state=ref_state, keepsolve=False, wantparams=False, tag="sp")
 
         #: Plant
-        e.solve_dyn(e.PlantSample, stop_if_nopt=True)
+        e.solve_dyn(e.PlantSample, stop_if_nopt=True, keepfiles=False)
 
         e.update_state_real()  # Update the current state
         e.update_soi_sp_nmpc()  #: To keep track of the state of interest.
 
         e.update_measurement()  # Update the current measurement
-        e.compute_y_offset()  #: Get the offset for y
         #: State-estimation MHE
-        e.preparation_phase_mhe(as_strategy=False)
-        stat = e.solve_dyn(e.lsmhe,
-                           skip_update=False, iter_max=500,
-                           jacobian_regularization_value=1e-04,
-                           max_cpu_time=600,
-                           tag="lsmhe",
-                           keepsolve=False,
-                           wantparams=False)
-        if stat != 0:
-            sys.exit()
         #: Prior-phase and arrival cost
-        e.update_state_mhe()  #: get the state from mhe
-        e.prior_phase()
 
         e.print_r_mhe()
         e.print_r_dyn()
         #: Control NMPC
-        e.preparation_phase_nmpc(as_strategy=False, make_prediction=False)
-        try: #: First try
-            stat_nmpc = e.solve_dyn(e.olnmpc,
-                                    skip_update=False,
-                                    max_cpu_time=300,
-                                    tag="olnmpc")
-        except ValueError:
-            e.preparation_phase_nmpc(as_strategy=False, make_prediction=False)
-            try: #: Second Try
-                stat_nmpc = e.solve_dyn(e.olnmpc,
-                                        skip_update=False,
-                                        max_cpu_time=300,
-                                        jacobian_regularization_value=1e-04,
-                                        tag="olnmpc")
-            except ValueError:
-                stat_nmpc = 299
-
-        # if stat_nmpc != 0:  #: Last one
-        #     stat_nmpc = e.solve_dyn(e.olnmpc,
-        #                             skip_update=False,
-        #                             max_cpu_time=300,
-        #                             jacobian_regularization_value=1e-04,
-        #                             tag="olnmpc")
-        #     if stat_nmpc != 0:
-        #         sys.exit()
 
         e.print_r_nmpc()
-        if stat_nmpc == 0:
-            e.update_u(e.olnmpc)
+        e.SteadyRef2.u1.pprint()
+        e.update_u(e.SteadyRef2)
         #: Plant cycle
         e.cycleSamPlant(plant_step=True)
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
         e.noisy_plant_manager(sigma=0.0001, action="apply", update_level=True)
+        #: 0.001 is a good level
 
 
 if __name__ == '__main__':

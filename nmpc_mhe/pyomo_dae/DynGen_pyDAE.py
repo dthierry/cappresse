@@ -475,7 +475,7 @@ class DynGen_DAE(object):
         try:
             results = solver_ip.solve(d,
                                       tee=o_tee,
-                                      symbolic_solver_labels=True,
+                                      symbolic_solver_labels=False,
                                       report_timing=rep_timing,
                                       keepfiles=keepfiles, load_solutions=False)
         except (ApplicationError, ValueError):
@@ -749,7 +749,13 @@ class DynGen_DAE(object):
         Keyword Args:
             mod (pyomo.core.base.PyomoModel.ConcreteModel): The reference model (default d1)
             fe (int): The required finite element """
-        fe = kwargs.pop("fe", 0)
+        if hasattr(src, "is_steady"):
+            if src.is_steady:
+                fe = 1
+            else:
+                fe = 0
+        else:
+            fe = kwargs.pop("fe", 0)
         for u in self.u:
             uvar = getattr(src, u)
             self.curr_u[u] = value(uvar[fe])
