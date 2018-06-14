@@ -8,7 +8,7 @@ from pyomo.core.base import Param, ConcreteModel, Var, Constraint, Set, exp, sqr
 from pyomo.opt import ProblemFormat
 from nmpc_mhe.aux.cpoinsc import collptsgen
 from nmpc_mhe.aux.lagrange_f import lgr, lgry, lgrdot, lgrydot
-from nob4_con import *
+from mytestcon import *
 from initial_s_Gb import ss
 import os, sys
 
@@ -25,6 +25,7 @@ class bfb_dae(ConcreteModel):
         ConcreteModel.__init__(self)
         steady = kwargs.pop('steady', False)
         _t = kwargs.pop('_t', 1.0)
+
 
         nfe_x = kwargs.pop('nfe_x', 5)
         ncp_x = kwargs.pop('ncp_x', 3)
@@ -64,8 +65,9 @@ class bfb_dae(ConcreteModel):
         # For finite element = 1 .. K
         # This has to be > 0
 
-        self.fe_t = Set(initialize=[ii for ii in range(1, self.nfe_t + 1)])
-        self.fe_x = Set(initialize=[ii for ii in range(1, self.nfe_x + 1)])
+        self.fe_t = Set(initialize=[ii for ii in range(0, self.nfe_t)])
+        self.fe_t.pprint()
+        self.fe_x = Set(initialize=[ii for ii in range(0, self.nfe_x)])
 
         # collocation points
         # collocation points for diferential variables
@@ -82,15 +84,13 @@ class bfb_dae(ConcreteModel):
         # create collocation param
         self.taucp_x = Param(self.cp_x, initialize=self.tau_i_x)
         self.taucp_t = Param(self.cp_t, initialize=self.tau_i_t)
-        self.taucp_t.pprint()
 
         self.ldot_x = Param(self.cp_x, self.cp_x, initialize=
         (lambda m, j, k: lgrdot(j, m.taucp_x[k], ncp_x, self._alp_gauB_x, self._bet_gauB_x)))
         # (lambda m, i, j: fldoti_x(m, i, j, ncp_x, self._alp_gauB_x, self._bet_gauB_x)))
         self.ldot_t = Param(self.cp_t, self.cp_t, initialize=
         (lambda m, i, j: fldoti_t(m, i, j, self.ncp_t, self._alp_gauB_t, self._bet_gauB_t)))
-        self.ldot_t.pprint()
-        self.ldot_x.pprint()
+
         def lydot2(m, i, j):
             y = fldotyi(m, i, j, ncp_x, self._alp_gauB_x, self._bet_gauB_x)
             if abs(y) > 1e-08:
@@ -178,7 +178,7 @@ class bfb_dae(ConcreteModel):
         self.GasIn_T = Param(self.fe_t, initialize=40, mutable=True)  # needs i_value
         self._GasIn_z = {'c': 0.13, 'h': 0.06, 'n': 0.81}
         self._GasIn_z = {}
-        for i in range(1, self.nfe_t + 1):
+        for i in range(0, self.nfe_t):
             self._GasIn_z[i, 'c'] = 0.13
             self._GasIn_z[i, 'h'] = 0.06
             self._GasIn_z[i, 'n'] = 0.81
@@ -221,7 +221,7 @@ class bfb_dae(ConcreteModel):
 
         print(self.nfe_t)
         print(_t)
-        print()
+        # print()
         print(type(hi_t))
         print(hi_t)
         if type(self.hi_t) != dict:
@@ -265,20 +265,30 @@ class bfb_dae(ConcreteModel):
 
 
         #:  Initial state-Param
+        self.Ngb_ic = zero3_x if steady else Param(self.fe_x, self.cp_x, self.sp, initialize=1., mutable=True)
+        self.Hgb_ic = zero2_x if steady else Param(self.fe_x, self.cp_x, initialize=1., mutable=True)
+        self.Ngc_ic = zero3_x if steady else Param(self.fe_x, self.cp_x, self.sp, initialize=1., mutable=True)
         self.Hgc_ic = zero2_x if steady else Param(self.fe_x, self.cp_x, initialize=1., mutable=True)
         self.Nsc_ic = zero3_x if steady else Param(self.fe_x, self.cp_x, self.sp, initialize=1., mutable=True)
         self.Hsc_ic = zero2_x if steady else Param(self.fe_x, self.cp_x, initialize=1., mutable=True)
+        self.Nge_ic = zero3_x if steady else Param(self.fe_x, self.cp_x, self.sp, initialize=1., mutable=True)
         self.Hge_ic = zero2_x if steady else Param(self.fe_x, self.cp_x, initialize=1., mutable=True)
         self.Nse_ic = zero3_x if steady else Param(self.fe_x, self.cp_x, self.sp, initialize=1., mutable=True)
         self.Hse_ic = zero2_x if steady else Param(self.fe_x, self.cp_x, initialize=1., mutable=True)
+        self.mom_ic = zero2_x if steady else Param(self.fe_x, self.cp_x, initialize=1., mutable=True)
 
         #:  Derivative-var
+        self.dNgb_dt = zero5 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=0.0001)
+        self.dHgb_dt = zero4 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=0.0001)
+        self.dNgc_dt = zero5 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=0.0001)
         self.dHgc_dt = zero4 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=0.0001)
         self.dNsc_dt = zero5 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=0.0001)
         self.dHsc_dt = zero4 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=0.0001)
+        self.dNge_dt = zero5 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=0.0001)
         self.dHge_dt = zero4 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=0.0001)
         self.dNse_dt = zero5 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, initialize=0.0001)
         self.dHse_dt = zero4 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=0.0001)
+        self.dmom_dt = zero4 if steady else Var(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, initialize=0.0001)
 
         # --------------------------------------------------------------------------------------------------------------
 
@@ -489,59 +499,95 @@ class bfb_dae(ConcreteModel):
         # self.de_Gb.deactivate()
 
         #: Collocation equations
+        self.dvar_t_Ngb = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp,
+                                                         rule=fdvar_t_ngb)
+        self.dvar_t_Hgb = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_t_hgb)
+        self.dvar_t_Ngc = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp,
+                                                         rule=fdvar_t_ngc)
         self.dvar_t_Hgc = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_t_hgc)
         self.dvar_t_Nsc = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp,
                                                          rule=fdvar_t_nsc)
         self.dvar_t_Hsc = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_t_hsc)
+        self.dvar_t_Nge = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp,
+                                                         rule=fdvar_t_nge)
         self.dvar_t_Hge = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_t_hge)
         self.dvar_t_Nse = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp,
                                                          rule=fdvar_t_nse)
         self.dvar_t_Hse = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_t_hse)
+        self.dvar_t_mom = None if steady else Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, rule=fdvar_t_mom)
 
         #: Continuation equations (redundancy here)
         if self.nfe_t > 1:
             #: Noisy expressions
+            self.noisy_Ngb = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, self.sp, rule=fcp_t_ngb)
+            self.noisy_Hgb = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, rule=fcp_t_hgb)
+            self.noisy_Ngc = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, self.sp, rule=fcp_t_ngc)
             self.noisy_Hgc = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, rule=fcp_t_hgc)
             self.noisy_Nsc = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, self.sp, rule=fcp_t_nsc)
             self.noisy_Hsc = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, rule=fcp_t_hsc)
+            self.noisy_Nge = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, self.sp, rule=fcp_t_nge)
             self.noisy_Hge = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, rule=fcp_t_hge)
             self.noisy_Nse = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, self.sp, rule=fcp_t_nse)
             self.noisy_Hse = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, rule=fcp_t_hse)
+            self.noisy_mom = None if steady else Expression(self.fe_t, self.fe_x, self.cp_x, rule=fcp_t_mom)
 
-
+            self.cp_Ngb = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x, self.sp,
+                                                         rule=lambda m, i, ix, jx, c:
+                                                         m.noisy_Ngb[i, ix, jx, c] == 0.0
+                                                         if i < (m.nfe_t - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
+            self.cp_Hgb = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x,
+                                                         rule=lambda m, i, ix, jx:
+                                                         m.noisy_Hgb[i, ix, jx] == 0.0
+                                                         if i < (m.nfe_t - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
+            self.cp_Ngc = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x, self.sp,
+                                                         rule=lambda m, i, ix, jx, c:
+                                                         m.noisy_Ngc[i, ix, jx, c] == 0.0
+                                                         if i < (m.nfe_t - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
             self.cp_Hgc = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x,
                                                          rule=lambda m, i, ix, jx:
                                                          m.noisy_Hgc[i, ix, jx] == 0.0
-                                                         if i < m.nfe_t and 0 < jx <= m.ncp_x else Constraint.Skip)
+                                                         if i < ((m.nfe_t - 1) - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
             self.cp_Nsc = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x, self.sp,
                                                          rule=lambda m, i, ix, jx, c:
                                                          m.noisy_Nsc[i, ix, jx, c] == 0.0
-                                                         if i < m.nfe_t and 0 < jx <= m.ncp_x else Constraint.Skip)
+                                                         if i < ((m.nfe_t - 1) - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
             self.cp_Hsc = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x,
                                                          rule=lambda m, i, ix, jx:
                                                          m.noisy_Hsc[i, ix, jx] == 0.0
-                                                         if i < m.nfe_t and 0 < jx <= m.ncp_x else Constraint.Skip)
-
+                                                         if i < (m.nfe_t - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
+            self.cp_Nge = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x, self.sp,
+                                                         rule=lambda m, i, ix, jx, c:
+                                                         m.noisy_Nge[i, ix, jx, c] == 0.0
+                                                         if i < (m.nfe_t - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
             self.cp_Hge = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x,
                                                          rule=lambda m, i, ix, jx:
                                                          m.noisy_Hge[i, ix, jx] == 0.0
-                                                         if i < m.nfe_t and 0 < jx <= m.ncp_x else Constraint.Skip)
+                                                         if i < ((m.nfe_t - 1) - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
             self.cp_Nse = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x, self.sp,
                                                          rule=lambda m, i, ix, jx, c:
                                                          m.noisy_Nse[i, ix, jx, c] == 0.0
-                                                         if i < m.nfe_t and 0 < jx <= m.ncp_x else Constraint.Skip)
+                                                         if i < ((m.nfe_t - 1) - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
             self.cp_Hse = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x,
                                                          rule=lambda m, i, ix, jx:
                                                          m.noisy_Hse[i, ix, jx] == 0.0
-                                                         if i < m.nfe_t and 0 < jx <= m.ncp_x else Constraint.Skip)
+                                                         if i < (m.nfe_t - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
+            self.cp_mom = None if steady else Constraint(self.fe_t, self.fe_x, self.cp_x,
+                                                        rule=lambda m, i, ix, jx:
+                                                        m.noisy_mom[i, ix, jx] == 0.0
+                                                        if i < (m.nfe_t - 1) and 0 < jx <= m.ncp_x else Constraint.Skip)
 
         #: Initial condition-Constraints
+        self.Ngb_icc = None if steady else Constraint(self.fe_x, self.cp_x, self.sp, rule=ic_ngb_rule)
+        self.Hgb_icc = None if steady else Constraint(self.fe_x, self.cp_x, rule=ic_hgb_rule)
+        self.Ngc_icc = None if steady else Constraint(self.fe_x, self.cp_x, self.sp, rule=ic_ngc_rule)
         self.Hgc_icc = None if steady else Constraint(self.fe_x, self.cp_x, rule=ic_hgc_rule)
         self.Nsc_icc = None if steady else Constraint(self.fe_x, self.cp_x, self.sp, rule=ic_nsc_rule)
         self.Hsc_icc = None if steady else Constraint(self.fe_x, self.cp_x, rule=ic_hsc_rule)
+        self.Nge_icc = None if steady else Constraint(self.fe_x, self.cp_x, self.sp, rule=ic_nge_rule)
         self.Hge_icc = None if steady else Constraint(self.fe_x, self.cp_x, rule=ic_hge_rule)
         self.Nse_icc = None if steady else Constraint(self.fe_x, self.cp_x, self.sp, rule=ic_nse_rule)
         self.Hse_icc = None if steady else Constraint(self.fe_x, self.cp_x, rule=ic_hse_rule)
+        self.mom_icc = None if steady else Constraint(self.fe_x, self.cp_x, rule=ic_mom_rule)
 
         #: Algebraic definitions
         self.ae_ngb = Constraint(self.fe_t, self.cp_ta, self.fe_x, self.cp_x, self.sp, rule=ngb_rule)
@@ -713,25 +759,25 @@ class bfb_dae(ConcreteModel):
 
         def wKe2c_rule(m, it, jt, ix, jx):
             if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-                return (1/m.hi_t[it]) * (m.Ke2c[it, jt, ix, jx]) == (exp(m.wKe2c[it, jt, ix, jx])) * (1/m.hi_t[it])
+                return (m.Ke2c[it, jt, ix, jx]) == (exp(m.wKe2c[it, jt, ix, jx]))
             else:
                 return Constraint.Skip
 
         def wKe2e_rule(m, it, jt, ix, jx):
             if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-                return (1/m.hi_t[it]) * (m.Ke2e[it, jt, ix, jx]) == (exp(m.wKe2e[it, jt, ix, jx])) * (1/m.hi_t[it])
+                return (m.Ke2e[it, jt, ix, jx]) == (exp(m.wKe2e[it, jt, ix, jx]))
             else:
                 return Constraint.Skip
 
         def wKe3c_rule(m, it, jt, ix, jx):
             if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-                return (1/m.hi_t[it]) * (m.Ke3c[it, jt, ix, jx]) == (exp(m.wKe3c[it, jt, ix, jx])) * (1/m.hi_t[it])
+                return (m.Ke3c[it, jt, ix, jx]) == (exp(m.wKe3c[it, jt, ix, jx]))
             else:
                 return Constraint.Skip
 
         def wKe3e_rule(m, it, jt, ix, jx):
             if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-                return (1/m.hi_t[it]) * (m.Ke3e[it, jt, ix, jx]) == (exp(m.wKe3e[it, jt, ix, jx])) * (1/m.hi_t[it])
+                return (m.Ke3e[it, jt, ix, jx]) == (exp(m.wKe3e[it, jt, ix, jx]))
             else:
                 return Constraint.Skip
         # pls check this again
@@ -745,17 +791,17 @@ class bfb_dae(ConcreteModel):
 
         def wk2c_rule(m, it, jt, ix, jx):
             if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-                return (1/m.hi_t[it]) * (m.k2c[it, jt, ix, jx]) == (exp(m.wk2c[it, jt, ix, jx])) * (1/m.hi_t[it])
+                return (m.k2c[it, jt, ix, jx]) == (exp(m.wk2c[it, jt, ix, jx]))
             else:
                 return Constraint.Skip
 
         def a71_rulex(m, it, jt, ix, jx):
             if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-                return (1/m.hi_t[it]) * (m.r2c[it, jt, ix, jx]) == (exp(m.wk2c[it, jt, ix, jx]) * (
+                return (m.r2c[it, jt, ix, jx]) == (exp(m.wk2c[it, jt, ix, jx]) * (
                 (1 - 2 * (m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) - (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) *
                 m.nc[it, jt, ix, jx, 'h'] * m.rhos * m.P[it, jt, ix, jx] * exp(m.wyc[it, jt, ix, jx, 'c']) * 1E5 - (
                 ((m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) + (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) * m.nc[
-                    it, jt, ix, jx, 'c'] * m.rhos / exp(m.wKe2c[it, jt, ix, jx])))) * (1/m.hi_t[it])
+                    it, jt, ix, jx, 'c'] * m.rhos / exp(m.wKe2c[it, jt, ix, jx]))))
             else:
                 return Constraint.Skip
 
@@ -767,13 +813,14 @@ class bfb_dae(ConcreteModel):
 
         def wk3c_rule(m, it, jt, ix, jx):
             if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-                return (1/m.hi_t[it]) * (m.k3c[it, jt, ix, jx]) == (exp(m.wk3c[it, jt, ix, jx])) *(1/m.hi_t[it])
+                return (m.k3c[it, jt, ix, jx]) == (exp(m.wk3c[it, jt, ix, jx]))
             else:
                 return Constraint.Skip
 
         def a72_rulex(m, it, jt, ix, jx):
             if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-                return (1/m.hi_t[it]) * (m.r3c[it, jt, ix, jx]) == (exp(m.wk3c[it, jt, ix, jx]) * (((1 - 2 * (m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) - (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) ** 2) * ((m.P[it, jt, ix, jx] * exp(m.wyc[it, jt, ix, jx, 'c']) * 1E5) ** m.m1) - ((m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) * ((m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) + (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) /exp(m.wKe3c[it, jt, ix, jx])))) * (1/m.hi_t[it])
+                return (m.r3c[it, jt, ix, jx]) == \
+                       (exp(m.wk3c[it, jt, ix, jx]) * (((1 - 2 * (m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) - (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) ** 2) * ((m.P[it, jt, ix, jx] * exp(m.wyc[it, jt, ix, jx, 'c']) * 1E5) ** m.m1) - ((m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) * ((m.nc[it, jt, ix, jx, 'n'] * m.rhos / m.nv) + (m.nc[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) /exp(m.wKe3c[it, jt, ix, jx]))))
             else:
                 return Constraint.Skip
 
@@ -787,16 +834,16 @@ class bfb_dae(ConcreteModel):
 
         def wk2e_rule(m, it, jt, ix, jx):
             if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-                return (1/m.hi_t[it]) * (m.k2e[it, jt, ix, jx]) == (exp(m.wk2e[it, jt, ix, jx])) * (1/m.hi_t[it])
+                return (m.k2e[it, jt, ix, jx]) == (exp(m.wk2e[it, jt, ix, jx]))
             else:
                 return Constraint.Skip
 
         def a74_rulex(m, it, jt, ix, jx):
             if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-                return (1/m.hi_t[it]) * (m.r2e[it, jt, ix, jx]) == (exp(m.wk2e[it, jt, ix, jx]) * ((1. - 2. * (m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) - (
+                return (m.r2e[it, jt, ix, jx]) == (exp(m.wk2e[it, jt, ix, jx]) * ((1. - 2. * (m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) - (
                        m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) * m.ne[it, jt, ix, jx, 'h'] * m.rhos * (
                         m.P[it, jt, ix, jx] * exp(m.wye[it, jt, ix, jx, 'c']) * 1E5) - (((m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) + (m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) *
-                        m.ne[it, jt, ix, jx, 'c'] * m.rhos / exp(m.wKe2e[it, jt, ix, jx])))) * (1/m.hi_t[it])
+                        m.ne[it, jt, ix, jx, 'c'] * m.rhos / exp(m.wKe2e[it, jt, ix, jx]))))
             else:
                 return Constraint.Skip
 
@@ -808,13 +855,13 @@ class bfb_dae(ConcreteModel):
 
         def wk3e_rule(m, it, jt, ix, jx):
             if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-                return (1/m.hi_t[it]) * (m.k3e[it, jt, ix, jx]) == (exp(m.wk3e[it, jt, ix, jx])) * (1/m.hi_t[it])
+                return (m.k3e[it, jt, ix, jx]) == (exp(m.wk3e[it, jt, ix, jx]))
             else:
                 return Constraint.Skip
 
         def a75_rulex(m, it, jt, ix, jx):
             if 0 < jt <= m.ncp_t and 0 < jx <= m.ncp_x:
-                return (1/m.hi_t[it]) * (m.r3e[it, jt, ix, jx]) == (exp(m.wk3e[it, jt, ix, jx]) * (((1. - 2. * (m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) - (m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) ** 2) * (((m.P[it, jt, ix, jx] * exp(m.wye[it, jt, ix, jx, 'c'])) ** m.m1) * (1E5 ** m.m1)) - ((m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) * ((m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) + (m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) /exp(m.wKe3e[it, jt, ix, jx])))) * (1/m.hi_t[it])
+                return (m.r3e[it, jt, ix, jx]) == (exp(m.wk3e[it, jt, ix, jx]) * (((1. - 2. * (m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) - (m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) ** 2) * (((m.P[it, jt, ix, jx] * exp(m.wye[it, jt, ix, jx, 'c'])) ** m.m1) * (1E5 ** m.m1)) - ((m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) * ((m.ne[it, jt, ix, jx, 'n'] * m.rhos / m.nv) + (m.ne[it, jt, ix, jx, 'c'] * m.rhos / m.nv)) /exp(m.wKe3e[it, jt, ix, jx]))))
             else:
                 return Constraint.Skip
 
@@ -875,7 +922,7 @@ class bfb_dae(ConcreteModel):
 
         def e20_rule_alternative(m, it, jt):
             if 0 < jt <= m.ncp_t:
-                return (1/m.hi_t[it]) * (m.Sit[it] - m.Sot[it, jt]) == 0.0
+                return (m.Sit[it] - m.Sot[it, jt]) == 0.0
             else:
                 return Constraint.Skip
 
@@ -915,7 +962,7 @@ class bfb_dae(ConcreteModel):
 
     def create_bounds(self):
         print('problem with bounds activated')
-        for it in range(1, self.nfe_t + 1):
+        for it in range(0, self.nfe_t):
             for jt in range(1, self.ncp_t + 1):
                 # self.GasOut_P[it, jt].setlb(0)
                 #self.GasOut_F[it, jt].setlb(0)
@@ -935,7 +982,7 @@ class bfb_dae(ConcreteModel):
                 # self.P_l[it, jt].setlb(0)
                 self.Phx_l[it, jt].setlb(0)
                 self.c_capture[it, jt].setlb(0)
-        for it in range(1, self.nfe_t + 1):
+        for it in range(0, self.nfe_t):
             for jt in range(1, self.ncp_t + 1):
                 for cx in ['c', 'h', 'n']:
                     #self.GasOut_z[it, jt, cx].setlb(0)
@@ -943,9 +990,9 @@ class bfb_dae(ConcreteModel):
                     self.ccwin_l[it, jt, cx].setlb(0)
                     self.ne_l[it, jt, cx].setlb(0)
 
-        for it in range(1, self.nfe_t + 1):
+        for it in range(0, self.nfe_t):
             for jt in range(1, self.ncp_t + 1):
-                for ix in range(1, self.nfe_x + 1):
+                for ix in range(0, self.nfe_x):
                     for jx in range(0, self.ncp_x + 1):
                         self.Ar[it, jt, ix, jx].setlb(0)
                         self.db[it, jt, ix, jx].setlb(0)
@@ -1029,9 +1076,9 @@ class bfb_dae(ConcreteModel):
                         self.vbr[it, jt, ix, jx].setlb(0)
                         #self.ve[it, jt, ix, jx].setlb(1e-08)
                         self.vg[it, jt, ix, jx].setlb(0)
-        for it in range(1, self.nfe_t + 1):
+        for it in range(0, self.nfe_t):
             for jt in range(1, self.ncp_t + 1):
-                for ix in range(1, self.nfe_x + 1):
+                for ix in range(0, self.nfe_x):
                     for jx in range(0, self.ncp_x + 1):
                         for cx in ['c', 'h', 'n']:
                             # self.cb[it, jt, ix, jx, cx].setlb(0)
@@ -1074,18 +1121,19 @@ class bfb_dae(ConcreteModel):
                     print(var.name,"\t",str(var.index()),"\tnot found")
                 pass
 
-        if self.nfe_x > 5:
+        if self.nfe_x > 4:
             for var in self.component_objects(Var):
                 for ks in var.keys():
                     if type(ks) != tuple:
                         break
                     if len(ks) >= 4:
-                        if ks[2] > 5:
-                            var[ks].set_value(value(var[(self.nfe_t, self.ncp_t, 2, self.ncp_x) + ks[4:]]))
+                        if ks[2] > 4:
+                            var[ks].set_value(value(var[(self.nfe_t, self.ncp_t, 1, self.ncp_x) + ks[4:]]))
                             # print(var[ks].value)
 
         if self.nfe_t == 1 and self.ncp_t == 1:
             solver = SolverFactory('asl:ipopt')
+            solver.options["print_user_options"] = 'yes'
             with open("ipopt.opt", "w") as f:
                 f.write("max_iter 300\n")
                 f.write("start_with_resto yes\n")
@@ -1159,6 +1207,12 @@ class bfb_dae(ConcreteModel):
                 f.write("output_file \"testing.txt\"\n")
                 f.write("print_info_string yes\n")
                 f.write("linear_solver ma57\n")
+                f.write("resto.dual_inf_tol 1e-06\n")
+                f.write("resto.acceptable_dual_inf_tol 1e-06\n")
+                # f.write("resto.constr_viol_tol 1e-06\n")
+                # f.write("resto.acceptable_constr_viol_tol 1e-06\n")
+                f.write("gamma_phi 1e-08\n")
+                f.write("gamma_theta 1e-08\n")
                 # f.write("resto.max_iter 1\n")
                 f.close()
 
@@ -1172,12 +1226,15 @@ class bfb_dae(ConcreteModel):
             with open("mult_bounds.txt", "w") as f:
                 self.ipopt_zL_out.pprint(ostream=f)
                 f.close()
-            self.ipopt_zL_out.pprint()
-            self.ipopt_zU_out.pprint()
+            # self.ipopt_zL_out.pprint()
+            # self.ipopt_zU_out.pprint()
             self.clear_bounds()
             someresults = solver.solve(self, tee=True, symbolic_solver_labels=True)
+            self.display(filename="whatevs")
+            # self.dumm = Var()
             self.write_nl(name="nonactive.nl")
             self.snap_shot(filename="fnbound.py")
+
 
             # sys.exit()
 
@@ -1201,7 +1258,8 @@ class bfb_dae(ConcreteModel):
             for var in self.component_objects(Var, active=True):
                 sv = var.name
                 for key in var.iterkeys():
-                    if not key:
+                    if key is None:
+                        print(sv, key, type(key))
                         val = value(var)
                         f.write("snap[\'" + sv + "\'," + str(k0) + "] = " + str(val))
                     else:
