@@ -617,6 +617,7 @@ class NmpcGen(DynGen):
         #: Create a dictionary whose keys are the same as the ref state
         weights_ref = dict.fromkeys(self.ref_state.keys())
         model_ref = self.PlantSample  #: I am not sure about this
+
         for i in self.ref_state.keys():
             v = getattr(model_ref, i[0])
             vkey = i[1]
@@ -639,7 +640,8 @@ class NmpcGen(DynGen):
             ofexp += weights[i] * (v[(0, 1) + vkey] - self.ref_state[i]) ** 2
 
         self.SteadyRef2.obfun_SteadyRef2.set_value(ofexp)
-        self.solve_dyn(self.SteadyRef2, iter_max=500, stop_if_nopt=True, **kwargs)
+        iter_max = kwargs.pop("iter_max", 500)
+        self.solve_dyn(self.SteadyRef2, iter_max=iter_max, stop_if_nopt=True, **kwargs)
 
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef2, i[0])
@@ -648,6 +650,8 @@ class NmpcGen(DynGen):
             print("target {:}".format(i[0]), "key {:}".format(i[1]), "weight {:f}".format(weights[i]),
                   "value {:f}".format(val))
         self.update_targets_nmpc()
+
+        return weights
 
     def compute_offset_state(self, src_kind="estimated"):
         """Missing noisy"""
