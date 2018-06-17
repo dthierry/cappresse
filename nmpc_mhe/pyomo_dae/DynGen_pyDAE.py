@@ -221,7 +221,7 @@ class DynGen_DAE(object):
 
             results = ip.solve(self.SteadyRef,
                                tee=True,
-                               symbolic_solver_labels=True,
+                               symbolic_solver_labels=False,
                                report_timing=True)
 
             self.SteadyRef.solutions.load_from(results)
@@ -673,7 +673,7 @@ class DynGen_DAE(object):
         elif src_kind == "dict":
             for u in self.u:
                 plant_var = getattr(d_mod, u)
-                target[u] = self.curr_u[u]
+                target[u] = self.curr_u[u]  #: Value to be injected
                 current[u] = value(plant_var[0])
                 self.journalist("I", self._iteration_count,
                                 "plant_input",

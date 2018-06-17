@@ -106,8 +106,7 @@ def main():
 
     e.load_iguess_steady()
     ipopt.solve(e.PlantSample,
-                tee=True,
-                symbolic_solver_labels=True)
+                tee=True)
 
     e.init_lsmhe_prep(e.PlantSample)
     e.shift_mhe()
@@ -127,15 +126,19 @@ def main():
     e.create_suffixes_nmpc()
     e.update_targets_nmpc()
     e.compute_QR_nmpc(n=-1)
-    e.new_weights_olnmpc(1e-04, 1e+00)
+    e.new_weights_olnmpc(1e-04, 1e-04)
     ii = 0
+    f = open("errors_mhe", "w")
+    f.close()
+    f = open("errors_nmpc", "w")
+    f.close()
     #: Problem loop
     for i in range(0, 1200):
         if i == 350:
             ref_state = ref_state2
             e.change_setpoint(ref_state=ref_state, keepsolve=False, wantparams=False, tag="sp")
             e.compute_QR_nmpc(n=-1)
-            e.new_weights_olnmpc(1e-04, 1e+06)
+            e.new_weights_olnmpc(1e-04, 1e-04)
         elif 700 <= i < 1050:
             ii += 1
             ref_state = {}
@@ -143,7 +146,7 @@ def main():
                 ref_state[k] = ref_state2[k] + ds[k] * ii/350
             e.change_setpoint(ref_state=ref_state, keepsolve=False, wantparams=False, tag="sp")
             e.compute_QR_nmpc(n=-1)
-            e.new_weights_olnmpc(1e-04, 1e+06)
+            e.new_weights_olnmpc(1e-04, 1e-04)
 
         #: Plant
         e.solve_dyn(e.PlantSample, stop_if_nopt=True)
@@ -155,55 +158,84 @@ def main():
         e.compute_y_offset()  #: Get the offset for y
         #: State-estimation MHE
         e.preparation_phase_mhe(as_strategy=False)
-        stat = e.solve_dyn(e.lsmhe,
-                           skip_update=False, iter_max=500,
-                           jacobian_regularization_value=1e-04,
-                           max_cpu_time=600,
-                           tag="lsmhe",
-                           keepsolve=False,
-                           wantparams=False)
+        try:
+            stat = e.solve_dyn(e.lsmhe,
+                               skip_update=False, iter_max=500,
+                               jacobian_regularization_value=1e-04,
+                               max_cpu_time=600,
+                               tag="lsmhe",
+                               keepsolve=False,
+                               wantparams=False)
+        except ValueError:
+            try:
+                stat = e.solve_dyn(e.lsmhe,
+                                   skip_update=False, iter_max=500,
+                                   jacobian_regularization_value=1e-02,
+                                   max_cpu_time=600,
+                                   tag="lsmhe",
+                                   keepsolve=False,
+                                   wantparams=False)
+            except ValueError:
+                stat = 299
+
+
         if stat != 0:
-            sys.exit()
-        #: Prior-phase and arrival cost
-        e.update_state_mhe()  #: get the state from mhe
-        e.prior_phase()
+            f = open("errors_mhe", "a")
+            info_s = "iter\t" + str(i) + "\tstat\t" + str(stat) + "\n"
+            f.write(info_s)
+            f.close()
+        else:
+
+            #: Prior-phase and arrival cost
+            e.update_state_mhe()  #: get the state from mhe
+            e.prior_phase()
 
         e.print_r_mhe()
         e.print_r_dyn()
-        #: Control NMPC
-        e.preparation_phase_nmpc(as_strategy=False, make_prediction=False)
-        try: #: First try
-            stat_nmpc = e.solve_dyn(e.olnmpc,
-                                    skip_update=False,
-                                    max_cpu_time=300,
-                                    tag="olnmpc")
-        except ValueError:
+        if stat != 0:
+            stat_nmpc = 500 #: MHE failed
+        else:
+            #: Control NMPC
             e.preparation_phase_nmpc(as_strategy=False, make_prediction=False)
-            try: #: Second Try
+            try: #: First try
                 stat_nmpc = e.solve_dyn(e.olnmpc,
                                         skip_update=False,
                                         max_cpu_time=300,
-                                        jacobian_regularization_value=1e-04,
                                         tag="olnmpc")
             except ValueError:
-                stat_nmpc = 299
-
-        # if stat_nmpc != 0:  #: Last one
-        #     stat_nmpc = e.solve_dyn(e.olnmpc,
-        #                             skip_update=False,
-        #                             max_cpu_time=300,
-        #                             jacobian_regularization_value=1e-04,
-        #                             tag="olnmpc")
-        #     if stat_nmpc != 0:
-        #         sys.exit()
+                e.preparation_phase_nmpc(as_strategy=False, make_prediction=False)
+                try: #: Second Try
+                    stat_nmpc = e.solve_dyn(e.olnmpc,
+                                            skip_update=False,
+                                            max_cpu_time=300,
+                                            jacobian_regularization_value=1e-04,
+                                            tag="olnmpc")
+                except ValueError:
+                    stat_nmpc = 299
 
         e.print_r_nmpc()
+
         if stat_nmpc == 0:
             e.update_u(e.olnmpc)
+        else:
+            f = open("errors_nmpc", "a")
+            info_s = "iter\t" + str(i) + "\tstat\t" + str(stat_nmpc) + "\n"
+            f.write(info_s)
+            f.close()
+            e.update_u(e.SteadyRef2)
+
         #: Plant cycle
         e.cycleSamPlant(plant_step=True)
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
         e.noisy_plant_manager(sigma=0.0001, action="apply", update_level=True)
+
+        with open("debu.txt","a") as f:
+            f.write("iter\t" + str(i) + "\n")
+            for u in e.u:
+                uv = getattr(e.PlantSample, u)
+                uv.display(ostream=f)
+            f.write("\n")
+
         #: 0.001 is a good level
 
 

@@ -1125,7 +1125,7 @@ class MheGen_DAE(NmpcGen_DAE):
 
         self.journalist("I", self._iteration_count, "sens_dot_mhe", self.lsmhe.name)
 
-        results = self.dot_driver.solve(self.lsmhe, tee=True, symbolic_solver_labels=True)
+        results = self.dot_driver.solve(self.lsmhe, tee=True, symbolic_solver_labels=False)
         self.lsmhe.solutions.load_from(results)
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
 
@@ -1151,7 +1151,7 @@ class MheGen_DAE(NmpcGen_DAE):
         self.lsmhe.set_suffix_value(self.lsmhe.f_timestamp, self.int_file_mhe_suf)
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
         self.create_sens_suffix_mhe()
-        results = self.k_aug_sens.solve(self.lsmhe, tee=True, symbolic_solver_labels=True)
+        results = self.k_aug_sens.solve(self.lsmhe, tee=True, symbolic_solver_labels=False)
         self.lsmhe.solutions.load_from(results)
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
         ftimings = open("timings_k_aug.txt", "r")

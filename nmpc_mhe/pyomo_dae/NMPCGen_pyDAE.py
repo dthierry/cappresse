@@ -453,7 +453,7 @@ class NmpcGen_DAE(DynGen_DAE):
 
         self.journalist("I", self._iteration_count, "sens_dot_nmpc", self.olnmpc.name)
 
-        results = self.dot_driver.solve(self.olnmpc, tee=True, symbolic_solver_labels=True)
+        results = self.dot_driver.solve(self.olnmpc, tee=True)
         self.olnmpc.solutions.load_from(results)
         self.olnmpc.f_timestamp.display(ostream=sys.stderr)
 
@@ -480,7 +480,7 @@ class NmpcGen_DAE(DynGen_DAE):
 
         self.olnmpc.set_suffix_value(self.olnmpc.f_timestamp, self.int_file_nmpc_suf)
         self.olnmpc.f_timestamp.display(ostream=sys.stderr)
-        results = self.k_aug_sens.solve(self.olnmpc, tee=True, symbolic_solver_labels=True)
+        results = self.k_aug_sens.solve(self.olnmpc, tee=True, symbolic_solver_labels=False)
         self.olnmpc.solutions.load_from(results)
         #: Read the reported timings from `k_aug`
         ftimings = open("timings_k_aug.txt", "r")
