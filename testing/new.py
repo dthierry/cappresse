@@ -67,6 +67,8 @@ def main():
                nfe_t=nfe_mhe, ncp_t=1,
                k_aug_executable="/home/dav0/devzone/k_aug/bin/k_aug",
                dot_driver_executable="/home/dav0/devzone/k_aug/src/k_aug/dot_driver/dot_driver"
+               # k_aug_executable="/home/dmolinat/k_aug/bin/kaug",
+               # dot_driver_executable="/home/dmolinat/k_aug/src/k_aug/dot_driver/dot_driver"
                )
 
     e.load_solfile(e.SteadyRef, "ref_ss.sol")  #: Loads solfile snap
