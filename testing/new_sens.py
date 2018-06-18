@@ -11,9 +11,9 @@ from subprocess import call
 """Testing the new preparation phases with ideal strategies"""
 
 def main():
-    call(["rm", "*.txt"])  #: Self cleanup
+    call(["rm", "*.txt"])  #: Self cleanup (hopefuly)
     x_weight = 1E-04
-    u_weight = 1E+00
+    u_weight = 1E+06
     states = ["Hgc", "Nsc", "Hsc", "Hge", "Nse", "Hse"]
     x_noisy = ["Hgc", "Nsc", "Hsc", "Hge", "Nse", "Hse"]
     u = ["u1"]
@@ -188,6 +188,28 @@ def main():
         e.update_noise_meas(m_cov)  #: the noise it is not being added
         e.update_measurement()
         e.compute_y_offset()  #: Get the offset for y
+
+        #: !!!!
+        #: Do dot sens
+        #: !!!!
+        #: Note that any change in the model at this point is irrelevant for sens_update
+
+        if stat_nmpc == 0:
+            if i > 1:
+                e.sens_dot_mhe()  #: Do sensitivity update for mhe
+            e.update_state_mhe(as_nmpc_mhe_strategy=True)  #: Get offset for x
+            if i > 1:
+                e.sens_dot_nmpc()
+            e.update_u(e.olnmpc)  #: Get the resulting input for k+1
+        else:
+            e.update_u(e.SteadyRef2)  #: Default
+
+        e.print_r_mhe()
+        e.print_r_dyn()
+
+        e.preparation_phase_mhe(as_strategy=True)
+
+
         try:
             stat_mhe = e.solve_dyn(e.lsmhe,
                                skip_update=False, iter_max=500,
@@ -215,7 +237,7 @@ def main():
             f.write(info_s)
             f.close()
         else:
-
+            e.sens_k_aug_mhe()  # sensitivity matrix for mhe
             #: Prior-phase and arrival cost
             e.update_state_mhe()  #: get the state from mhe
             e.prior_phase()
@@ -246,22 +268,19 @@ def main():
         e.print_r_nmpc()
 
         if stat_nmpc == 0:
-            e.update_u(e.olnmpc)
+            e.sens_k_aug_nmpc()  # sensitivity matrix for nmpc
         else:
             f = open("errors_nmpc", "a")
             info_s = "iter\t" + str(i) + "\tstat\t" + str(stat_nmpc) + "\n"
             f.write(info_s)
             f.close()
-            e.update_u(e.SteadyRef2)
 
         #: Plant cycle
         e.cycleSamPlant(plant_step=True)
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
         e.noisy_plant_manager(sigma=0.0001, action="apply", update_level=True)
-
         #: 0.001 is a good level
 
 
 if __name__ == '__main__':
     e = main()
-
