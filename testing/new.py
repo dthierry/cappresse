@@ -12,7 +12,8 @@ from subprocess import call
 
 def main():
     call(["rm", "*.txt"])  #: Self cleanup
-    u_weight = 1E-04
+    x_weight = 1E-04
+    u_weight = 1E+00
     states = ["Hgc", "Nsc", "Hsc", "Hge", "Nse", "Hse"]
     x_noisy = ["Hgc", "Nsc", "Hsc", "Hge", "Nse", "Hse"]
     u = ["u1"]
@@ -136,7 +137,7 @@ def main():
     e.create_suffixes_nmpc()
     e.update_targets_nmpc()
     e.compute_QR_nmpc(n=-1)
-    e.new_weights_olnmpc(u_weight, 1e+06)
+    e.new_weights_olnmpc(x_weight, u_weight)
     e.solve_dyn(e.PlantSample, stop_if_nopt=True)
     # isnap = [i*50 for i in range(1, 25)]
     isnap = [i*25 for i in range(2, 30)]
