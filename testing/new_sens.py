@@ -118,7 +118,6 @@ def main():
     e.init_lsmhe_prep(e.PlantSample)
     e.shift_mhe()
     e.init_step_mhe()
-    e.lsmhe.pprint(filename="blyat.txt")
     e.solve_dyn(e.lsmhe,
                 skip_update=False,
                 max_cpu_time=1200,
