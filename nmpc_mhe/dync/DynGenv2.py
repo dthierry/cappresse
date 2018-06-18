@@ -453,6 +453,7 @@ class DynGen(object):
 
 
         # Solution attempt
+        results = None
         try:
             results = solver_ip.solve(d,
                                       tee=o_tee,
@@ -463,15 +464,15 @@ class DynGen(object):
             stop_if_nopt = 1
 
         if tag == "plant":  #: If this is the plant, don't load the solutions if there is a failure
-            print(results.solver.status)
-            print(results.solver.termination_condition)
             if results.solver.status != SolverStatus.ok or \
                     results.solver.termination_condition != TerminationCondition.optimal:
                 pass
             else:
-                d.solutions.load_from(results)
+                if not results is None:
+                    d.solutions.load_from(results)
         else:
-            d.solutions.load_from(results)
+            if not results is None:
+                d.solutions.load_from(results)
         if keepsolve:
             self.write_solfile(d, tag, solve=False)  #: solve false otherwise it'll call sol_dyn again
         wantparams = kwargs.pop("wantparams", False)
