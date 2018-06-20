@@ -984,12 +984,12 @@ class DynGen(object):
 
         # self.lsmhe.pprint(filename="algeb_mod.txt")
 
-    def gradients_tool(self):
-        self.journalist("E", self._iteration_count, "GradientsTool", "Begin")
-        src = self.PlantSample
+    def gradients_tool(self, src):
+        self.journalist("I", self._iteration_count, "GradientsTool", "Begin")
+        #src = self.PlantSample
         src.dum_objfun = Objective(expr=1, sense=minimize)
-        self.PlantSample.var_order = Suffix(direction=Suffix.EXPORT)
-        self.PlantSample.con_order = Suffix(direction=Suffix.EXPORT)
+        src.var_order = Suffix(direction=Suffix.EXPORT)
+        src.con_order = Suffix(direction=Suffix.EXPORT)
 
         src.pprint(filename="first.txt")
         #: Fix/Deactivate irrelevant stuff
@@ -1045,7 +1045,7 @@ class DynGen(object):
         # print(colcount)
 
 
-        self.PlantSample.write_nl(name="dgy.nl")
+        src.write_nl(name="dgy.nl")
         sfxdict = dict()
         self.parse_rc("dgy.row", sfxdict)
         colcount = 1
@@ -1075,7 +1075,7 @@ class DynGen(object):
                 except IndexError:
                     print("Something whent wrong :(\t", var.name, file=sys.stderr)
 
-        self.PlantSample.write_nl(name="dgx.nl")
+        src.write_nl(name="dgx.nl")
         
         sfxdict = dict()
         self.parse_rc("dgx.col", sfxdict)
@@ -1116,7 +1116,7 @@ class DynGen(object):
             for index in con.keys():
                 if index[1] == self.ncp_t:
                     con[index].activate()
-        self.PlantSample.reconstruct()
+        src.reconstruct()
         # self.PlantSample.write_nl(name="dfy.nl")
         
         sfxdict = dict()
@@ -1141,9 +1141,9 @@ class DynGen(object):
                 except IndexError:
                     print("Something whent wrong :(\t", var.name, file=sys.stderr)
             # var.pprint()
-        self.PlantSample.reconstruct()
+        src.reconstruct()
         src.pprint(filename="second.txt")
-        self.PlantSample.write_nl(name="dfx.nl")
+        src.write_nl(name="dfx.nl")
 
 
     @staticmethod
