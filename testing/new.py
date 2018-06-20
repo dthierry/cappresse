@@ -13,7 +13,7 @@ from subprocess import call
 def main():
     call(["rm", "*.txt"])  #: Self cleanup
     x_weight = 1E-04
-    u_weight = 1E+00
+    u_weight = 1E+06
     states = ["Hgc", "Nsc", "Hsc", "Hge", "Nse", "Hse"]
     x_noisy = ["Hgc", "Nsc", "Hsc", "Hge", "Nse", "Hse"]
     u = ["u1"]
