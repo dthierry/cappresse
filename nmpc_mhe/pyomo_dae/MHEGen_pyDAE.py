@@ -12,7 +12,6 @@ from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expressio
     ConstraintList, TransformationFactory, ConcreteModel
 from pyomo.core.kernel.numvalue import value as value
 from pyutilib.common._exceptions import ApplicationError
-
 from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model
 from nmpc_mhe.aux.utils import t_ij, clone_the_model, aug_discretization, create_bounds
 from nmpc_mhe.pyomo_dae.NMPCGen_pyDAE import NmpcGen_DAE
@@ -346,6 +345,24 @@ class MheGen_DAE(NmpcGen_DAE):
                     f.write(jth)
                     f.write('\t')
             f.close()
+
+        f = open("timings_mhe_kaug_sens.txt", "a")
+        f.write('\n' + '-' * 30 + '\n')
+        f.write(str(self.int_file_mhe_suf))
+        f.write('\n')
+        f.close()
+
+        f = open("timings_mhe_kaug_cov.txt", "a")
+        f.write('\n' + '-' * 30 + '\n')
+        f.write(str(self.int_file_mhe_suf))
+        f.write('\n')
+        f.close()
+
+        f = open("timings_mhe_dot.txt", "a")
+        f.write('\n' + '-'*30 +'\n')
+        f.write(str(self.int_file_mhe_suf))
+        f.write('\n')
+        f.close()
 
     def init_lsmhe_prep(self, ref, update=True):
         # type: (ConcreteModel, bool) -> None
@@ -837,6 +854,13 @@ class MheGen_DAE(NmpcGen_DAE):
         print("I[[load covariance]] e-states nrows {:d} ncols {:d}".format(len(l), len(ll)))
         print("-" * 120)
 
+        ftimings = open("timings_k_aug.txt", "r")
+        s = ftimings.readline()
+        ftimings.close()
+        f = open("timings_mhe_kaug_cov.txt", "a")
+        f.write(str(s) + '\n')
+        f.close()
+
     def set_state_covariance(self):
         """Sets covariance(inverse) for the prior_state.
         Args:
@@ -1108,9 +1132,11 @@ class MheGen_DAE(NmpcGen_DAE):
 
         #: Added this bit to account for the case when the last input does not match the one used
         #: For the prediction for the next measurement of the MHE problem.
-        for u in self.u:
-            con_w = getattr(self.lsmhe, u + "_cdummy_mhe")
-            con_w[self.nfe_tmhe-1].set_suffix_value(self.lsmhe.npdp, self.curr_u_offset[u])
+        for j in range(0, self.ncp_tmhe + 1):
+            t_mhe = t_ij(self.lsmhe.t, self.nfe_tmhe - 1, j)
+            for u in self.u:
+                con_w = getattr(self.lsmhe, u + "_cdummy_mhe")
+                con_w[t_mhe].set_suffix_value(self.lsmhe.npdp, self.curr_u_offset[u])
 
 
         if hasattr(self.lsmhe, "f_timestamp"):
@@ -1132,6 +1158,9 @@ class MheGen_DAE(NmpcGen_DAE):
         ftiming = open("timings_dot_driver.txt", "r")
         s = ftiming.readline()
         ftiming.close()
+        f = open("timings_mhe_dot.txt", "a")
+        f.write(str(s) + '\n')
+        f.close()
         k = s.split()
         self._dot_timing = k[0]
 
@@ -1157,6 +1186,9 @@ class MheGen_DAE(NmpcGen_DAE):
         ftimings = open("timings_k_aug.txt", "r")
         s = ftimings.readline()
         ftimings.close()
+        f = open("timings_mhe_kaug_sens.txt", "a")
+        f.write(str(s) + '\n')
+        f.close()
         self._k_timing = s.split()
 
     def update_state_mhe(self, as_nmpc_mhe_strategy=False):

@@ -47,6 +47,17 @@ class NmpcGen_DAE(DynGen_DAE):
         self.soi_dict = {}  #: State-of-interest.
         self.sp_dict = {}  #: Set-point.
         self.u_dict = dict.fromkeys(self.u, [])
+        f = open("timings_nmpc_kaug_sens.txt", "a")
+        f.write('\n' + '-' * 30 + '\n')
+        f.write(str(self.int_file_nmpc_suf))
+        f.write('\n')
+        f.close()
+
+        f = open("timings_nmpc_dot.txt", "a")
+        f.write('\n' + '-' * 30 + '\n')
+        f.write(str(self.int_file_nmpc_suf))
+        f.write('\n')
+        f.close()
 
         # self.res_file_name = "res_nmpc_" + str(int(time.time())) + ".txt"
 
@@ -460,6 +471,11 @@ class NmpcGen_DAE(DynGen_DAE):
         ftiming = open("timings_dot_driver.txt", "r")
         s = ftiming.readline()
         ftiming.close()
+
+        f = open("timings_nmpc_dot.txt", "a")
+        f.write(str(s) + '\n')
+        f.close()
+
         k = s.split()
         self._dot_timing = k[0]
 
@@ -486,6 +502,11 @@ class NmpcGen_DAE(DynGen_DAE):
         ftimings = open("timings_k_aug.txt", "r")
         s = ftimings.readline()
         ftimings.close()
+
+        f = open("timings_nmpc_kaug.txt", "a")
+        f.write(str(s) + '\n')
+        f.close()
+
         self._k_timing = s.split()
 
     def find_target_ss(self, ref_state=None, **kwargs):

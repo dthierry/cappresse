@@ -78,7 +78,8 @@ def main():
                    override_solver_check=True,
                    var_bounds=state_bounds,
                    nfe_t=10,
-                   k_aug_executable='/home/dav0/devzone/k_aug/bin/k_aug')
+                   k_aug_executable='/home/dav0/devzone/k_aug/bin/k_aug',
+                   dot_driver_executable='/home/dav0/devzone/k_aug/src/k_aug/dot_driver/dot_driver')
     Q = {}
     U = {}
     R = {}
@@ -150,15 +151,38 @@ def main():
             e.new_weights_olnmpc(1e-04, 1e-04)
 
         #: Plant
-        e.solve_dyn(e.PlantSample, stop_if_nopt=True)
+        stat = e.solve_dyn(e.PlantSample, stop_if_nopt=False, tag="plant")
+        if stat == 1:
+            e.noisy_plant_manager(action="remove")
+            e.solve_dyn(e.PlantSample, stop_if_nopt=True, tag="plant")  #: Try again (without noise)
 
-        e.update_state_real()  # Update the current state
-        e.update_soi_sp_nmpc()  #: To keep track of the state of interest.
-
-        e.update_measurement()  # Update the current measurement
+        e.update_state_real()  # update the current state
+        e.update_soi_sp_nmpc()
+        e.update_measurement()
         e.compute_y_offset()  #: Get the offset for y
-        #: State-estimation MHE
-        e.preparation_phase_mhe(as_strategy=False)
+
+        #: !!!!
+        #: Do dot sens
+        #: !!!!
+        #: Note that any change in the model at this point is irrelevant for sens_update
+        if i == 4:
+            e.lsmhe.pprint(filename="bresso.txt")
+        if stat_nmpc == 0:
+            if i > 1:
+                e.sens_dot_mhe()  #: Do sensitivity update for mhe
+            e.update_state_mhe(as_nmpc_mhe_strategy=True)  #: Get offset for x
+            if i > 1:
+                e.sens_dot_nmpc()
+            e.update_u(e.olnmpc)  #: Get the resulting input for k+1
+        else:
+            e.update_u(e.SteadyRef2)  #: Default
+
+        e.print_r_mhe()
+        e.print_r_dyn()
+
+        e.preparation_phase_mhe(as_strategy=True)
+
+
         try:
             stat_mhe = e.solve_dyn(e.lsmhe,
                                skip_update=False, iter_max=500,
@@ -171,8 +195,8 @@ def main():
             try:
                 stat_mhe = e.solve_dyn(e.lsmhe,
                                    skip_update=False, iter_max=500,
-                                   jacobian_regularization_value=1e-02,
-                                   max_cpu_time=600,
+                                   jacobian_regularization_value=1e-01,
+                                   max_cpu_time=1200,
                                    tag="lsmhe",
                                    keepsolve=False,
                                    wantparams=False)
@@ -186,13 +210,11 @@ def main():
             f.write(info_s)
             f.close()
         else:
-
+            e.sens_k_aug_mhe()  # sensitivity matrix for mhe
             #: Prior-phase and arrival cost
             e.update_state_mhe()  #: get the state from mhe
             e.prior_phase()
 
-        e.print_r_mhe()
-        e.print_r_dyn()
         if stat_mhe != 0:
             stat_nmpc = 500 #: MHE failed
         else:
@@ -217,13 +239,12 @@ def main():
         e.print_r_nmpc()
 
         if stat_nmpc == 0:
-            e.update_u(e.olnmpc)
+            e.sens_k_aug_nmpc()  # sensitivity matrix for nmpc
         else:
             f = open("errors_nmpc", "a")
             info_s = "iter\t" + str(i) + "\tstat\t" + str(stat_nmpc) + "\n"
             f.write(info_s)
             f.close()
-            e.update_u(e.SteadyRef2)
 
         #: Plant cycle
         e.cycleSamPlant(plant_step=True)
