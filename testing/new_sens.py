@@ -241,8 +241,6 @@ def main():
             e.update_state_mhe()  #: get the state from mhe
             e.prior_phase()
 
-        e.print_r_mhe()
-        e.print_r_dyn()
         if stat_mhe != 0:
             stat_nmpc = 500 #: MHE failed
         else:

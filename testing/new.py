@@ -187,6 +187,7 @@ def main():
         e.update_noise_meas(m_cov)  #: the noise it is not being added
         e.update_measurement()
         e.compute_y_offset()  #: Get the offset for y
+        e.preparation_phase_mhe(as_strategy=False) # very important!
         try:
             stat_mhe = e.solve_dyn(e.lsmhe,
                                skip_update=False, iter_max=500,
