@@ -47,6 +47,17 @@ class NmpcGen_DAE(DynGen_DAE):
         self.soi_dict = {}  #: State-of-interest.
         self.sp_dict = {}  #: Set-point.
         self.u_dict = dict.fromkeys(self.u, [])
+        f = open("timings_nmpc_kaug_sens.txt", "a")
+        f.write('\n' + '-' * 30 + '\n')
+        f.write(str(self.int_file_nmpc_suf))
+        f.write('\n')
+        f.close()
+
+        f = open("timings_nmpc_dot.txt", "a")
+        f.write('\n' + '-' * 30 + '\n')
+        f.write(str(self.int_file_nmpc_suf))
+        f.write('\n')
+        f.close()
 
         # self.res_file_name = "res_nmpc_" + str(int(time.time())) + ".txt"
 
@@ -435,12 +446,17 @@ class NmpcGen_DAE(DynGen_DAE):
             self.olnmpc.npdp.clear()
         else:
             self.olnmpc.npdp = Suffix(direction=Suffix.EXPORT)
+        with open("npdp_con.txt", "a") as f:
+            for x in self.states:
+                con_name = x + "_icc"
+                con_ = getattr(self.olnmpc, con_name)
+                for j in self.state_vars[x]:
+                    con_[j].set_suffix_value(self.olnmpc.npdp, self.curr_state_offset[(x, j)])
 
-        for x in self.states:
-            con_name = x + "_icc"
-            con_ = getattr(self.olnmpc, con_name)
-            for j in self.state_vars[x]:
-                con_[j].set_suffix_value(self.olnmpc.npdp, self.curr_state_offset[(x, j)])
+                con_.display(ostream=f)
+        with open("npdp_vals.txt", "a") as f:
+            self.olnmpc.npdp.display(ostream=f)
+            f.close()
 
         if hasattr(self.olnmpc, "f_timestamp"):
             self.olnmpc.f_timestamp.clear()
@@ -453,13 +469,18 @@ class NmpcGen_DAE(DynGen_DAE):
 
         self.journalist("I", self._iteration_count, "sens_dot_nmpc", self.olnmpc.name)
 
-        results = self.dot_driver.solve(self.olnmpc, tee=True, symbolic_solver_labels=True)
+        results = self.dot_driver.solve(self.olnmpc, tee=True)
         self.olnmpc.solutions.load_from(results)
         self.olnmpc.f_timestamp.display(ostream=sys.stderr)
 
         ftiming = open("timings_dot_driver.txt", "r")
         s = ftiming.readline()
         ftiming.close()
+
+        f = open("timings_nmpc_dot.txt", "a")
+        f.write(str(s) + '\n')
+        f.close()
+
         k = s.split()
         self._dot_timing = k[0]
 
@@ -480,12 +501,17 @@ class NmpcGen_DAE(DynGen_DAE):
 
         self.olnmpc.set_suffix_value(self.olnmpc.f_timestamp, self.int_file_nmpc_suf)
         self.olnmpc.f_timestamp.display(ostream=sys.stderr)
-        results = self.k_aug_sens.solve(self.olnmpc, tee=True, symbolic_solver_labels=True)
+        results = self.k_aug_sens.solve(self.olnmpc, tee=True, symbolic_solver_labels=False)
         self.olnmpc.solutions.load_from(results)
         #: Read the reported timings from `k_aug`
         ftimings = open("timings_k_aug.txt", "r")
         s = ftimings.readline()
         ftimings.close()
+
+        f = open("timings_nmpc_kaug.txt", "a")
+        f.write(str(s) + '\n')
+        f.close()
+
         self._k_timing = s.split()
 
     def find_target_ss(self, ref_state=None, **kwargs):

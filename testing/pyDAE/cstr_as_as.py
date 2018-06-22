@@ -116,7 +116,7 @@ def main():
 
 
         #: Control NMPC
-        e.preparation_phase_nmpc(as_strategy=True, make_prediction=True)
+        e.preparation_phase_nmpc(as_strategy=True, make_prediction=False)
         stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300, tag="olnmpc")
         if stat_nmpc != 0:
             sys.exit()
