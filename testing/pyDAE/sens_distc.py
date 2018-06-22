@@ -165,16 +165,18 @@ def main():
         #: Do dot sens
         #: !!!!
         #: Note that any change in the model at this point is irrelevant for sens_update
-        if i == 4:
-            e.lsmhe.pprint(filename="bresso.txt")
-        if stat_nmpc == 0:
+        stat_activebnd = 0
+        if stat_mhe == 0:
             if i > 1:
                 e.sens_dot_mhe()  #: Do sensitivity update for mhe
             e.update_state_mhe(as_nmpc_mhe_strategy=True)  #: Get offset for x
+        if stat_nmpc == 0:  #: if stat_mhe is not 0 this can't be 0 as well
             if i > 1:
                 e.sens_dot_nmpc()
-            e.update_u(e.olnmpc)  #: Get the resulting input for k+1
-        else:
+            stat_activebnd = e.update_u(e.olnmpc)  #: Get the resulting input for k+1
+        else:   
+            e.update_u(e.SteadyRef2)  #: Default
+        if stat_activebnd == 1:
             e.update_u(e.SteadyRef2)  #: Default
 
         e.print_r_mhe()
@@ -219,7 +221,7 @@ def main():
             stat_nmpc = 500 #: MHE failed
         else:
             #: Control NMPC
-            e.preparation_phase_nmpc(as_strategy=False, make_prediction=False)
+            e.preparation_phase_nmpc(as_strategy=True, make_prediction=False)
             try: #: First try
                 stat_nmpc = e.solve_dyn(e.olnmpc,
                                         skip_update=False,

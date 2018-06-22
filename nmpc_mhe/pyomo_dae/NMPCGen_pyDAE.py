@@ -446,12 +446,17 @@ class NmpcGen_DAE(DynGen_DAE):
             self.olnmpc.npdp.clear()
         else:
             self.olnmpc.npdp = Suffix(direction=Suffix.EXPORT)
+        with open("npdp_con.txt", "a") as f:
+            for x in self.states:
+                con_name = x + "_icc"
+                con_ = getattr(self.olnmpc, con_name)
+                for j in self.state_vars[x]:
+                    con_[j].set_suffix_value(self.olnmpc.npdp, self.curr_state_offset[(x, j)])
 
-        for x in self.states:
-            con_name = x + "_icc"
-            con_ = getattr(self.olnmpc, con_name)
-            for j in self.state_vars[x]:
-                con_[j].set_suffix_value(self.olnmpc.npdp, self.curr_state_offset[(x, j)])
+                con_.display(ostream=f)
+        with open("npdp_vals.txt", "a") as f:
+            self.olnmpc.npdp.display(ostream=f)
+            f.close()
 
         if hasattr(self.olnmpc, "f_timestamp"):
             self.olnmpc.f_timestamp.clear()

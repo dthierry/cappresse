@@ -749,6 +749,7 @@ class DynGen_DAE(object):
         Keyword Args:
             mod (pyomo.core.base.PyomoModel.ConcreteModel): The reference model (default d1)
             fe (int): The required finite element """
+        stat = 0
         if hasattr(src, "is_steady"):
             if src.is_steady:
                 fe = 1
@@ -758,7 +759,20 @@ class DynGen_DAE(object):
             fe = kwargs.pop("fe", 0)
         for u in self.u:
             uvar = getattr(src, u)
-            self.curr_u[u] = value(uvar[fe])
+            vu = value(uvar[fe])
+            self.curr_u[u] = vu
+            if uvar[fe].lb is None:
+                pass
+            else:
+                if vu < uvar[fe].lb:
+                    stat = 1
+            if uvar[fe].ub is None:
+                pass
+            else:
+                if vu > uvar[fe].ub:
+                    stat = 1
+        return stat
+            
 
     def update_state_real(self):
         for x in self.states:
