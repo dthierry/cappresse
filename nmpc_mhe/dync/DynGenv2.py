@@ -248,6 +248,8 @@ class DynGen(object):
                 continue
             if vs.is_indexed():
                 if len(vs._implicit_subsets) > 1:
+                    if not vs._implicit_subsets[1].name == 'cp_t' or "cp_ta":
+                        continue
                     for ks in vs.keys():
                         kj = ks[2:]
                         for j in range(1, self.ncp_t + 1):
