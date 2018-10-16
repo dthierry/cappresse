@@ -227,7 +227,7 @@ class MheGen(NmpcGen):
         self.curr_y_offset = {}  #: Current offset of measurement
         self.curr_u_offset = {}  #: Current offset of the input
 
-        
+
         for y in self.y:
             for j in self.y_vars[y]:
                 self.curr_m_noise[(y, j)] = 0.0
@@ -355,7 +355,7 @@ class MheGen(NmpcGen):
                   cc.deactivate()
                   con_w.activate()
         self.journalist("I", self._iteration_count, "initialize_lsmhe", "Attempting to initialize lsmhe Done")
-        
+
     def preparation_phase_mhe(self, as_strategy=False):
         """Method that prepares the mhe problem; shift; update u and y; initialize last fe"""
         self.shift_mhe()
@@ -372,7 +372,7 @@ class MheGen(NmpcGen):
             self.init_step_mhe(patch_pred_y=False)  #: Just for initialization purposes
             self.journalist("I", self._iteration_count, "preparation_phase_mhe", "idMHE: Ready")
 
-        
+
 
     def patch_meas_mhe(self, src, **kwargs):
         """Mechanism to assign a value of y0 to the current mhe from the dynamic model
@@ -409,7 +409,7 @@ class MheGen(NmpcGen):
                 lm.append(value(var[(0, cpa,) + j]))
                 l.append(value(var[(0, cpa,) + j]))
             meas_dic[y] = lm
-            
+
         # if not skip_update:  #: Update the mhe model
         self.journalist("I", self._iteration_count, "patch_meas_mhe", "Measurement to:" + str(fe))
 
@@ -535,7 +535,7 @@ class MheGen(NmpcGen):
 
     def shift_measurement_input_mhe(self):
         """Shifts current measurements for the mhe problem"""
-        
+
         y0 = getattr(self.lsmhe, "yk0_mhe")
         #: Start from the second fe
         for i in range(1, self.nfe_tmhe):
@@ -676,7 +676,14 @@ class MheGen(NmpcGen):
         if hasattr(self.lsmhe, "rh_name"):
             self.lsmhe.rh_name.clear()
         else:
-            self.lsmhe.rh_name = Suffix(direction=Suffix.IMPORT)  #: Red_hess_name
+            self.lsmhe.rh_name = Suffix(direction=Suffix.IMPORT)  #: Red_hess_nama
+
+        if hasattr(self.lsmhe, "dcdp"):
+            self.lsmhe.dcdp.clear()
+        else:
+            self.lsmhe.dcdp = Suffix(direction=Suffix.IMPORT) #: dcdp
+
+
         if set_suffix:
             for key in self.x_noisy:
                 var = getattr(self.lsmhe, key)
