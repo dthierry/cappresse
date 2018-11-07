@@ -163,7 +163,7 @@ class MheGen_DAE(NmpcGen_DAE):
                     # for jth in self.lsmhe.fe_t:  #: the jth variable
                 for kth in remaining_set:
                     kth = kth if isinstance(kth, tuple) else (kth,)
-                    self.y_vars[y].append(kth)
+                    #self.y_vars[y].append(kth)
                     self.yk_l[fe].append(m_v[(t,) + kth])
 
         self.lsmhe.ykk_mhe = Set(initialize=[i for i in range(0, len(self.yk_l[0]))])  #: Create set of measured_vars
@@ -211,6 +211,7 @@ class MheGen_DAE(NmpcGen_DAE):
 
             cv_param = getattr(self.lsmhe, u)  #: Get the new variable
             cv_noise = getattr(self.lsmhe, 'w_' + u + '_mhe')
+            #: This needs to be changed such that there is only one param per constraint!!!!! 10/19 by dpMT
             self.lsmhe.add_component(u + '_cdummy_mhe',
                                      Constraint(self.lsmhe.t,
                                                 rule=lambda m, i:
@@ -221,6 +222,7 @@ class MheGen_DAE(NmpcGen_DAE):
                                                 cv_param[tfe_mhe_dic[i]] == control_var[i]))
             cv_con = getattr(self.lsmhe, u + '_cdummy_mhe')
             cv_con.deactivate()
+
 
         self.lsmhe.U_mhe = Param(self.lsmhe.fe_t, self.u, initialize=1, mutable=True)
 
@@ -738,6 +740,29 @@ class MheGen_DAE(NmpcGen_DAE):
             self.lsmhe.rh_name.clear()
         else:
             self.lsmhe.rh_name = Suffix(direction=Suffix.IMPORT)  #: Red_hess_name
+        if not hasattr(self.lsmhe, "DeltaP"):
+            self.lsmhe.DeltaP = Suffix(direction=Suffix.EXPORT)
+        if not hasattr(self.lsmhe, "dcdp"):
+            self.lsmhe.dcdp = Suffix(direction=Suffix.EXPORT, datatype=Suffix.INT)
+            i = 1
+            print(self.y)
+            print(self.y_vars)
+            print(self.yk_key)
+            for y in self.y:
+                for j in self.y_vars[y]:
+                    k = self.yk_key[(y,) + j]
+                    self.lsmhe.hyk_c_mhe[self.nfe_tmhe-1, k].set_suffix_value(self.lsmhe.dcdp, i)
+                    i += 1
+            #self.lsmhe.hyk_c_mhe.pprint()
+            print(i, "measurements")
+            for j in range(0, self.ncp_tmhe + 1):
+                t_mhe = t_ij(self.lsmhe.t, self.nfe_tmhe - 1, j)
+                for u in self.u:
+                    con_w = getattr(self.lsmhe, u + "_cdummy_mhe")
+                    con_w[t_mhe].set_suffix_value(self.lsmhe.dcdp, i)
+                    i += 1
+            print(i, "inputs")
+            #con_w.pprint()
         if set_suffix:
             t_ = t_ij(self.lsmhe.t, self.nfe_tmhe - 1, self.ncp_tmhe)
             for key in self.x_noisy:
@@ -1129,6 +1154,8 @@ class MheGen_DAE(NmpcGen_DAE):
             for j in self.y_vars[y]:
                 k = self.yk_key[(y,) + j]
                 self.lsmhe.hyk_c_mhe[self.nfe_tmhe-1, k].set_suffix_value(self.lsmhe.npdp, self.curr_y_offset[(y, j)])
+                self.lsmhe.hyk_c_mhe[self.nfe_tmhe-1, k].set_suffix_value(self.lsmhe.DeltaP, self.curr_y_offset[(y, j)])
+
 
         #: Added this bit to account for the case when the last input does not match the one used
         #: For the prediction for the next measurement of the MHE problem.
@@ -1137,6 +1164,16 @@ class MheGen_DAE(NmpcGen_DAE):
             for u in self.u:
                 con_w = getattr(self.lsmhe, u + "_cdummy_mhe")
                 con_w[t_mhe].set_suffix_value(self.lsmhe.npdp, self.curr_u_offset[u])
+                con_w[t_mhe].set_suffix_value(self.lsmhe.DeltaP, self.curr_u_offset[u])
+        with open("mysuffixes", "w") as f:
+            ldp = len(self.lsmhe.DeltaP)
+            ldc = len(self.lsmhe.dcdp)
+            self.lsmhe.DeltaP.display(ostream=f)
+            self.lsmhe.dcdp.display(ostream=f)
+            f.write(str(ldp))
+            f.write('\n\n')
+            f.write(str(ldc))
+
 
 
         if hasattr(self.lsmhe, "f_timestamp"):
@@ -1150,19 +1187,13 @@ class MheGen_DAE(NmpcGen_DAE):
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
 
         self.journalist("I", self._iteration_count, "sens_dot_mhe", self.lsmhe.name)
-
+        self.dot_driver.options["dsdp_mode"] = ""
         results = self.dot_driver.solve(self.lsmhe, tee=True, symbolic_solver_labels=False)
         self.lsmhe.solutions.load_from(results)
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
+        self.dot_driver.options.pop("dsdp_mode")
 
-        ftiming = open("timings_dot_driver.txt", "r")
-        s = ftiming.readline()
-        ftiming.close()
-        f = open("timings_mhe_dot.txt", "a")
-        f.write(str(s) + '\n')
-        f.close()
-        k = s.split()
-        self._dot_timing = k[0]
+
 
     def sens_k_aug_mhe(self):
         self.journalist("I", self._iteration_count, "sens_k_aug_mhe", "k_aug sensitivity")
@@ -1180,16 +1211,11 @@ class MheGen_DAE(NmpcGen_DAE):
         self.lsmhe.set_suffix_value(self.lsmhe.f_timestamp, self.int_file_mhe_suf)
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
         self.create_sens_suffix_mhe()
+        self.k_aug_sens.options["dsdp_mode"] = ""
         results = self.k_aug_sens.solve(self.lsmhe, tee=True, symbolic_solver_labels=False)
         self.lsmhe.solutions.load_from(results)
+        self.k_aug_sens.options.pop("dsdp_mode")
         self.lsmhe.f_timestamp.display(ostream=sys.stderr)
-        ftimings = open("timings_k_aug.txt", "r")
-        s = ftimings.readline()
-        ftimings.close()
-        f = open("timings_mhe_kaug_sens.txt", "a")
-        f.write(str(s) + '\n')
-        f.close()
-        self._k_timing = s.split()
 
     def update_state_mhe(self, as_nmpc_mhe_strategy=False):
         # Improvised strategy
