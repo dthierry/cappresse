@@ -78,8 +78,8 @@ def main():
                    override_solver_check=True,
                    var_bounds=state_bounds,
                    nfe_t=10,
-                   k_aug_executable='/home/dav0/devzone/k_aug/bin/k_aug',
-                   dot_driver_executable='/home/dav0/devzone/k_aug/src/k_aug/dot_driver/dot_driver')
+                   k_aug_executable='/home/dav0/aiche_papertest/k_aug/bin/k_aug',
+                   dot_driver_executable='/home/dav0/aiche_papertest/k_aug/dot_sens')
     Q = {}
     U = {}
     R = {}
@@ -96,6 +96,7 @@ def main():
     e.set_covariance_u(U)
     e.set_covariance_meas(R)
     e.create_rh_sfx()
+
 
     e.get_state_vars()
 
@@ -123,6 +124,7 @@ def main():
     #: Prepare NMPC
     e.find_target_ss()
     e.create_nmpc()
+    e.create_sens_suffix_mhe()
     e.create_suffixes_nmpc()
     e.update_targets_nmpc()
     e.compute_QR_nmpc(n=-1)
