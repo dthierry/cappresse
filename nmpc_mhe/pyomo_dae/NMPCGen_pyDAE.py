@@ -3,7 +3,7 @@ from __future__ import print_function
 from __future__ import division
 
 from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix, TransformationFactory
-from pyomo.core.kernel.numvalue import value
+from pyomo.core.base import value
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
 from nmpc_mhe.pyomo_dae.DynGen_pyDAE import DynGen_DAE
 from nmpc_mhe.aux.utils import t_ij

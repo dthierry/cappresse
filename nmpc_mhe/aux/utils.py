@@ -6,7 +6,7 @@ from pyomo.environ import *
 # from pyomo.dae import ContinuousSet, DerivativeVar
 from pyomo.core.base import Suffix, ConcreteModel, Var, Suffix, Constraint, ConstraintList, TransformationFactory
 from pyomo.opt import ProblemFormat
-from pyomo.core.kernel.numvalue import value
+from pyomo.core.base import numvalue
 from os import getcwd, remove
 
 __author__ = "David Thierry @dthierry"  #: March 2018

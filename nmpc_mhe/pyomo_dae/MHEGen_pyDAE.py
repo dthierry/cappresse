@@ -10,7 +10,7 @@ from itertools import product
 import numpy as np
 from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix, \
     ConstraintList, TransformationFactory, ConcreteModel
-from pyomo.core.kernel.numvalue import value as value
+from pyomo.core.base import value as value
 from pyutilib.common._exceptions import ApplicationError
 from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model
 from nmpc_mhe.aux.utils import t_ij, clone_the_model, aug_discretization, create_bounds
@@ -195,7 +195,7 @@ class MheGen_DAE(NmpcGen_DAE):
             t_u = [t_ij(tS_mhe, i, 0) for i in range(0, self.lsmhe.nfe_t)]
             c_val = [value(cv[t_u[i]]) for i in self.lsmhe.fe_t]  #: Current value
             dumm_eq = getattr(self.lsmhe, u + '_cdummy')
-            dexpr = dumm_eq[0].expr._args[0]
+            dexpr = dumm_eq[0].expr.args[0]
             control_var = getattr(self.lsmhe, dexpr.parent_component().name)
             if isinstance(control_var, Var): #: all good
                 pass
@@ -253,7 +253,7 @@ class MheGen_DAE(NmpcGen_DAE):
                         continue
                     e = oc_e[(t,) + k].expr
                     j = self.xkN_key[(i,) + k]
-                    self.lsmhe.noisy_cont.add(e._args[0] == self.lsmhe.wk_mhe[tfe_mhe_dic[t], j])
+                    self.lsmhe.noisy_cont.add(e.args[0] == self.lsmhe.wk_mhe[tfe_mhe_dic[t], j])
                 # j += 1
         self.lsmhe.noisy_cont.deactivate()
 

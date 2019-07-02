@@ -5,9 +5,10 @@ from __future__ import division
 
 from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix, maximize
 from pyomo.core.base import ConstraintList, ConcreteModel, TransformationFactory
-from pyomo.core.kernel.numvalue import value as value
+from pyomo.core.base import value as value
 from pyomo.dae import *
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition, ReaderFactory, ResultsFormat
+from pyomo.opt.results import results_
 import numpy as np
 # import sys, time, re, os
 from pyutilib.common._exceptions import ApplicationError
@@ -472,6 +473,8 @@ class DynGen_DAE(object):
             keepfiles = True
 
         # Solution attempt
+
+        results = None
         try:
             results = solver_ip.solve(d,
                                       tee=o_tee,
@@ -480,15 +483,15 @@ class DynGen_DAE(object):
                                       keepfiles=keepfiles, load_solutions=False)
         except (ApplicationError, ValueError):
             stop_if_nopt = 1
-
-        if tag == "plant":  #: If this is the plant, don't load the solutions if there is a failure
-            if results.solver.status != SolverStatus.ok or \
-                    results.solver.termination_condition != TerminationCondition.optimal:
-                pass
+        if results is not None:
+            if tag == "plant":  #: If this is the plant, don't load the solutions if there is a failure
+                if results.solver.status != SolverStatus.ok or \
+                        results.solver.termination_condition != TerminationCondition.optimal:
+                    pass
+                else:
+                    d.solutions.load_from(results)
             else:
                 d.solutions.load_from(results)
-        else:
-            d.solutions.load_from(results)
         if keepsolve:
             self.write_solfile(d, tag, solve=False)  #: solve false otherwise it'll call sol_dyn again
         wantparams = kwargs.pop("wantparams", False)
@@ -506,18 +509,18 @@ class DynGen_DAE(object):
                     filelog.close()
                 global_log.close()
 
-        if results.solver.status == SolverStatus.ok and \
-                results.solver.termination_condition == TerminationCondition.optimal:
-            self.journalist("I", self._iteration_count, "solve_dyn", " Model solved to optimality")
-            # d.solutions.load_from(results)
-            self._stall_iter = 0
-            if want_stime and rep_timing:
-                self.ip_time = self.ipopt._solver_time_x
-            if not skip_mult_update:
-                mod.ipopt_zL_in.update(mod.ipopt_zL_out)
-                mod.ipopt_zU_in.update(mod.ipopt_zU_out)
+        if results is not None:
+            if results.solver.status == SolverStatus.ok and results.solver.termination_condition == TerminationCondition.optimal:
+                self.journalist("I", self._iteration_count, "solve_dyn", " Model solved to optimality")
+                # d.solutions.load_from(results)
+                self._stall_iter = 0
+                if want_stime and rep_timing:
+                    self.ip_time = self.ipopt._solver_time_x
+                if not skip_mult_update:
+                    mod.ipopt_zL_in.update(mod.ipopt_zL_out)
+                    mod.ipopt_zU_in.update(mod.ipopt_zU_out)
 
-            return 0
+                return 0
         else:
             if stop_if_nopt:
                 self.journalist("E", self._iteration_count, "solve_dyn", "Not-optimal. Stoping")
@@ -648,7 +651,7 @@ class DynGen_DAE(object):
         Keyword Args:
             src (pyomo.core.base.PyomoModel.ConcreteModel): Source model
             src_fe (int): Finite element from the source model"""
-        from pyomo.core.kernel.numvalue import value
+        from pyomo.core.base import numvalue
         self.journalist("I", self._iteration_count, "plant_input", "Continuation_plant, src_kind=" + src_kind)
         #: Inputs
         target = {}
