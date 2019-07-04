@@ -106,9 +106,10 @@ class DynGen_DAE(object):
         self.SteadyRef.name = "SteadyRef"
         self.PlantSample.name = "PlantSample"
 
-        if type(self.ipopt_executable) == str():
+        if isinstance(self.ipopt_executable, str):
             self.ipopt = SolverFactory("ipopt",
                                        executable=self.ipopt_executable)
+
             self.asl_ipopt = SolverFactory("asl:ipopt",
                                            executable=self.ipopt_executable)
         else:
@@ -218,7 +219,7 @@ class DynGen_DAE(object):
                 f.write("print_user_options yes\n")
                 f.write("linear_solver ma57\n")
                 f.close()
-            ip = SolverFactory("ipopt")
+            ip = SolverFactory("")
 
             results = ip.solve(self.SteadyRef,
                                tee=True,
