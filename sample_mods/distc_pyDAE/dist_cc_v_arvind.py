@@ -176,8 +176,8 @@ def gy0(m, i):
 
 def gy(m, i, k):
     if i > 0 and 1 < k < m.Ntray:
-        return m.y[i, k] == m.beta[i, k] * (m.x[i, k] * m.pm[i, k] / m.p[k])
-               #m.beta[i, k] * (m.alpha[k] * m.x[i, k] * m.pm[i, k] / m.p[k] + (1 - m.alpha[k]) * m.y[i, k - 1])
+        return m.y[i, k] == \
+               m.beta[i, k] * (m.alpha[k] * m.x[i, k] * m.pm[i, k] / m.p[k] + (1 - m.alpha[k]) * m.y[i, k - 1])
     else:
         return Constraint.Skip
 
@@ -237,7 +237,30 @@ def acm(m, k):
 def acx(m, k):
     return m.x[0, k] == m.x_ic[k]
 
+#: K partial deritives
+def kijxij11(m, i, k):
+    if i > 0:
+        return m.dKijdxij11[i, k] == (-m.pm[i, k] / (m.p[k] ** 2)) * (m.pm[i, k] - m.pn[i, k])
+    else:
+        return Constraint.Skip
 
+def kijxij12(m, i, k):
+    if i > 0:
+        return m.dKijdxij12[i, k] == (-m.pm[i, k] / (m.p[k] ** 2)) * (-m.pm[i, k] + m.pn[i, k])
+    else:
+        return Constraint.Skip
+
+def kijxij21(m, i, k):
+    if i > 0:
+        return m.dKijdxij21[i, k] == (-m.pn[i, k] / (m.p[k] ** 2)) * (m.pm[i, k] - m.pn[i, k])
+    else:
+        return Constraint.Skip
+
+def kijxij22(m, i, k):
+    if i > 0:
+        return m.dKijdxij22[i, k] == (-m.pn[i, k] / (m.p[k] ** 2)) * (-m.pm[i, k] + m.pn[i, k])
+    else:
+        return Constraint.Skip
 # ---------------------------------------------------------------------------------------------------------------------
 mod = ConcreteModel()
 
@@ -245,7 +268,7 @@ mod.t = ContinuousSet(bounds=(0, 1))
 mod.Ntray = Ntray = 42
 
 mod.tray = Set(initialize=[i for i in range(1, mod.Ntray + 1)])
-mod.feed = Param(mod.tray, # 57.5294
+mod.feed = Param(mod.tray,
                  initialize=lambda m, k: 57.5294 if k == 21 else 0.0,
                  mutable=True)
 
@@ -343,7 +366,7 @@ def __m_init(m, i, k):
 #: Liquid hold-up
 mod.M = Var(mod.t, mod.tray, initialize=__m_init)
 #: Mole-fraction
-mod.x = Var(mod.t, mod.tray, initialize=lambda m, i, k: 0.999 * k / m.Ntray, bounds=(0, 1 + 1E-6))
+mod.x = Var(mod.t, mod.tray, initialize=lambda m, i, k: 0.999 * k / m.Ntray)
 
 #: Initial state-Param
 mod.M_ic = Param(mod.tray, default=0.0, mutable=True)
@@ -351,7 +374,7 @@ mod.x_ic = Param(mod.tray, default=0.0, mutable=True)
 
 #:  Derivative-var
 mod.Mdot = DerivativeVar(mod.M, initialize=0.0)
-mod.xdot = DerivativeVar(mod.x, initialize=0.0)
+mod.xdot = Var(mod.t, mod.tray, initialize=0.0)
 # --------------------------------------------------------------------------------------------------------------
 # States (algebraic) section
 # Tray temperature
@@ -381,7 +404,7 @@ mod.L = Var(mod.t, mod.tray, initialize=_l_init)
 
 # Vapor mole frac & diff var
 mod.y = Var(mod.t, mod.tray,
-            initialize=lambda m, i, k: ((0.99 - 0.005) / m.Ntray) * k + 0.005, bounds=(0,1 + 1E-6))
+            initialize=lambda m, i, k: ((0.99 - 0.005) / m.Ntray) * k + 0.005)
 
 # Liquid enthalpy # enthalpy
 mod.hl = Var(mod.t, mod.tray, initialize=10000.)
@@ -415,13 +438,12 @@ mod.Qr = Var(mod.t, initialize=1.78604740940007800236344337463379E+06)
 #: Then the ode-Con:de_x, collocation-Con:dvar_t_x, noisy-Expr: noisy_x, cp-Constraint: cp_x, initial-Con: x_icc
 #: Differential equations
 mod.de_M = Constraint(mod.t, mod.tray, rule=m_ode)
-mod.de_x = Constraint(mod.t, mod.tray, rule=x_ode)
+mod.alg_x = Constraint(mod.t, mod.tray, rule=x_ode)
 
 #: Continuation equations (redundancy here)
 
 #: Initial condition-Constraints
 mod.M_icc = Constraint(mod.tray, rule=acm)
-mod.x_icc = Constraint(mod.tray, rule=acx)
 
 
 # --------------------------------------------------------------------------------------------------------------
@@ -442,14 +464,13 @@ mod.u1_cdummy = Constraint(mod.t, rule=u1_rule)
 mod.u2_cdummy = Constraint(mod.t, rule=u2_rule)
 # --------------------------------------------------------------------------------------------------------------
 #: Complementarity
-mod.epsi = Param(initialize=1e-08)
-# mod.beta = Var(mod.t, mod.tray, initialize=1.0)
-mod.beta = Var(mod.t, mod.tray, initialize=1.0, within=NonNegativeReals)
+mod.beta = Var(mod.t, mod.tray, initialize=1.0)
+#mod.beta = Param(mod.t, mod.tray, default=1.0)
 mod.nu_l = Var(mod.t, mod.tray, initialize=1.0, within=NonNegativeReals)
 #mod.nu_v = Var(mod.t, mod.tray, initialize=1.0, within=NonNegativeReals)
 #: Complementarity constraint
 mod.cc_beta_ = Constraint(mod.t, mod.tray, rule=lambda model, t, tray: model.beta[t, tray] == 1 - model.nu_l[t, tray] if t > 0 else Constraint.Skip)
-mod.cc_Ml_ = Constraint(mod.t, mod.tray, rule=lambda model, t, tray: model.nu_l[t, tray] * model.M[t, tray] == model.epsi if t > 0 else Constraint.Skip)
+mod.cc_Ml_ = Constraint(mod.t, mod.tray, rule=lambda model, t, tray: model.nu_l[t, tray] * model.M[t, tray] == 0.0 if t > 0 else Constraint.Skip)
 # put constraints for flow out
 
 Mv_min = dict.fromkeys([i for i in range(1, mod.Ntray + 1)], 0.155)
@@ -459,8 +480,9 @@ mod.Mv_p_ = Var(mod.t, mod.tray, within=NonNegativeReals, initialize=lambda m, t
 mod.Mv_n_ = Var(mod.t, mod.tray, within=NonNegativeReals, initialize=0.0)
 mod.Mv_min_ = Param(mod.tray, initialize=Mv_min)
 mod.cc_mpn_ = Constraint(mod.t, mod.tray, rule=lambda m, t, tray: m.Mv[t, tray] - m.Mv_min_[tray] == m.Mv_p_[t, tray] - m.Mv_n_[t, tray] if t > 0 else Constraint.Skip)
-mod.cc_mp_mn_ = Constraint(mod.t, mod.tray, rule=lambda m, t, tray: m.Mv_p_[t, tray] * m.Mv_n_[t, tray] == m.epsi if t > 0 else Constraint.Skip)
-
+mod.cc_mp_mn_ = Constraint(mod.t, mod.tray, rule=lambda m, t, tray: m.Mv_p_[t, tray] * m.Mv_n_[t, tray] == 0.0 if t > 0 else Constraint.Skip)
+# --------------------------------------------------------------------------------------------------------------
+#: Index reduction
 # --------------------------------------------------------------------------------------------------------------
 #: Constraint section (algebraic equations)
 

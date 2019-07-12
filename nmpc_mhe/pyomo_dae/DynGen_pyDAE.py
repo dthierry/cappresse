@@ -5,10 +5,10 @@ from __future__ import division
 
 from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix, maximize
 from pyomo.core.base import ConstraintList, ConcreteModel, TransformationFactory
-from pyomo.core.base import value as value
+from pyomo.core.expr.numvalue import value
 from pyomo.dae import *
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition, ReaderFactory, ResultsFormat
-from pyomo.opt.results import results_
+from pyomo.opt.results.results_ import SolverResults
 import numpy as np
 # import sys, time, re, os
 from pyutilib.common._exceptions import ApplicationError
@@ -67,6 +67,7 @@ class DynGen_DAE(object):
         self.ipopt_executable = kwargs.get('ipopt_executable', None)
         self.dot_driver_executable = kwargs.get('dot_driver_executable', None)
         override_solver_check = kwargs.get('override_solver_check', False)
+        self.parfois_v = kwargs.get('parfois_v', None)
 
 
         self.var_bounds = kwargs.get("var_bounds", None)
@@ -197,7 +198,7 @@ class DynGen_DAE(object):
 
     def load_iguess_steady(self):
         """"Call the method for loading initial guess from steady-state"""
-        retval = self.solve_dyn(self.SteadyRef, bound_push=1e-07)
+        retval = self.solve_dyn(self.SteadyRef, bound_push=1e-07, rho_0=10000000.0)
         load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
         self.cycleSamPlant()
         if retval:
@@ -355,9 +356,12 @@ class DynGen_DAE(object):
         print_user_options = kwargs.pop("print_user_options", True)
         ma57_pivtol = kwargs.pop("ma57_pivtol", None)
         bound_push = kwargs.pop("bound_push", None)
+        bound_relax_fact = kwargs.pop("bound_relax_fact", None)
 
         out_file = kwargs.pop("output_file", None)
-
+        #rho_init = kwargs.pop("l1exactpenalty_rho0", )
+        rho_0 = kwargs.pop("rho_0", None)
+        l1_ = kwargs.pop("l1_mode", False)
         if out_file:
             if type(out_file) != str:
                 self.journalist("E", self._iteration_count, "solve_dyn", "incorrect_output")
@@ -416,7 +420,19 @@ class DynGen_DAE(object):
         self.journalist("I", self._iteration_count, "Solving with IPOPT\t", name)
 
         with open("ipopt.opt", "w") as f:
+            #f.write("start_with_resto\tyes\n")
+            #f.write("expect_infeasible_problem\tyes\n")
+            if l1_:
+                f.write("l1exactpenalty_objective_type\tobjective_inv\n")
+            if isinstance(rho_0, float):
+                f.write("l1exactpenalty_rho0\t")
+                f.write(str(rho_0))
+                f.write("\n")
             f.write("print_info_string\tyes\n")
+            if isinstance(bound_relax_fact, float):
+                f.write("bound_relax_factor\t" + str(bound_relax_fact) + "\n")
+            else:
+                f.write("bound_relax_factor\t0.0\n")
             f.write("max_iter\t" + str(iter_max) + "\n")
             f.write("max_cpu_time\t" + str(max_cpu_time) + "\n")
             f.write("linear_solver\t" + linear_solver + "\n")
@@ -433,6 +449,8 @@ class DynGen_DAE(object):
                 f.write("mu_init\t" + str(mu_init) + "\n")
             if out_file:
                 f.write("output_file\t" + out_file + "\n")
+            f.write("output_file\t" + "out_capresse.txt" + "\n")
+            f.write("file_print_level\t" + "6" + "\n")
             if linear_scaling_on_demand:
                 f.write("linear_scaling_on_demand\tyes\n")
             if jacRegVal:
@@ -484,7 +502,9 @@ class DynGen_DAE(object):
                                       keepfiles=keepfiles, load_solutions=False)
         except (ApplicationError, ValueError):
             stop_if_nopt = 1
-        if results is not None:
+            d.write(filename="failure_.nl", io_options={"symbolic_solver_labels": True})
+
+        if isinstance(results, SolverResults):
             if tag == "plant":  #: If this is the plant, don't load the solutions if there is a failure
                 if results.solver.status != SolverStatus.ok or \
                         results.solver.termination_condition != TerminationCondition.optimal:
@@ -510,7 +530,8 @@ class DynGen_DAE(object):
                     filelog.close()
                 global_log.close()
 
-        if results is not None:
+        if isinstance(results, SolverResults):
+            #: Check termination
             if results.solver.status == SolverStatus.ok and results.solver.termination_condition == TerminationCondition.optimal:
                 self.journalist("I", self._iteration_count, "solve_dyn", " Model solved to optimality")
                 # d.solutions.load_from(results)
@@ -522,15 +543,15 @@ class DynGen_DAE(object):
                     mod.ipopt_zU_in.update(mod.ipopt_zU_out)
 
                 return 0
-        else:
-            if stop_if_nopt:
-                self.journalist("E", self._iteration_count, "solve_dyn", "Not-optimal. Stoping")
-                self.journalist("E", self._iteration_count, "solve_dyn",
-                                "Problem\t" + d.name + "\t" + str(self._iteration_count))
-                raise DynSolWeAreDone("Ipopt: we are done :(")
-                # sys.exit()
-            self.journalist("W", self._iteration_count, "solve_dyn", "Not-optimal.")
-            return 1
+        if stop_if_nopt:
+            d.write(filename="failure_done_.nl", io_options={"symbolic_solver_labels": True})
+            self.journalist("E", self._iteration_count, "solve_dyn", "Not-optimal. Stoping")
+            self.journalist("E", self._iteration_count, "solve_dyn",
+                            "Problem\t" + d.name + "\t" + str(self._iteration_count))
+            raise DynSolWeAreDone("Ipopt: we are done :(")
+            # sys.exit()
+        self.journalist("W", self._iteration_count, "solve_dyn", "Not-optimal.")
+        return 1
 
     def cycleSamPlant(self, plant_step=False):
         """Patches the initial conditions with the last result from the simulation
@@ -652,7 +673,6 @@ class DynGen_DAE(object):
         Keyword Args:
             src (pyomo.core.base.PyomoModel.ConcreteModel): Source model
             src_fe (int): Finite element from the source model"""
-        from pyomo.core.base import numvalue
         self.journalist("I", self._iteration_count, "plant_input", "Continuation_plant, src_kind=" + src_kind)
         #: Inputs
         target = {}
@@ -908,6 +928,32 @@ class DynGen_DAE(object):
             f.write(str(self.WhatHappensNext))
             f.write('\n')
             f.close()
+
+        if self.parfois_v:
+            for v in self.parfois_v:
+                var = getattr(self.PlantSample, v)
+                if var.is_indexed() and var.index_set().dimen > 1:
+                    s = var.index_set().set_tuple[1:]
+                    ss = s[0]
+                    if len(s) > 1:
+                        for j in s[:1]:
+                            ss *= j
+                    for j in ss:
+                        idx = ((self.PlantSample.t.last()),)
+                        if not isinstance(j, tuple):
+                            j = ((j),)
+                        idx = idx + j
+                        var_val = value(var[idx])
+                        with open("res_parfois_" + self.res_file_suf + ".txt", "a") as f:
+                            f.write(str(var_val))
+                            f.write('\t')
+            with open("res_parfois_" + self.res_file_suf + ".txt", "a") as f:
+                f.write('\n')
+
+
+
+
+
 
     @staticmethod
     def which(str_program):

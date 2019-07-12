@@ -162,7 +162,8 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
                         continue
                 o.clear()
                 o.construct()
-                o.reconstruct()
+                if not isinstance(o, Param):
+                    o.reconstruct()
 
                 # if isinstance(o, Var):
                 #     o.reconstruct()
