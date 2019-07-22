@@ -361,6 +361,7 @@ class DynGen_DAE(object):
         out_file = kwargs.pop("output_file", None)
         #rho_init = kwargs.pop("l1exactpenalty_rho0", )
         rho_0 = kwargs.pop("rho_0", None)
+        rho_f_max = kwargs.pop("rho_f_max", None)
         l1_ = kwargs.pop("l1_mode", False)
         if out_file:
             if type(out_file) != str:
@@ -418,15 +419,21 @@ class DynGen_DAE(object):
         name = mod.name
 
         self.journalist("I", self._iteration_count, "Solving with IPOPT\t", name)
-
+        # todo: create global ipopt.opt options
         with open("ipopt.opt", "w") as f:
             #f.write("start_with_resto\tyes\n")
             #f.write("expect_infeasible_problem\tyes\n")
             if l1_:
                 f.write("l1exactpenalty_objective_type\tobjective_inv\n")
+                f.write("slack_move\t0.0\n")
             if isinstance(rho_0, float):
                 f.write("l1exactpenalty_rho0\t")
                 f.write(str(rho_0))
+                f.write("\n")
+
+            if isinstance(rho_f_max, float):
+                f.write("l1exactpenalty_rho_by_factor_max\t")
+                f.write(str(rho_f_max))
                 f.write("\n")
             f.write("print_info_string\tyes\n")
             if isinstance(bound_relax_fact, float):
@@ -443,7 +450,7 @@ class DynGen_DAE(object):
                 f.write("warm_start_init_point\t" + "yes" + "\n")
                 f.write("warm_start_bound_push\t" + "1e-06" + "\n")
                 f.write("mu_init\t" + "0.001" + "\n")
-            if tol:
+            if isinstance(tol, float):
                 f.write("tol\t" + str(tol) + "\n")
             if mu_init:
                 f.write("mu_init\t" + str(mu_init) + "\n")
@@ -505,6 +512,7 @@ class DynGen_DAE(object):
             d.write(filename="failure_.nl", io_options={"symbolic_solver_labels": True})
 
         if isinstance(results, SolverResults):
+            print(results.Solver.termination_condition, file=sys.stderr)
             if tag == "plant":  #: If this is the plant, don't load the solutions if there is a failure
                 if results.solver.status != SolverStatus.ok or \
                         results.solver.termination_condition != TerminationCondition.optimal:
@@ -512,7 +520,10 @@ class DynGen_DAE(object):
                 else:
                     d.solutions.load_from(results)
             else:
-                d.solutions.load_from(results)
+                try:
+                    d.solutions.load_from(results)
+                except ValueError:
+                    pass
         if keepsolve:
             self.write_solfile(d, tag, solve=False)  #: solve false otherwise it'll call sol_dyn again
         wantparams = kwargs.pop("wantparams", False)
@@ -545,6 +556,7 @@ class DynGen_DAE(object):
                 return 0
         if stop_if_nopt:
             d.write(filename="failure_done_.nl", io_options={"symbolic_solver_labels": True})
+            d.display(filename="failure_done_displayed.txt")
             self.journalist("E", self._iteration_count, "solve_dyn", "Not-optimal. Stoping")
             self.journalist("E", self._iteration_count, "solve_dyn",
                             "Problem\t" + d.name + "\t" + str(self._iteration_count))

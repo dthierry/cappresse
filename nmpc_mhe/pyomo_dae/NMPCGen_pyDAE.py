@@ -202,6 +202,23 @@ class NmpcGen_DAE(DynGen_DAE):
         augment_model(dum, 1, self.ncp_tnmpc, new_timeset_bounds=(0, self.hi_t))
         aug_discretization(dum, 1, self.ncp_tnmpc)
         create_bounds(dum, bounds=self.var_bounds)
+        dum.epsi.set_value(1E-09)
+        dum.M[:, :].setlb(-1E-08)
+        dum.L[:, :].setlb(-1E-08)
+        dum.V[:, :].setlb(-1E-08)
+
+        dum.T[:, :].setlb(100.0)
+        dum.T[:, :].setub(512.4 - 1E-08)
+        # dum.Mv_p_[:, :].setlb(-1E-08)
+        # dum.Mv_n_[:, :].setlb(-1E-08)
+        dum.y[:, :].setlb(-1E-11)
+        dum.x[:, :].setlb(-1E-11)
+        dum.y[:, :].setub(1.0 + 1E-11)
+        dum.x[:, :].setub(1.0 + 1E-11)
+        # dum.beta[:, :].setlb(-1E-08)
+        # dum.beta[:, :].setub(1.0 + 1E-6)
+        # dum.nu_l[:, :].setlb(-1E-08)
+
         #: Load current solution
         # self.load_iguess_single(ref, dum, 0, 0)
         load_iguess(ref, dum, 0, 0)
@@ -228,13 +245,13 @@ class NmpcGen_DAE(DynGen_DAE):
                     sys.exit()
             else:
                 self.load_init_state_gen(dum, src_kind="mod", ref=dum, fe=0)
-
+            dum.display(filename="dummy.txt")
             tst = self.solve_dyn(dum,
                                o_tee=False,
                                tol=1e-04,
                                iter_max=1000,
                                max_cpu_time=60,
-                               stop_if_nopt=False,
+                               stop_if_nopt=False, l1_mode=True, bound_push=1E-01,
                                output_file="dummy_ip.log")
             if tst != 0:
                 self.journalist("W", self._iteration_count, "initialize_olnmpc", "non-optimal dummy")
@@ -246,7 +263,7 @@ class NmpcGen_DAE(DynGen_DAE):
                              jacobian_regularization_value=1e-04,
                              ma57_small_pivot_flag=1,
                              ma57_pre_alloc=5,
-                             linear_scaling_on_demand="yes", ma57_pivtol=1e-12,
+                             linear_scaling_on_demand="yes", ma57_pivtol=1e-12, l1_mode=True, bound_push=1E-01,
                              output_file="dummy_ip.log")
                 if tst1 != 0:
                     # sys.exit()
@@ -589,15 +606,57 @@ class NmpcGen_DAE(DynGen_DAE):
         for i in self.ref_state.keys():
             v = getattr(self.SteadyRef2, i[0])
             vkey = i[1]
-            ofexp += weights[i] * (v[(1,) + vkey] - self.ref_state[i])**2
+            ofexp +=30* weights[i] * (v[(1,) + vkey] - self.ref_state[i])**2
         self.SteadyRef2.obfun_SteadyRef2 = Objective(expr=ofexp, sense=minimize)
-        tst = self.solve_dyn(self.SteadyRef2, iter_max=10000, stop_if_nopt=True, halt_on_ampl_error=False, **kwargs)
-        if tst != 0:
+
+        self.SteadyRef2.epsi.set_value(1E-09)
+
+        self.SteadyRef2.M[:, :].setlb(-1E-08)
+        self.SteadyRef2.L[:, :].setlb(-1E-08)
+        self.SteadyRef2.V[:, :].setlb(-1E-08)
+
+        self.SteadyRef2.T[:, :].setlb(100.0)
+        self.SteadyRef2.T[:, :].setub(512.4 - 1E-08)
+
+        # self.SteadyRef2.Mv_p_[:, :].setlb(-1E-08)
+        # self.SteadyRef2.Mv_n_[:, :].setlb(-1E-08)
+
+        self.SteadyRef2.y[:, :].setlb(-1E-11)
+        self.SteadyRef2.x[:, :].setlb(-1E-11)
+
+        self.SteadyRef2.y[:, :].setub(1.0 + 1E-11)
+        self.SteadyRef2.x[:, :].setub(1.0 + 1E-11)
+
+        # self.SteadyRef2.beta[:, :].setlb(-1E-08)
+        # self.SteadyRef2.beta[:, :].setub(1.0 + 1E-06)
+
+        # self.SteadyRef2.nu_l[:, :].setlb(-1E-08)
+        vml = 0.5 * ((1 / 2288) * 0.2685 ** (1 + (1 - 100 / 512.4) ** 0.2453)) + \
+              0.5 * ((1 / 1235) * 0.27136 ** (1 + (1 - 100 / 536.4) ** 0.24))
+        vmu = 0.5 * ((1 / 2288) * 0.2685 ** (1 + (1 - (512.4 - 1E-08) / 512.4) ** 0.2453)) + \
+              0.5 * ((1 / 1235) * 0.27136 ** (1 + (1 - 512.4 / 536.4) ** 0.24))
+        self.SteadyRef2.Vm[:, :].setlb(vml)
+        self.SteadyRef2.Vm[:, :].setub(vmu)
+
+        self.SteadyRef2.write(filename="SteadyRef2.nl",
+                              format=ProblemFormat.nl,
+                              io_options={"symbolic_solver_labels": True})
+        tst = self.solve_dyn(self.SteadyRef2, iter_max=10000, stop_if_nopt=False, halt_on_ampl_error=False, **kwargs)
+        if tst != 0:  #: second try
             self.SteadyRef2.display(filename="failed_SteadyRef2.txt")
             self.SteadyRef2.write(filename="failed_SteadyRef2.nl",
-                           format=ProblemFormat.nl,
-                           io_options={"symbolic_solver_labels": True})
-            # sys.exit(-1)
+                                  format=ProblemFormat.nl,
+                                  io_options={"symbolic_solver_labels": True})
+            kwargs.pop("bound_push", None)
+            tol: float = 0
+            kwargs.pop("tol", tol)
+            if tol < 1E-04:
+                tol = 1E-04
+            tst = self.solve_dyn(self.SteadyRef2, iter_max=10000, stop_if_nopt=True, halt_on_ampl_error=False,
+                                 bound_push=1E-02,
+                                 tol=tol, **kwargs)
+
+
         self.journalist("I", self._iteration_count, "find_target_ss", "Target: solve done")
         for i in self.ref_state.keys():
             print(i)

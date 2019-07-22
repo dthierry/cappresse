@@ -2,7 +2,7 @@
 
 from __future__ import division
 from __future__ import print_function
-from pyomo.core.base import Constraint, Expression, ConcreteModel, Var, Param, Suffix, Set, NonNegativeReals
+from pyomo.core.base import Constraint, Expression, ConcreteModel, Var, Param, Set, NonNegativeReals, Reals
 from pyomo.core.expr import exp, sqrt
 from pyomo.dae import *
 
@@ -13,13 +13,13 @@ __author__ = 'David Thierry'  #: May 2018
 def m_ode(m, i, k):
     if i > 0 and 1 < k < m.Ntray:
         return m.Mdot[i, k] == \
-               (m.V[i, k - 1] - m.V[i, k] + m.L[i, k + 1] - m.L[i, k] + m.feed[k])
+               m.V[i, k - 1] - m.V[i, k] + m.L[i, k + 1] - m.L[i, k] + m.feed[k]
     elif i > 0 and k == 1:
         return m.Mdot[i, 1] == \
-               (m.L[i, 2] - m.L[i, 1] - m.V[i, 1])
+               m.L[i, 2] - m.L[i, 1] - m.V[i, 1]
     elif i > 0 and k == m.Ntray:
         return m.Mdot[i, m.Ntray] == \
-               (m.V[i, m.Ntray - 1] - m.L[i, m.Ntray] - m.D[i])
+               m.V[i, m.Ntray - 1] - m.L[i, m.Ntray] - m.D[i]
     else:
         return Constraint.Skip
 
@@ -27,17 +27,18 @@ def m_ode(m, i, k):
 def x_ode(m, i, k):
     if i > 0 and 1 < k < m.Ntray:
         return m.M[i, k] * m.xdot[i, k] == \
-               (m.V[i, k - 1] * (m.y[i, k - 1] - m.x[i, k]) +
-                m.L[i, k + 1] * (m.x[i, k + 1] - m.x[i, k]) -
-                m.V[i, k] * (m.y[i, k] - m.x[i, k]) +
-                m.feed[k] * (m.xf - m.x[i, k]))
+               m.V[i, k - 1] * (m.y[i, k - 1] - m.x[i, k]) + \
+                m.L[i, k + 1] * (m.x[i, k + 1] - m.x[i, k]) - \
+                m.V[i, k] * (m.y[i, k] - m.x[i, k]) + \
+                m.feed[k] * (m.xf - m.x[i, k])
     elif i > 0 and k == 1:
         return m.M[i, 1] * m.xdot[i, 1] == \
                (m.L[i, 2] * (m.x[i, 2] - m.x[i, 1]) -
                 m.V[i, 1] * (m.y[i, 1] - m.x[i, 1]))
     elif i > 0 and k == m.Ntray:
         return m.M[i, m.Ntray] * m.xdot[i, m.Ntray] == \
-               (m.V[i, m.Ntray - 1] * (m.y[i, m.Ntray - 1] - m.x[i, m.Ntray]))
+               m.V[i, m.Ntray - 1] * (m.y[i, m.Ntray - 1] - m.x[i, m.Ntray]) - \
+               m.V[i, m.Ntray] * (m.y[i, m.Ntray] - m.x[i, m.Ntray])
     else:
         return Constraint.Skip
 
@@ -73,16 +74,18 @@ def gh(m, i, k):
 
 def ghb(m, i):
     if i > 0:
-        return m.M[i, 1] * (m.xdot[i, 1] * ((m.hlm0 - m.hln0) * m.T[i, 1] ** 3 + (m.hlma - m.hlna) * m.T[i, 1] ** 2 +
-                                            (m.hlmb - m.hlnb) * m.T[i, 1] +
-                                            m.hlmc - m.hlnc)
-                            + m.Tdot[i, 1] * (3 * m.hln0 * m.T[i, 1] ** 2 + 2 * m.hlna * m.T[i, 1] + m.hlnb +
-                                              m.x[i, 1] *
-                                              (3 * (m.hlm0 - m.hln0) * m.T[i, 1] ** 2 + 2 * (m.hlma - m.hlna) * m.T[
-                                                  i, 1] +
-                                               m.hlmb - m.hlnb)
-                                              )
-                            ) == \
+        return m.M[i, 1] * (
+                m.xdot[i, 1] * (
+                (m.hlm0 - m.hln0) * m.T[i, 1] ** 3 +
+                (m.hlma - m.hlna) * m.T[i, 1] ** 2 +
+                (m.hlmb - m.hlnb) * m.T[i, 1] + m.hlmc - m.hlnc) +
+                m.Tdot[i, 1] * (
+                        3 * m.hln0 * m.T[i, 1] ** 2 +
+                        2 * m.hlna * m.T[i, 1] + m.hlnb +
+                        m.x[i, 1] *
+                        (3 * (m.hlm0 - m.hln0) * m.T[i, 1] ** 2 + 2 * (m.hlma - m.hlna) * m.T[
+                            i, 1] + m.hlmb - m.hlnb))
+                ) == \
                (m.L[i, 2] * (m.hl[i, 2] - m.hl[i, 1]) - m.V[i, 1] * (m.hv[i, 1] - m.hl[i, 1]) + m.Qr[i])
     else:
         return Constraint.Skip
@@ -90,15 +93,17 @@ def ghb(m, i):
 
 def ghc(m, i):
     if i > 0:
-        return m.M[i, m.Ntray] * (m.xdot[i, m.Ntray] * ((m.hlm0 - m.hln0) * m.T[i, m.Ntray] ** 3 +
-                                                        (m.hlma - m.hlna) * m.T[i, m.Ntray] ** 2 +
-                                                        (m.hlmb - m.hlnb) * m.T[i, m.Ntray] +
-                                                        m.hlmc - m.hlnc) + m.Tdot[i, m.Ntray] *
-                                  (3 * m.hln0 * m.T[i, m.Ntray] ** 2 + 2 * m.hlna * m.T[i, m.Ntray] + m.hlnb +
+        return m.M[i, m.Ntray] * (
+                m.xdot[i, m.Ntray] * (
+                (m.hlm0 - m.hln0) * m.T[i, m.Ntray] ** 3 +
+                (m.hlma - m.hlna) * m.T[i, m.Ntray] ** 2 +
+                (m.hlmb - m.hlnb) * m.T[i, m.Ntray] + m.hlmc - m.hlnc) + m.Tdot[i, m.Ntray] *
+                (3 * m.hln0 * m.T[i, m.Ntray] ** 2 + 2 * m.hlna * m.T[i, m.Ntray] + m.hlnb +
                                    m.x[i, m.Ntray] * (3 * (m.hlm0 - m.hln0) * m.T[i, m.Ntray] ** 2 +
                                                       2 * (m.hlma - m.hlna) * m.T[i, m.Ntray] + m.hlmb - m.hlnb))
                                   ) == \
-               (m.V[i, m.Ntray - 1] * (m.hv[i, m.Ntray - 1] - m.hl[i, m.Ntray]) - m.Qc[i])
+               m.V[i, m.Ntray - 1] * (m.hv[i, m.Ntray - 1] - m.hl[i, m.Ntray]) - \
+               m.V[i, m.Ntray] * (m.hv[i, m.Ntray] - m.hl[i, m.Ntray])- m.Qc[i]
     else:
         return Constraint.Skip
 
@@ -167,15 +172,15 @@ def lTdot(m, i, k):
         return Constraint.Skip
 
 
-def gy0(m, i):
-    if i > 0:
-        return m.p[1] * m.y[i, 1] == m.x[i, 1] * m.pm[i, 1]
-    else:
-        return Constraint.Skip
+# def gy0(m, i):
+#     if i > 0:
+#         return m.p[1] * m.y[i, 1] == m.x[i, 1] * m.pm[i, 1]
+#     else:
+#         return Constraint.Skip
 
 
 def gy(m, i, k):
-    if i > 0 and 1 < k < m.Ntray:
+    if i > 0:
         return m.y[i, k] == m.beta[i, k] * (m.x[i, k] * m.pm[i, k] / m.p[k])
                #m.beta[i, k] * (m.alpha[k] * m.x[i, k] * m.pm[i, k] / m.p[k] + (1 - m.alpha[k]) * m.y[i, k - 1])
     else:
@@ -214,17 +219,16 @@ def dMV(m, i, k):  #: molar volume
 #         return Constraint.Skip
 
 def hyd(m, i, k):
-    if i > 0:
+    if i > 0 or k != 1:
         return m.L[i, k] * m.Vm[i, k] == 0.166 * (m.Mv_p_[i, k]) ** 1.5
     else:
         return Constraint.Skip
 
 
-
 def dvm(m, i, k):
     if i > 0:
-        return m.Vm[i, k] == m.x[i, k] * ((1 / 2288) * 0.2685 ** (1 + (1 - m.T[i, k] / 512.4) ** 0.2453)) + \
-               (1 - m.x[i, k]) * ((1 / 1235) * 0.27136 ** (1 + (1 - m.T[i, k] / 536.4) ** 0.24))
+        return m.Vm[i, k] == 0.5 * ((1 / 2288) * 0.2685 ** (1 + (1 - m.T[i, k] / 512.4) ** 0.2453)) + \
+               0.5 * ((1 / 1235) * 0.27136 ** (1 + (1 - m.T[i, k] / 536.4) ** 0.24))
     else:
         return Constraint.Skip
 
@@ -392,7 +396,10 @@ mod.hv = Var(mod.t, mod.tray, initialize=5e+04)
 mod.Qc = Var(mod.t, initialize=1.6e06)
 mod.D = Var(mod.t, initialize=18.33)
 # vol holdups
-mod.Vm = Var(mod.t, mod.tray, initialize=6e-05)
+vml = 0.5 * ((1 / 2288) * 0.2685 ** (1 + (1 - 100 / 512.4) ** 0.2453)) + \
+               0.5 * ((1 / 1235) * 0.27136 ** (1 + (1 - 100 / 536.4) ** 0.24))
+
+mod.Vm = Var(mod.t, mod.tray, initialize=6e-05, bounds=(vml, None))
 # mv = {}
 mv = dict.fromkeys([i for i in range(1, mod.Ntray + 1)], 0.23)
 mv[1] = 8.57
@@ -456,10 +463,11 @@ Mv_min = dict.fromkeys([i for i in range(1, mod.Ntray + 1)], 0.155)
 Mv_min[1] = 8.5
 Mv_min[mod.Ntray] = 0.17
 mod.Mv_p_ = Var(mod.t, mod.tray, within=NonNegativeReals, initialize=lambda m, t, tray: mv[tray] - Mv_min[tray])
-mod.Mv_n_ = Var(mod.t, mod.tray, within=NonNegativeReals, initialize=0.0)
+mod.Mv_n_ = Var(mod.t, mod.tray, within=Reals, initialize=0.0)
 mod.Mv_min_ = Param(mod.tray, initialize=Mv_min)
-mod.cc_mpn_ = Constraint(mod.t, mod.tray, rule=lambda m, t, tray: m.Mv[t, tray] - m.Mv_min_[tray] == m.Mv_p_[t, tray] - m.Mv_n_[t, tray] if t > 0 else Constraint.Skip)
-mod.cc_mp_mn_ = Constraint(mod.t, mod.tray, rule=lambda m, t, tray: m.Mv_p_[t, tray] * m.Mv_n_[t, tray] == m.epsi if t > 0 else Constraint.Skip)
+
+mod.cc_mpn_ = Constraint(mod.t, mod.tray, rule=lambda m, t, tray: m.Mv[t, tray] - m.Mv_min_[tray] == m.Mv_p_[t, tray] - m.Mv_n_[t, tray] if (t > 0 or tray != 1) else Constraint.Skip)
+mod.cc_mp_mn_ = Constraint(mod.t, mod.tray, rule=lambda m, t, tray: m.Mv_p_[t, tray] * m.Mv_n_[t, tray] == m.epsi if (t > 0 or tray != 1) else Constraint.Skip)
 
 # --------------------------------------------------------------------------------------------------------------
 #: Constraint section (algebraic equations)
@@ -474,7 +482,6 @@ mod.lpm = Constraint(mod.t, mod.tray, rule=lpm)
 mod.lpn = Constraint(mod.t, mod.tray, rule=lpn)
 mod.dp = Constraint(mod.t, mod.tray, rule=dp)
 mod.lTdot = Constraint(mod.t, mod.tray, rule=lTdot)
-mod.gy0 = Constraint(mod.t, rule=gy0)
 mod.gy = Constraint(mod.t, mod.tray, rule=gy)
 mod.dMV = Constraint(mod.t, mod.tray, rule=dMV)
 mod.hyd = Constraint(mod.t, mod.tray, rule=hyd)

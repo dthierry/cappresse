@@ -2,7 +2,7 @@
 
 from __future__ import division
 from __future__ import print_function
-from pyomo.core.base import Constraint, Expression, ConcreteModel, Var, Param, Suffix, Set, NonNegativeReals
+from pyomo.core.base import Constraint, Expression, ConcreteModel, Var, Param, Set, NonNegativeReals, Reals
 from pyomo.core.expr import exp, sqrt
 from pyomo.dae import *
 
@@ -167,15 +167,15 @@ def lTdot(m, i, k):
         return Constraint.Skip
 
 
-def gy0(m, i):
-    if i > 0:
-        return m.p[1] * m.y[i, 1] == m.x[i, 1] * m.pm[i, 1]
-    else:
-        return Constraint.Skip
+# def gy0(m, i):
+#     if i > 0:
+#         return m.p[1] * m.y[i, 1] == m.x[i, 1] * m.pm[i, 1]
+#     else:
+#         return Constraint.Skip
 
 
 def gy(m, i, k):
-    if i > 0 and 1 < k < m.Ntray:
+    if i > 0:
         return m.y[i, k] == m.beta[i, k] * (m.x[i, k] * m.pm[i, k] / m.p[k])
                #m.beta[i, k] * (m.alpha[k] * m.x[i, k] * m.pm[i, k] / m.p[k] + (1 - m.alpha[k]) * m.y[i, k - 1])
     else:
@@ -220,11 +220,10 @@ def hyd(m, i, k):
         return Constraint.Skip
 
 
-
 def dvm(m, i, k):
     if i > 0:
-        return m.Vm[i, k] == m.x[i, k] * ((1 / 2288) * 0.2685 ** (1 + (1 - m.T[i, k] / 512.4) ** 0.2453)) + \
-               (1 - m.x[i, k]) * ((1 / 1235) * 0.27136 ** (1 + (1 - m.T[i, k] / 536.4) ** 0.24))
+        return m.Vm[i, k] == 0.5 * ((1 / 2288) * 0.2685 ** (1 + (1 - m.T[i, k] / 512.4) ** 0.2453)) + \
+               0.5 * ((1 / 1235) * 0.27136 ** (1 + (1 - m.T[i, k] / 536.4) ** 0.24))
     else:
         return Constraint.Skip
 
@@ -392,7 +391,10 @@ mod.hv = Var(mod.t, mod.tray, initialize=5e+04)
 mod.Qc = Var(mod.t, initialize=1.6e06)
 mod.D = Var(mod.t, initialize=18.33)
 # vol holdups
-mod.Vm = Var(mod.t, mod.tray, initialize=6e-05)
+vml = 0.5 * ((1 / 2288) * 0.2685 ** (1 + (1 - 100 / 512.4) ** 0.2453)) + \
+               0.5 * ((1 / 1235) * 0.27136 ** (1 + (1 - 100 / 536.4) ** 0.24))
+
+mod.Vm = Var(mod.t, mod.tray, initialize=6e-05, bounds=(vml, None))
 # mv = {}
 mv = dict.fromkeys([i for i in range(1, mod.Ntray + 1)], 0.23)
 mv[1] = 8.57
@@ -405,7 +407,9 @@ mod.Mv = Var(mod.t, mod.tray,
 # --------------------------------------------------------------------------------------------------------------
 #: Controls
 mod.u1 = Param(mod.t, default=7.72700925775773761472464684629813E-01, mutable=True)  #: Dummy
-mod.u2 = Param(mod.t, default=1.78604740940007800236344337463379E+06, mutable=True)  #: Dummy
+#mod.u2 = Param(mod.t, default=1.78604740940007800236344337463379E+06, mutable=True)  #: Dummy
+mod.u2 = Param(mod.t, default=1279297.52, mutable=True)  #: Dummy
+
 
 mod.Rec = Var(mod.t, initialize=7.72700925775773761472464684629813E-01)
 mod.Qr = Var(mod.t, initialize=1.78604740940007800236344337463379E+06)
@@ -442,24 +446,48 @@ mod.u1_cdummy = Constraint(mod.t, rule=u1_rule)
 mod.u2_cdummy = Constraint(mod.t, rule=u2_rule)
 # --------------------------------------------------------------------------------------------------------------
 #: Complementarity
-mod.epsi = Param(initialize=1e-08, mutable=True)
+mod.epsi = Param(initialize=1e-04, mutable=True)
 # mod.beta = Var(mod.t, mod.tray, initialize=1.0)
 mod.beta = Var(mod.t, mod.tray, initialize=1.0, within=NonNegativeReals)
 mod.nu_l = Var(mod.t, mod.tray, initialize=1.0, within=NonNegativeReals)
 #mod.nu_v = Var(mod.t, mod.tray, initialize=1.0, within=NonNegativeReals)
 #: Complementarity constraint
 mod.cc_beta_ = Constraint(mod.t, mod.tray, rule=lambda model, t, tray: model.beta[t, tray] == 1 - model.nu_l[t, tray] if t > 0 else Constraint.Skip)
-mod.cc_Ml_ = Constraint(mod.t, mod.tray, rule=lambda model, t, tray: model.nu_l[t, tray] * model.M[t, tray] == model.epsi if t > 0 else Constraint.Skip)
+#mod.cc_Ml_ = Constraint(mod.t, mod.tray, rule=lambda model, t, tray: model.nu_l[t, tray] * model.M[t, tray] == model.epsi if t > 0 else Constraint.Skip, active=False)
+
+
+def ncp_cc_ml(m, t, k):
+    if t > 0:
+        return m.nu_l[t, k] + m.M[t, k] - sqrt(m.nu_l[t, k] ** 2 + m.M[t, k] ** 2 + m.epsi) == 0.0
+    else:
+        return Constraint.Skip
+
+
+mod.ncp_Ml_ = Constraint(mod.t, mod.tray, rule=ncp_cc_ml)
+
+
 # put constraints for flow out
 
 Mv_min = dict.fromkeys([i for i in range(1, mod.Ntray + 1)], 0.155)
-Mv_min[1] = 8.5
+#Mv_min[1] = 8.5
+Mv_min[1] = 1
 Mv_min[mod.Ntray] = 0.17
 mod.Mv_p_ = Var(mod.t, mod.tray, within=NonNegativeReals, initialize=lambda m, t, tray: mv[tray] - Mv_min[tray])
-mod.Mv_n_ = Var(mod.t, mod.tray, within=NonNegativeReals, initialize=0.0)
+mod.Mv_n_ = Var(mod.t, mod.tray, within=Reals, initialize=0.0)
 mod.Mv_min_ = Param(mod.tray, initialize=Mv_min)
 mod.cc_mpn_ = Constraint(mod.t, mod.tray, rule=lambda m, t, tray: m.Mv[t, tray] - m.Mv_min_[tray] == m.Mv_p_[t, tray] - m.Mv_n_[t, tray] if t > 0 else Constraint.Skip)
-mod.cc_mp_mn_ = Constraint(mod.t, mod.tray, rule=lambda m, t, tray: m.Mv_p_[t, tray] * m.Mv_n_[t, tray] == m.epsi if t > 0 else Constraint.Skip)
+
+#mod.cc_mp_mn_ = Constraint(mod.t, mod.tray, rule=lambda m, t, tray: m.Mv_p_[t, tray] * m.Mv_n_[t, tray] == m.epsi if t > 0 else Constraint.Skip, active=False)
+
+
+def ncp_cc_mp_mn(m, t, k):
+    if t > 0:
+        return m.Mv_p_[t, k] + m.Mv_n_[t, k] - sqrt(m.Mv_p_[t, k] ** 2 + m.Mv_n_[t, k] ** 2 + m.epsi) == 0.0
+    else:
+        return Constraint.Skip
+
+
+mod.ncp_mp_mn = Constraint(mod.t, mod.tray, rule=ncp_cc_mp_mn)
 
 # --------------------------------------------------------------------------------------------------------------
 #: Constraint section (algebraic equations)
@@ -474,7 +502,6 @@ mod.lpm = Constraint(mod.t, mod.tray, rule=lpm)
 mod.lpn = Constraint(mod.t, mod.tray, rule=lpn)
 mod.dp = Constraint(mod.t, mod.tray, rule=dp)
 mod.lTdot = Constraint(mod.t, mod.tray, rule=lTdot)
-mod.gy0 = Constraint(mod.t, rule=gy0)
 mod.gy = Constraint(mod.t, mod.tray, rule=gy)
 mod.dMV = Constraint(mod.t, mod.tray, rule=dMV)
 mod.hyd = Constraint(mod.t, mod.tray, rule=hyd)

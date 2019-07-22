@@ -73,7 +73,8 @@ def main():
                    ref_state=ref_state,
                    override_solver_check=True,
                    var_bounds=state_bounds,
-                   k_aug_executable='/home/dav0/devzone/k_aug/cmake-build-k_aug/bin/k_aug')
+                   k_aug_executable='/home/dav0/in_dev_/kaugma57/bin/k_aug',
+                   ipopt_executable='/home/dav0/in_dev_/ipopt_vanilla_l1/builds/ipopt_l1/bin/ipopt',)
     Q = {}
     U = {}
     R = {}
@@ -94,10 +95,10 @@ def main():
     e.get_state_vars()
 
     create_bounds(e.SteadyRef, bounds=state_bounds)
-    ipopt = SolverFactory('ipopt')
+    ipopt = SolverFactory('/home/dav0/in_dev_/ipopt_vanilla_l1/builds/ipopt_l1/bin/ipopt')
     ipopt.options["bound_push"] = 1e-07
     ipopt.solve(e.SteadyRef, tee=True)
-
+    e.SteadyRef.display(filename="steady0")
     e.load_iguess_steady()
     ipopt.solve(e.PlantSample,
                 tee=True,

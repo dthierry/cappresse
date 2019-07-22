@@ -149,8 +149,10 @@ def main():
         stat = 0
         stat = e.solve_dyn(e.PlantSample, stop_if_nopt=False, halt_on_ampl_error=False, l1_mode=True)
         if stat != 0:
+            print("heck...\tfirst try.", file=sys.stderr)
             stat = e.solve_dyn(e.PlantSample, stop_if_nopt=False, halt_on_ampl_error=False, l1_mode=True, bound_push=1e-2)
         if stat != 0:
+            print("heck...\tlast try.", file=sys.stderr)
             stat = e.solve_dyn(e.PlantSample, stop_if_nopt=True, halt_on_ampl_error=True, l1_mode=True,
                                bound_push=1e-1)
 
@@ -173,9 +175,10 @@ def main():
         e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
         if i > 100:
             e.PlantSample.display(filename="plant.txt")
-            e.PlantSample.u2[:].set_value(value(e.PlantSample.u2[0]) * 10)
-        e.noisy_plant_manager(sigma=0.0001, action="apply", update_level=True)
+            e.PlantSample.feed[:].set_value(0.0)
+        #e.noisy_plant_manager(sigma=0.0001, action="apply", update_level=True)
         #: 0.001 is a good level
+        #: I forgot to turn this off
 
 
 if __name__ == '__main__':
