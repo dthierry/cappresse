@@ -3,7 +3,7 @@
 from __future__ import print_function
 
 from nmpc_mhe.pyomo_dae.MHEGen_pyDAE import MheGen_DAE
-from sample_mods.distc_pyDAE.dist_cc_ncp_2 import mod
+from sample_mods.distc_pyDAE.dist_cc_ncp_3 import mod
 from nmpc_mhe.aux.utils import load_iguess, create_bounds
 from pyomo.environ import *
 from pyomo.core.base import Var, Constraint, Param, Objective
@@ -83,7 +83,7 @@ def main():
                    ref_state=ref_state,
                    override_solver_check=True,
                    var_bounds=state_bounds,
-                   nfe_t=10,
+                   nfe_t=4,
                    k_aug_executable='/home/dav0/in_dev_/kaugma57/bin/k_aug',
                    #ipopt_executable='/home/dav0/PycharmProjects/ipopt_van/build/bin/ipopt')
                    # ipopt_executable='/home/dav0/in_dev_/ipopt_vanilla_l1/builds/ipopt_l1/bin/ipopt',
@@ -139,10 +139,13 @@ def main():
     # e.SteadyRef.nu_l[:, :].setlb(-1E-08)
     e.SteadyRef.Vm[:, :].setlb(vml)
     e.SteadyRef.Vm[:, :].setub(vmu)
-
+    e.SteadyRef.u2_cdummy.deactivate()
+    for j in e.SteadyRef.component_objects(Objective):
+        j.deactivate()
+    e.SteadyRef.u2_new = Objective(expr=sum((e.SteadyRef.Qr[j] - e.SteadyRef.u2[j]) ** 2 for j in e.SteadyRef.t), sense=minimize)
     e.SteadyRef.write(filename="my_steady.nl", io_options={"symbolic_solver_labels": True})
     stat = 0
-    for j in range(5, 10):
+    for j in reversed(range(5, 10)):
         epsi = 10 ** (-1 - j)
         e.SteadyRef.epsi.set_value(epsi)
         stat = e.solve_dyn(e.SteadyRef,
@@ -154,6 +157,8 @@ def main():
         if stat == 0:
             print("Solved with\t{}".format(epsi))
             break
+    e.SteadyRef.display(filename="steady.0")
+    # sys.exit()
     if stat != 0:
         e.SteadyRef.write(filename="failed_plant.nl", io_options={"symbolic_solver_labels": True})
         e.SteadyRef.display(filename="failed_plant.txt")
@@ -167,7 +172,7 @@ def main():
     # e.PlantSample.L[:, :].setlb(-1E-08)
     # e.PlantSample.V[:, :].setlb(-1E-08)
 
-    e.PlantSample.T[:, :].setlb(100.0)
+    e.PlantSample.T[:, :].setlb(200.0)
     e.PlantSample.T[:, :].setub(512.4 - 1E-08)
 
     # e.PlantSample.Mv_p_[:, :].setlb(-1E-08)
@@ -217,9 +222,9 @@ def main():
     #: Problem loop
     # e.olnmpc.M[:, :].setlb(-1E-08)
     # e.olnmpc.L[:, :].setlb(-1E-08)
-    # e.olnmpc.V[:, :].setlb(-1E-08)
+    e.olnmpc.V[:, :].setlb(-1E-08)
 
-    e.olnmpc.T[:, :].setlb(100.0)
+    e.olnmpc.T[:, :].setlb(200.0)
     e.olnmpc.T[:, :].setub(512.4 - 1E-08)
     # e.olnmpc.Mv_p_.domain = Reals
     # e.olnmpc.Mv_p_[:, :].setlb(-1E-09)
@@ -246,7 +251,7 @@ def main():
     e.olnmpc.s = Var(e.olnmpc.t, within=NonNegativeReals, initialize=0)
     e.olnmpc.q = Var(within=NonNegativeReals, initialize=0)
     e.olnmpc.purity_con = Constraint(e.olnmpc.t, rule=lambda m, t: -(m.x[t, 42] - 0.5) + m.s[t] == m.q if t > 0 else Constraint.Skip)
-    e.olnmpc.objfun_ec = Objective(expr=(sum(e.olnmpc.Qr[j] for j in e.olnmpc.t if j > 0) + 10.0 * e.olnmpc.q), sense=minimize)
+    e.olnmpc.objfun_ec = Objective(expr=(sum(e.olnmpc.Qr[j] for j in e.olnmpc.t if j > 0)), sense=minimize)
     e.olnmpc.pprint(filename="e_olnmpc.txt")
 
     for i in range(0, 4000):
@@ -258,11 +263,21 @@ def main():
         j = 0
         stat = 1
         j_max = 8
+        stat = e.solve_dyn(e.PlantSample,
+                           stop_if_nopt=False,
+                           halt_on_ampl_error=True,
+                           l1_mode=True,
+                           bound_push=10 ** -2,
+                           tol=1E-04)
         while (stat != 0 and j < j_max):
             bp = 10 ** (-1 - j)
-
-            stat = e.solve_dyn(e.PlantSample, stop_if_nopt=False, halt_on_ampl_error=False, l1_mode=True,
-                               bound_push=bp, tol=1E-04)
+            e.PlantSample.epsi.set_value(1E-03)
+            stat = e.solve_dyn(e.PlantSample,
+                               stop_if_nopt=False,
+                               halt_on_ampl_error=False,
+                               l1_mode=True,
+                               bound_push=bp,
+                               tol=1E-02)
             if stat != 0:
                 print("\n\nheck...\t" + str(j+1) + "\t try.\n\n", file=sys.stderr)
                 e.olnmpc.write(filename="failed_plant_eval.nl",
@@ -298,26 +313,32 @@ def main():
         e.print_r_dyn()
 
         #: Control NMPC
-        # e.preparation_phase_nmpc(as_strategy=False, make_prediction=False, plant_state=True)
+        e.preparation_phase_nmpc(as_strategy=False, make_prediction=False, plant_state=True)
         j = 0
         stat_nmpc = 1
+        stat_nmpc = e.solve_dyn(e.olnmpc,
+                                stop_if_nopt=False,
+                                halt_on_ampl_error=True,
+                                l1_mode=True,
+                                bound_push=10 ** -1,
+                                tol=1E-04,
+                                iter_max=10000)
         j_max = 8
-        while stat_nmpc != 0 and j < j_max:
-            bp = 10 ** (-1 - j)
-            stat_nmpc = e.solve_dyn(e.olnmpc,
-                                    stop_if_nopt=False,
-                                    halt_on_ampl_error=True,
-                                    l1_mode=True,
-                                    bound_push=bp,
-                                    tol=1E-04,
-                                    tag="olnmpc",
-                                    iter_max=10000)
-            if stat != 0:
-                print("\n\n[NMPC]heck...\t" + str(j + 1) + "\t try.\n\n",
-                      file=sys.stderr)
-                e.olnmpc.write(filename="failed_olnmpc_eval.nl",
-                               io_options={"symbolic_solver_labels": True})
-            j += 1
+        # while stat_nmpc != 0 and j < j_max:
+        #     bp = 10 ** (-1 - j)
+        #     stat_nmpc = e.solve_dyn(e.olnmpc,
+        #                             stop_if_nopt=False,
+        #                             halt_on_ampl_error=True,
+        #                             l1_mode=True,
+        #                             bound_push=bp,
+        #                             tol=1E-04,
+        #                             iter_max=10000)
+        #     if stat != 0:
+        #         print("\n\n[NMPC]heck...\t" + str(j + 1) + "\t try.\n\n",
+        #               file=sys.stderr)
+        #         e.olnmpc.write(filename="failed_olnmpc_eval.nl",
+        #                        io_options={"symbolic_solver_labels": True})
+        #     j += 1
         if stat_nmpc != 0:
             e.olnmpc.write(filename="failed_olnmpc.nl",
                            io_options={"symbolic_solver_labels": True})

@@ -122,9 +122,11 @@ class DynGen_DAE(object):
                                        executable=self.k_aug_executable)
             self.k_aug_sens = SolverFactory("k_aug",
                                        executable=self.k_aug_executable)
-            if self.k_aug.available():
+            #if self.k_aug.available():
+            if True:
                 pass
             else:
+                pass
                 self.k_aug = SolverFactory("k_aug")
                 self.k_aug_sens = SolverFactory("k_aug")
                 if self.k_aug.available():
@@ -424,22 +426,23 @@ class DynGen_DAE(object):
             #f.write("start_with_resto\tyes\n")
             #f.write("expect_infeasible_problem\tyes\n")
             if l1_:
-                f.write("l1exactpenalty_objective_type\tobjective_inv\n")
+                # f.write("l1exactpenalty_objective_type\tobjective_inv\n")
                 f.write("slack_move\t0.0\n")
             if isinstance(rho_0, float):
-                f.write("l1exactpenalty_rho0\t")
-                f.write(str(rho_0))
+                # f.write("l1exactpenalty_rho0\t")
+                # f.write(str(rho_0))
                 f.write("\n")
 
             if isinstance(rho_f_max, float):
-                f.write("l1exactpenalty_rho_by_factor_max\t")
-                f.write(str(rho_f_max))
+                # f.write("l1exactpenalty_rho_by_factor_max\t")
+                # f.write(str(rho_f_max))
                 f.write("\n")
             f.write("print_info_string\tyes\n")
             if isinstance(bound_relax_fact, float):
                 f.write("bound_relax_factor\t" + str(bound_relax_fact) + "\n")
             else:
-                f.write("bound_relax_factor\t0.0\n")
+                # f.write("bound_relax_factor\t0.0\n")
+                pass
             f.write("max_iter\t" + str(iter_max) + "\n")
             f.write("max_cpu_time\t" + str(max_cpu_time) + "\n")
             f.write("linear_solver\t" + linear_solver + "\n")

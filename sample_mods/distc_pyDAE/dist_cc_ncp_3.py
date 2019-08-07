@@ -116,7 +116,8 @@ def hkv(m, i, k):
     epsi = 10 ** -2
     delta = 10 ** -4
     if i > 0 and k < m.Ntray:
-        e = ((1 - (m.p[k] / m.Pkm) * (m.Tkm / m.T[i, k]) ** 3 + epsi)/2 + (((1 - (m.p[k] / m.Pkm) * (m.Tkm / m.T[i, k]) ** 3 - epsi) ** 2 + delta) ** 0.5)/2) ** 3/2
+        #e = ((1 - (m.p[k] / m.Pkm) * (m.Tkm / m.T[i, k]) ** 3 + epsi)/2 + (((1 - (m.p[k] / m.Pkm) * (m.Tkm / m.T[i, k]) ** 3 - epsi) ** 2 + delta) ** 0.5)/2) ** 3/2
+        e = 1 - (m.p[k] / m.Pkm) * (m.Tkm / m.T[i, k]) ** 3
         return m.hv[i, k] == m.y[i, k] * (m.hlm0 * m.T[i, k] ** 3 + m.hlma * m.T[i, k] ** 2 + m.hlmb * m.T[i, k] +
                                           m.hlmc +
                                           m.r * m.Tkm * sqrt(e) *
@@ -220,8 +221,8 @@ def hyd(m, i, k):
     epsi = 10 ** -2
     delta = 10 ** -4
     if i > 0:
-        e = ((m.Mv[i, k] - m.Mv_min_[k] + epsi)/2 + (((m.Mv[i, k] - m.Mv_min_[k] - epsi) ** 2 + delta) ** 0.5)/2) ** 3/2
-        return m.L[i, k] * m.Vm[i, k] == 0.166 * (e) ** 1.5
+        e = ((m.Mv[i, k] - m.Mv_min_[k] + m.epsi)/2 + (((m.Mv[i, k] - m.Mv_min_[k] - m.epsi) ** 2 + delta) ** 0.5)/2) ** 3/2
+        return m.L[i, k] * m.Vm[i, k] == 0.166 * e ** 1.5
     else:
         return Constraint.Skip
 
@@ -497,7 +498,7 @@ def ncp_cc_max(m, t, k):
     epsi = 10 ** -2
     delta = 10 ** -4
     if t > 0:
-        return m.Mv_p_[t, k] == ((m.Mv[t, k] - m.Mv_min_[k] + epsi)/2 + (((m.Mv[t, k] - m.Mv_min_[k] - epsi) ** 2 + delta) ** 0.5)/2) ** 3/2
+        return m.Mv_p_[t, k] == ((m.Mv[t, k] - m.Mv_min_[k] + m.epsi)/2 + (((m.Mv[t, k] - m.Mv_min_[k] - m.epsi) ** 2 + delta) ** 0.5)/2) ** 3/2
     else:
         return Constraint.Skip
 
