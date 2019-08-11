@@ -8,14 +8,12 @@ import numpy as np
 def main():
     sp = True
     #stamp = "1562949020"
-    stamp = "1563573866"
-    stamp = "1563574659"
-    stamp = "1563660678"
-    stamp = "1563733910"
-    stamp = "1563742688"
-    stamp = "1563751864"
-    stamp = "1563753136"
-    stamp = "1564189887"
+    stamp = "1565465970"
+    stamp = "1565558305"
+    stamp = "1565559962"
+    stamp = "1565563121" #!
+    stamp = "1565564933"
+
     fformat = "pdf"
     l = {}
     for i in range(1, 43):
@@ -23,7 +21,7 @@ def main():
     if sp:
         print("Set-point track")
         with open("../res_nmpc_rs_" + stamp + ".txt", "r") as f:
-            print("Je ferme les yeux.\n\n")
+            print("SPT.\n\n")
             lines = f.readlines()
             shape = (len(lines), len(lines[0].split("\t")) - 1)
             r0 = np.zeros(shape)
@@ -76,7 +74,7 @@ def main():
         plt.savefig("myfig_x." + fformat)
         plt.close("2")
     with open("../res_parfois_" + stamp + ".txt", "r") as f:
-        print("parfois\n\n")
+        print("etc\n\n")
         lines = f.readlines()
         shape = (len(lines), len(lines[0].split("\t")) - 1)
         r0 = np.zeros(shape)
@@ -104,12 +102,12 @@ def main():
 
         plt.figure("4")
         fig = plt.plot(r0[:, 43:84])
-        plt.savefig("myfig_T." + fformat)
+        plt.savefig("myfig_L." + fformat)
         plt.close("4")
 
         plt.figure("5")
         fig = plt.plot(r0[:, 85:])
-        plt.savefig("myfig_y." + fformat)
+        plt.savefig("myfig_V." + fformat)
         plt.close("5")
 
 if __name__ == '__main__':

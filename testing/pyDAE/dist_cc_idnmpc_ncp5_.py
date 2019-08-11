@@ -3,7 +3,7 @@
 from __future__ import print_function
 
 from nmpc_mhe.pyomo_dae.MHEGen_pyDAE import MheGen_DAE
-from sample_mods.distc_pyDAE.dist_cc_ncp_4 import mod
+from sample_mods.distc_pyDAE.dist_cc_ncp_5 import mod
 from nmpc_mhe.aux.utils import load_iguess, create_bounds
 from pyomo.environ import *
 from pyomo.core.base import Var, Constraint, Param, Objective
@@ -173,7 +173,7 @@ def main():
     e.PlantSample.T[:, :].setlb(200.0)
     e.PlantSample.T[:, :].setub(512.4 - 1E-0)
 
-    # e.PlantSample.Mv_p_[:, :].setlb(-1E-08)
+    e.PlantSample.Mv[:, :].setlb(0)
     # e.PlantSample.Mv_n_[:, :].setlb(-1E-08)
 
     # e.PlantSample.y[:, :].setlb(-1E-11)
@@ -225,9 +225,9 @@ def main():
     e.olnmpc.V[:, :].setlb(-1E-08)
 
     e.olnmpc.T[:, :].setlb(200.0)
-    e.olnmpc.T[:, :].setub(512.4 - 1E-06)
-    # e.olnmpc.Mv_p_.domain = Reals
-    # e.olnmpc.Mv_p_[:, :].setlb(-1E-09)
+    e.olnmpc.T[:, :].setub(512.4 - 0.0001)
+    # e.olnmpc.Mv.domain = Reals
+    e.olnmpc.Mv[:, :].setlb(0)
 
     e.olnmpc.epsi.set_value(1E-04)
     # e.olnmpc.Mv_n_[:, :].setlb(-1E-08)

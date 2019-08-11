@@ -93,7 +93,7 @@ class NmpcGen_DAE(DynGen_DAE):
             c_val = [value(cv[t_u[i]]) for i in self.olnmpc.fe_t]  #: Current value
             # self.u1_cdummy = Constraint(self.t, rule=lambda m, i: m.Tjinb[i] == self.u1[i])
             dumm_eq = getattr(self.olnmpc, u + '_cdummy')
-            dexpr = dumm_eq[0].expr.args[0]
+            dexpr = dumm_eq[t_u[1]].expr.args[0]
             control_var = getattr(self.olnmpc, dexpr.parent_component().name)
             if isinstance(control_var, Var): #: all good
                 pass
@@ -110,7 +110,7 @@ class NmpcGen_DAE(DynGen_DAE):
 
             self.olnmpc.add_component(u + '_cdummy', Constraint(self.olnmpc.t))
             dumm_eq = getattr(self.olnmpc, u + '_cdummy')
-            dumm_eq.rule = lambda m, i: cv[tfe_dic[i]] == control_var[i]
+            dumm_eq.rule = lambda m, i: cv[tfe_dic[i]] == control_var[i] if i > 0 else Constraint.Skip
             dumm_eq.reconstruct()
 
         #: Dictionary of the states for a particular time point i
@@ -280,7 +280,7 @@ class NmpcGen_DAE(DynGen_DAE):
                 cv_nmpc[finite_elem].set_value(value(cv_dum[0]))
         self.journalist("I", self._iteration_count, "initialize_olnmpc", "Done, k_notopt " + str(k_notopt))
 
-    def preparation_phase_nmpc(self, as_strategy=False, make_prediction=False, plant_state=False):
+    def preparation_phase_nmpc(self, as_strategy=False, make_prediction=False, plant_state=False, sbs=True):
         # type: (bool, bool, bool) -> bool
         """Initialization and loading initial state of the NMPC problem.
 
@@ -295,7 +295,8 @@ class NmpcGen_DAE(DynGen_DAE):
         if plant_state:
             #: use the plant state instead
             #: Not yet implemented
-            self.initialize_olnmpc(self.PlantSample, "real")
+            if sbs:
+                self.initialize_olnmpc(self.PlantSample, "real")
             self.load_init_state_nmpc(src_kind="state_dict", state_dict="real")
             return
         if as_strategy:
@@ -609,7 +610,7 @@ class NmpcGen_DAE(DynGen_DAE):
             ofexp +=30* weights[i] * (v[(1,) + vkey] - self.ref_state[i])**2
         self.SteadyRef2.obfun_SteadyRef2 = Objective(expr=ofexp, sense=minimize)
 
-        self.SteadyRef2.epsi.set_value(1E-09)
+        # self.SteadyRef2.epsi.set_value(1E-09)
 
         self.SteadyRef2.M[:, :].setlb(-1E-08)
         self.SteadyRef2.L[:, :].setlb(-1E-08)

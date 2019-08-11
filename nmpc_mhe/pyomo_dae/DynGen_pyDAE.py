@@ -793,11 +793,13 @@ class DynGen_DAE(object):
             if src.is_steady:
                 fe = 1
             else:
-                fe = 0
+                fe = 1
         else:
-            fe = kwargs.pop("fe", 0)
+            fe = kwargs.pop("fe", 1)
         for u in self.u:
             uvar = getattr(src, u)
+            uvar.pprint()
+
             vu = value(uvar[fe])
             self.curr_u[u] = vu
             if uvar[fe].lb is None:

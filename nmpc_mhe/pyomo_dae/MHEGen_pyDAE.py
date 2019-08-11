@@ -194,8 +194,10 @@ class MheGen_DAE(NmpcGen_DAE):
             cv = getattr(self.lsmhe, u)  #: Get the param
             t_u = [t_ij(tS_mhe, i, 0) for i in range(0, self.lsmhe.nfe_t)]
             c_val = [value(cv[t_u[i]]) for i in self.lsmhe.fe_t]  #: Current value
+
+            t = t_u[1]
             dumm_eq = getattr(self.lsmhe, u + '_cdummy')
-            dexpr = dumm_eq[0].expr.args[0]
+            dexpr = dumm_eq[t].expr.args[0]
             control_var = getattr(self.lsmhe, dexpr.parent_component().name)
             if isinstance(control_var, Var): #: all good
                 pass

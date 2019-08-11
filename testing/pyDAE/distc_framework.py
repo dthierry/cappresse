@@ -4,7 +4,7 @@ from __future__ import division
 from __future__ import print_function
 
 from nmpc_mhe.pyomo_dae.MHEGen_pyDAE import MheGen_DAE
-from sample_mods.distc_pyDAE.distcpydaemod import mod
+
 from nmpc_mhe.aux.utils import load_iguess, create_bounds
 from pyomo.core.base import Var, Constraint, Param
 from pyomo.opt import SolverFactory, ProblemFormat
@@ -74,7 +74,8 @@ def main():
                    override_solver_check=True,
                    var_bounds=state_bounds,
                    nfe_t=10,
-                   k_aug_executable='/home/dav0/devzone/k_aug/bin/k_aug')
+                   k_aug_executable='/home/dav0/devzone/k_aug/bin/k_aug',
+                   ipopt_executable='/home/dav0/PycharmProjects/ipopt_van/build/bin/ipopt')
     Q = {}
     U = {}
     R = {}
@@ -95,7 +96,7 @@ def main():
     e.get_state_vars()
 
     create_bounds(e.SteadyRef, bounds=state_bounds)
-    ipopt = SolverFactory('ipopt')
+    ipopt = SolverFactory('/home/dav0/PycharmProjects/ipopt_van/build/bin/ipopt')
     ipopt.options["bound_push"] = 1e-07
     ipopt.solve(e.SteadyRef, tee=True)
 
