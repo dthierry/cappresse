@@ -3,7 +3,7 @@ from __future__ import print_function
 from __future__ import division
 
 from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix, TransformationFactory
-from pyomo.core.kernel.numvalue import value
+from pyomo.core.base.numvalue import value
 from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition
 from nmpc_mhe.pyomo_dae.DynGen_pyDAE import DynGen_DAE
 from nmpc_mhe.aux.utils import t_ij
@@ -93,7 +93,7 @@ class NmpcGen_DAE(DynGen_DAE):
             c_val = [value(cv[t_u[i]]) for i in self.olnmpc.fe_t]  #: Current value
             # self.u1_cdummy = Constraint(self.t, rule=lambda m, i: m.Tjinb[i] == self.u1[i])
             dumm_eq = getattr(self.olnmpc, u + '_cdummy')
-            dexpr = dumm_eq[0].expr._args[0]
+            dexpr = dumm_eq[0].expr.args[0]
             control_var = getattr(self.olnmpc, dexpr.parent_component().name)
             if isinstance(control_var, Var): #: all good
                 pass
@@ -561,7 +561,7 @@ class NmpcGen_DAE(DynGen_DAE):
             c_val = value(cv[1])  #: Current value
             dumm_eq = getattr(self.SteadyRef2, u + '_cdummy')
 
-            dexpr = dumm_eq[1].expr._args[0]
+            dexpr = dumm_eq[1].expr.args[0]
             control_var = getattr(self.SteadyRef2, dexpr.parent_component().name)
             if isinstance(control_var, Var):  #: all good
                 pass

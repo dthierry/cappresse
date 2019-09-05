@@ -3,7 +3,7 @@
 from __future__ import division
 from __future__ import print_function
 from pyomo.core.base import Constraint, Expression, ConcreteModel, Var, Param, Suffix, Set
-from pyomo.core.kernel.expr import exp, sqrt
+from pyomo.core.expr import exp, sqrt
 from pyomo.dae import *
 
 __author__ = 'David Thierry'  #: May 2018

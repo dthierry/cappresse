@@ -6,7 +6,7 @@ from pyomo.environ import *
 from pyomo.core.base import ConcreteModel
 from pyomo.dae import *
 from pyomo.opt import SolverFactory, TerminationCondition
-from pyomo.core.kernel.numvalue import value
+from pyomo.core.base.numvalue import value
 from pyomo.core.base import Constraint, Set, Param, Var, Suffix
 from pyomo.core.kernel import sqrt, exp, log
 
@@ -15,7 +15,7 @@ from pyomo.core.kernel import sqrt, exp, log
 def assert_num_vars_eq(model):
     # type: (pyomo.core.base.ConcreteModel) -> AnyWithNone
     pass
-    
+
 
 class cstr_rodrigo_dae(ConcreteModel):
     def __init__(self, nfe_t, ncp_t, **kwargs):

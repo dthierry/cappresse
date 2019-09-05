@@ -10,7 +10,7 @@ from itertools import product
 import numpy as np
 from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix, \
     ConstraintList, TransformationFactory, ConcreteModel
-from pyomo.core.kernel.numvalue import value as value
+from pyomo.core.base.numvalue import value as value
 from pyutilib.common._exceptions import ApplicationError
 from nmpc_mhe.aux.utils import fe_compute, load_iguess, augment_model
 from nmpc_mhe.aux.utils import t_ij, clone_the_model, aug_discretization, create_bounds
@@ -63,7 +63,7 @@ class MheGen_DAE(NmpcGen_DAE):
 
         augment_model(self.lsmhe, self.nfe_tmhe, self.ncp_tmhe, new_timeset_bounds=(0, _t_mhe))
         augment_model(self.dum_mhe, 1, self.ncp_tmhe, new_timeset_bounds=(0, self.hi_t), given_name="Dummy[MHE]")
-        aug_discretization(self.lsmhe, self.nfe_tmhe, self.ncp_tmhe)  
+        aug_discretization(self.lsmhe, self.nfe_tmhe, self.ncp_tmhe)
         self.lsmhe.name = "LSMHE (Least-Squares MHE)"
         create_bounds(self.lsmhe, bounds=self.var_bounds)
         #: create x_pi constraint
@@ -195,7 +195,7 @@ class MheGen_DAE(NmpcGen_DAE):
             t_u = [t_ij(tS_mhe, i, 0) for i in range(0, self.lsmhe.nfe_t)]
             c_val = [value(cv[t_u[i]]) for i in self.lsmhe.fe_t]  #: Current value
             dumm_eq = getattr(self.lsmhe, u + '_cdummy')
-            dexpr = dumm_eq[0].expr._args[0]
+            dexpr = dumm_eq[0].expr.args[0]
             control_var = getattr(self.lsmhe, dexpr.parent_component().name)
             if isinstance(control_var, Var): #: all good
                 pass
@@ -253,7 +253,7 @@ class MheGen_DAE(NmpcGen_DAE):
                         continue
                     e = oc_e[(t,) + k].expr
                     j = self.xkN_key[(i,) + k]
-                    self.lsmhe.noisy_cont.add(e._args[0] == self.lsmhe.wk_mhe[tfe_mhe_dic[t], j])
+                    self.lsmhe.noisy_cont.add(e.args[0] == self.lsmhe.wk_mhe[tfe_mhe_dic[t], j])
                 # j += 1
         self.lsmhe.noisy_cont.deactivate()
 
@@ -443,7 +443,7 @@ class MheGen_DAE(NmpcGen_DAE):
                   cc.deactivate()
                   con_w.activate()
         self.journalist("I", self._iteration_count, "initialize_lsmhe", "Attempting to initialize lsmhe Done")
-        
+
     def preparation_phase_mhe(self, as_strategy=False):
         """Method that prepares the mhe problem; shift; update u and y; initialize last fe"""
         self.shift_mhe()
@@ -496,7 +496,7 @@ class MheGen_DAE(NmpcGen_DAE):
                 lm.append(value(var[(tcpa,) + j]))
                 y0dest[fe, k].value = value(var[(tcpa,) + j])
             meas_dic[y] = lm
-            
+
         # if not skip_update:  #: Update the mhe model
         self.journalist("I", self._iteration_count, "patch_meas_mhe", "Measurement to:" + str(fe))
 

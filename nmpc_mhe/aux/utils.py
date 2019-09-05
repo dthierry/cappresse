@@ -6,7 +6,7 @@ from pyomo.environ import *
 # from pyomo.dae import ContinuousSet, DerivativeVar
 from pyomo.core.base import Suffix, ConcreteModel, Var, Suffix, Constraint, ConstraintList, TransformationFactory
 from pyomo.opt import ProblemFormat
-from pyomo.core.kernel.numvalue import value
+from pyomo.core.base.numvalue import value  #: until they decide to change this
 from os import getcwd, remove
 
 __author__ = "David Thierry @dthierry"  #: March 2018
@@ -394,9 +394,9 @@ def aug_discretization(d_mod, nfe, ncp):
 def create_bounds(d_mod, bounds=None, clear=False, pre_clear_check=True):
     #: might want to do something about fixed variables
     if pre_clear_check:
-        for i in d_mod.component_data_objects(Var):
-            i.setlb(None)
-            i.setub(None)
+       for i in d_mod.component_objects(Constraint):
+           i.setlb(None)
+           i.setub(None)
     if bounds is None:
         return
     elif isinstance(bounds, dict):

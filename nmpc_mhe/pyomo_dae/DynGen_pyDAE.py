@@ -5,9 +5,9 @@ from __future__ import division
 
 from pyomo.core.base import Var, Objective, minimize, Set, Constraint, Expression, Param, Suffix, maximize
 from pyomo.core.base import ConstraintList, ConcreteModel, TransformationFactory
-from pyomo.core.kernel.numvalue import value as value
+from pyomo.core.base.numvalue import value as value
 from pyomo.dae import *
-from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition, ReaderFactory, ResultsFormat
+from pyomo.opt import SolverFactory, ProblemFormat, SolverStatus, TerminationCondition, ReaderFactory, ResultsFormat, SolverResults
 import numpy as np
 # import sys, time, re, os
 from pyutilib.common._exceptions import ApplicationError
@@ -472,6 +472,8 @@ class DynGen_DAE(object):
             keepfiles = True
 
         # Solution attempt
+
+        results = None
         try:
             results = solver_ip.solve(d,
                                       tee=o_tee,
@@ -480,15 +482,21 @@ class DynGen_DAE(object):
                                       keepfiles=keepfiles, load_solutions=False)
         except (ApplicationError, ValueError):
             stop_if_nopt = 1
+            d.write(filename="failure_.nl", io_options={"symbolic_solver_labels": True})
 
-        if tag == "plant":  #: If this is the plant, don't load the solutions if there is a failure
-            if results.solver.status != SolverStatus.ok or \
-                    results.solver.termination_condition != TerminationCondition.optimal:
-                pass
+        if isinstance(results, SolverResults):
+            print(results.Solver.termination_condition, file=sys.stderr)
+            if tag == "plant":  #: If this is the plant, don't load the solutions if there is a failure
+                if results.solver.status != SolverStatus.ok or \
+                        results.solver.termination_condition != TerminationCondition.optimal:
+                    pass
+                else:
+                    d.solutions.load_from(results)
             else:
-                d.solutions.load_from(results)
-        else:
-            d.solutions.load_from(results)
+                try:
+                    d.solutions.load_from(results)
+                except ValueError:
+                    pass
         if keepsolve:
             self.write_solfile(d, tag, solve=False)  #: solve false otherwise it'll call sol_dyn again
         wantparams = kwargs.pop("wantparams", False)
@@ -506,27 +514,29 @@ class DynGen_DAE(object):
                     filelog.close()
                 global_log.close()
 
-        if results.solver.status == SolverStatus.ok and \
-                results.solver.termination_condition == TerminationCondition.optimal:
-            self.journalist("I", self._iteration_count, "solve_dyn", " Model solved to optimality")
-            # d.solutions.load_from(results)
-            self._stall_iter = 0
-            if want_stime and rep_timing:
-                self.ip_time = self.ipopt._solver_time_x
-            if not skip_mult_update:
-                mod.ipopt_zL_in.update(mod.ipopt_zL_out)
-                mod.ipopt_zU_in.update(mod.ipopt_zU_out)
+        if isinstance(results, SolverResults):
+            #: Check termination
+            if results.solver.status == SolverStatus.ok and results.solver.termination_condition == TerminationCondition.optimal:
+                self.journalist("I", self._iteration_count, "solve_dyn", " Model solved to optimality")
+                # d.solutions.load_from(results)
+                self._stall_iter = 0
+                if want_stime and rep_timing:
+                    self.ip_time = self.ipopt._solver_time_x
+                if not skip_mult_update:
+                    mod.ipopt_zL_in.update(mod.ipopt_zL_out)
+                    mod.ipopt_zU_in.update(mod.ipopt_zU_out)
 
-            return 0
-        else:
-            if stop_if_nopt:
-                self.journalist("E", self._iteration_count, "solve_dyn", "Not-optimal. Stoping")
-                self.journalist("E", self._iteration_count, "solve_dyn",
-                                "Problem\t" + d.name + "\t" + str(self._iteration_count))
-                raise DynSolWeAreDone("Ipopt: we are done :(")
-                # sys.exit()
-            self.journalist("W", self._iteration_count, "solve_dyn", "Not-optimal.")
-            return 1
+                return 0
+        if stop_if_nopt:
+            d.write(filename="failure_done_.nl", io_options={"symbolic_solver_labels": True})
+            d.display(filename="failure_done_displayed.txt")
+            self.journalist("E", self._iteration_count, "solve_dyn", "Not-optimal. Stoping")
+            self.journalist("E", self._iteration_count, "solve_dyn",
+                            "Problem\t" + d.name + "\t" + str(self._iteration_count))
+            raise DynSolWeAreDone("Ipopt: we are done :(")
+            # sys.exit()
+        self.journalist("W", self._iteration_count, "solve_dyn", "Not-optimal.")
+        return 1
 
     def cycleSamPlant(self, plant_step=False):
         """Patches the initial conditions with the last result from the simulation
@@ -648,7 +658,7 @@ class DynGen_DAE(object):
         Keyword Args:
             src (pyomo.core.base.PyomoModel.ConcreteModel): Source model
             src_fe (int): Finite element from the source model"""
-        from pyomo.core.kernel.numvalue import value
+        from pyomo.core.base.numvalue import value
         self.journalist("I", self._iteration_count, "plant_input", "Continuation_plant, src_kind=" + src_kind)
         #: Inputs
         target = {}
@@ -772,7 +782,7 @@ class DynGen_DAE(object):
                 if vu > uvar[fe].ub:
                     stat = 1
         return stat
-            
+
 
     def update_state_real(self):
         for x in self.states:

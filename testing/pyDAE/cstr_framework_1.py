@@ -12,6 +12,8 @@ __author__ = "David Thierry @dthierry" #: March 2018
 def main():
     states = ["Ca", "T", "Tj"]
     controls = []
+    type(cstr_rodrigo_dae)
+    cstr_rodrigo_dae.pprint()
     e = DynGen_DAE(cstr_rodrigo_dae, 2, states, controls)
     return e
 
