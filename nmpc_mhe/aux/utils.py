@@ -6,7 +6,8 @@ from pyomo.environ import *
 # from pyomo.dae import ContinuousSet, DerivativeVar
 from pyomo.core.base import Suffix, ConcreteModel, Var, Suffix, Constraint, ConstraintList, TransformationFactory
 from pyomo.opt import ProblemFormat
-from pyomo.core.base.numvalue import value  #: until they decide to change this
+from pyomo.core.expr.numvalue import value  #: until they decide to change this
+from pyomo.core.base.sets import _SetProduct
 from os import getcwd, remove
 
 __author__ = "David Thierry @dthierry"  #: March 2018
@@ -120,6 +121,7 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
         cs = None
         for s in d_mod.component_objects(ContinuousSet):
             cs = s
+            print(s, "ContinuousS")
         if cs is None:
             raise RuntimeError("The model has no ContinuousSet")
         if not isinstance(new_timeset_bounds, tuple):
@@ -128,16 +130,29 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
         cs.clear()
         cs.construct()
         for component in [Var, DerivativeVar, Param, Expression, Constraint]:
+            print(component)
             for o in d_mod.component_objects(component):
                 # print(o)
                 #: This series of if conditions are in place to avoid some weird behaviour
-                if o._implicit_subsets is None:
-                    if o.index_set() is cs:
+                print(o.index_set(), isinstance(o.index_set(), _SetProduct))
+                queue = [o.index_set()]
+                l = []
+                while queue:
+                    s = queue.pop()
+                    if not isinstance(s, _SetProduct):
+                        l.append(s)
+                    else:
+                        queue.extend(s.set_tuple)
+
+                if o._implicit_subsets is None:  #: simple
+                    print(o, "simple", len(l), l)
+                    if l is cs:
                         pass
                     else:
                         if isinstance(o, Param):
                             if not o._mutable:
                                 o.construct()
+                                print(o)
                                 continue
                         # try:
                         if isinstance(o, Constraint):
@@ -155,11 +170,25 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
 
                         continue
                 else:
-                    if cs in o._implicit_subsets:
-                        pass
-                    else:
-                        o.reconstruct()
-                        continue
+                    cs_found = False
+                    for i_s in l:
+                        if cs is i_s:
+                            cs_found = True
+                            break
+                    if not cs_found:
+                            print(o, "not found")
+                            continue
+
+                    # if cs in l:
+                    #     print(o,
+                    #           o._implicit_subsets,
+                    #           id(cs),
+                    #           cs in l,
+                    #           [(id(j), j) for j in l])
+                    #     pass
+                    # else:
+                    #     print(o)
+                    #     continue
                 o.clear()
                 o.construct()
                 o.reconstruct()
@@ -394,7 +423,7 @@ def aug_discretization(d_mod, nfe, ncp):
 def create_bounds(d_mod, bounds=None, clear=False, pre_clear_check=True):
     #: might want to do something about fixed variables
     if pre_clear_check:
-       for i in d_mod.component_objects(Constraint):
+       for i in d_mod.component_data_objects(Var):
            i.setlb(None)
            i.setub(None)
     if bounds is None:
