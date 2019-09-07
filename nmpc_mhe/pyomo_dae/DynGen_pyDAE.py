@@ -365,6 +365,7 @@ class DynGen_DAE(object):
         rho_0 = kwargs.pop("rho_0", None)
         rho_f_max = kwargs.pop("rho_f_max", None)
         l1_ = kwargs.pop("l1_mode", False)
+        start_w_resto = kwargs.pop("start_with_resto", False)
         if out_file:
             if type(out_file) != str:
                 self.journalist("E", self._iteration_count, "solve_dyn", "incorrect_output")
@@ -432,7 +433,8 @@ class DynGen_DAE(object):
                 # f.write("l1exactpenalty_rho0\t")
                 # f.write(str(rho_0))
                 f.write("\n")
-
+            if start_w_resto:
+                f.write("start_with_resto\ttrue\n")
             if isinstance(rho_f_max, float):
                 # f.write("l1exactpenalty_rho_by_factor_max\t")
                 # f.write(str(rho_f_max))

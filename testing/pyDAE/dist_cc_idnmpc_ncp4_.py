@@ -166,7 +166,7 @@ def main():
     e.SteadyRef.pprint(filename="steady.pprint")
     e.SteadyRef.display(filename="steady.disp")
 
-    # e.PlantSample.M[:, :].setlb(-1E-08)
+    e.PlantSample.M[:, :].setlb(-1E-08)
     e.PlantSample.L[:, :].setlb(-1E-08)
     e.PlantSample.V[:, :].setlb(-1E-08)
 
@@ -220,7 +220,7 @@ def main():
     stat_mhe = 0
     stat_nmpc = 0
     #: Problem loop
-    # e.olnmpc.M[:, :].setlb(-1E-08)
+    e.olnmpc.M[:, :].setlb(-1E-08)
     # e.olnmpc.L[:, :].setlb(-1E-08)
     e.olnmpc.V[:, :].setlb(-1E-08)
 
@@ -281,21 +281,19 @@ def main():
                            bound_push=10 ** -6,
                            tol=1E-04,
                            mu_init=1E-04)
-        if stat == 0:
-            for k in range(1, 3):
-                e.PlantSample.epsi.set_value(1 ** -4 - k)
-                stat = e.solve_dyn(e.PlantSample,
-                                   stop_if_nopt=False,
-                                   halt_on_ampl_error=True,
-                                   l1_mode=False,
-                                   bound_push=10 ** -8,
-                                   tol=1E-04,
-                                   mu_init=1E-04)
-                if stat != 0:
-                    break
-        while stat != 0 and j < j_max:
-            #bp = 10 ** (-1 - j)
-            e.PlantSample.epsi.set_value(1E-04)
+
+        #: if the problem is not solved..
+        if stat != 0:
+            e.PlantSample.epsi.set_value(1E-04)  #: set epsi to the previous value
+            stat = e.solve_dyn(e.PlantSample,
+                               stop_if_nopt=False,
+                               halt_on_ampl_error=False,
+                               l1_mode=False,
+                               bound_push=10 ** -2,  #: push it inside
+                               tol=1E-02,
+                               iter_max=3000,
+                               start_with_resto=True)  #: start with restoration
+        while stat != 0 and j < j_max:   #: try a bunch of times
             stat = e.solve_dyn(e.PlantSample,
                                stop_if_nopt=False,
                                halt_on_ampl_error=False,
@@ -304,21 +302,38 @@ def main():
                                tol=1E-02,
                                iter_max=5000)
             if stat != 0:
-                print("\n\nheck...\t" + str(j+1) + "\t try.\n\n", file=sys.stderr)
+                print("\n\nNot solved...\t" + str(j+1) + "\t try.\n\n", file=sys.stderr)
                 e.olnmpc.write(filename="failed_plant_eval.nl",
                                io_options={"symbolic_solver_labels": True})
             j += 1
-        if stat != 0:
+        if stat != 0:  #: we are done
+            print("\n\nWe are done...\t" + str(j + 1) + "\t try.\n\n", file=sys.stderr)
             e.PlantSample.write(filename="failed_plant.nl", io_options={"symbolic_solver_labels": True})
             e.PlantSample.display(filename="failed_plant.txt")
             print("PlantSample failed at {}".format(i), file=sys.stderr)
             sys.exit()
+
+        if stat == 0:
+            for k in range(1, 2):
+                print("\n\nReducing the value of epsi!...\t" + str(k + 1) + "\n\n")
+                e.PlantSample.epsi.set_value(1 ** -4 - k)
+                stat = e.solve_dyn(e.PlantSample,
+                                   stop_if_nopt=False,
+                                   halt_on_ampl_error=True,
+                                   l1_mode=False,
+                                   bound_push=10 ** -8,
+                                   tol=1E-04,
+                                   mu_init=1E-06)
+                if stat != 0:  #: the previous has to be solvable
+                    break
+
 
         e.update_state_real()  # Update the current state
         e.update_soi_sp_nmpc()  #: To keep track of the state of interest.
 
         e.update_measurement()  # Update the current measurement
         e.compute_y_offset()  #: Get the offset for y
+
         #: State-estimation MHE
 
         e.print_r_dyn()
@@ -356,21 +371,7 @@ def main():
                                     mu_init=1e-04,
                                     )
 
-        # while stat_nmpc != 0 and j < j_max:
-        #     bp = 10 ** (-1 - j)
-        #     stat_nmpc = e.solve_dyn(e.olnmpc,
-        #                             stop_if_nopt=False,
-        #                             halt_on_ampl_error=True,
-        #                             l1_mode=True,
-        #                             bound_push=bp,
-        #                             tol=1E-04,
-        #                             iter_max=10000)
-        #     if stat != 0:
-        #         print("\n\n[NMPC]heck...\t" + str(j + 1) + "\t try.\n\n",
-        #               file=sys.stderr)
-        #         e.olnmpc.write(filename="failed_olnmpc_eval.nl",
-        #                        io_options={"symbolic_solver_labels": True})
-        #     j += 1
+
         if stat_nmpc != 0:
             e.olnmpc.write(filename="failed_olnmpc.nl",
                            io_options={"symbolic_solver_labels": True})

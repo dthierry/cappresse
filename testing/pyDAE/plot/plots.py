@@ -13,6 +13,7 @@ def main():
     stamp = "1565559962"
     stamp = "1565563121" #!
     stamp = "1565564933"
+    stamp = "1565630751"
 
     fformat = "pdf"
     l = {}
@@ -91,7 +92,7 @@ def main():
             j += 1
 
         plt.figure("3")
-        for i in range(1, 42):
+        for i in range(1, 41):
             fig = plt.plot(r0[:, i], label=i, linewidth=0.5)
 
         #plt.legend(loc='center')
@@ -106,7 +107,7 @@ def main():
         plt.close("4")
 
         plt.figure("5")
-        fig = plt.plot(r0[:, 85:])
+        fig = plt.plot(r0[:, 85:125])
         plt.savefig("myfig_V." + fformat)
         plt.close("5")
 
