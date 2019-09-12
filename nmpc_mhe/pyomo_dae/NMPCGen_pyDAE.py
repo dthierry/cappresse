@@ -362,9 +362,9 @@ class NmpcGen_DAE(DynGen_DAE):
             src (str): The source of the update (default mhe) (mhe or plant)
             n (int): The exponent of the weight"""
         check_values = kwargs.pop("check_values", False)
-        if check_values:
-            max_w_value = kwargs.pop("max_w_value", 1e+06)
-            min_w_value = kwargs.pop("min_w_value", 0.0)
+        # if check_values:
+        max_w_value = kwargs.pop("max_w_value", 1e+06)
+        min_w_value = kwargs.pop("min_w_value", 0.0)
         self.update_targets_nmpc()
         if src == "mhe":
             for x in self.states:

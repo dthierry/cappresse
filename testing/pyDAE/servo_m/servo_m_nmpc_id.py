@@ -15,7 +15,7 @@ __author__ = "David Thierry @dthierry" #: March 2018
 
 def main():
     states = ["x"]
-    controls = ["u"]
+    controls = ["u1"]
     u_bounds = {"u1": (-200, 200)}
     ref_state = {("x", (1,)): 15.0}
 
@@ -36,7 +36,10 @@ if __name__ == '__main__':
     reconcile_nvars_mequations(e.olnmpc)
     e.solve_dyn(e.PlantSample)
     e.find_target_ss()
-    e.PlantSample.display()
+    e.PlantSample.display(filename="plant.txt")
+    e.PlantSample.pprint(filename="plant_pprint.txt")
+    e.PlantSample.write(filename="plant0.nl")
+
     e.create_suffixes_nmpc()
     e.update_targets_nmpc()
     e.compute_QR_nmpc(n=-1)

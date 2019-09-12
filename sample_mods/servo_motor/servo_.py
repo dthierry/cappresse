@@ -46,11 +46,14 @@ class servo_motor_dae(ConcreteModel):
         self.u = Var(self.t, initialize=0)
         self.u1 = Param(self.t, default=0, mutable=True)  #: We are making a sort-of port
 
-        def u1_rule(m, i):
-            return m.u[i] == m.u1[i]
+        def u1_rule(m, t):
+           # if t > 0:
+            return m.u[t] == m.u1[t]
+            #else:
+             #   return Constraint.Skip
 
         # self.u1_cdummy = Constraint(self.t, rule=lambda m, i: m.Tjinb[i] == self.u1[i])
-        self.u_cdummy = Constraint(self.t, rule=u1_rule)
+        self.u1_cdummy = Constraint(self.t, rule=u1_rule)
         #: u1 will contain the information from the NMPC problem. This is what drives the plant.
         #: how about smth like nmpc_u1 or u1_nmpc
         A = {}
@@ -89,14 +92,20 @@ class servo_motor_dae(ConcreteModel):
         self.hy = Param(self.j, self.i, initialize=h)
         # States
         self.x = Var(self.t, self.i, initialize=1)
+        self.y0 = Var(self.t, initialize=1)
         self.y1 = Var(self.t, initialize=1)
-        self.y2 = Var(self.t, initialize=1)
 
         def yh0_rule(mod, t):
-            return mod.y1[t] == sum(mod.hy[0, i] * mod.x[t, i] for i in mod.i)
+            if t > 0:
+                return mod.y0[t] == sum(mod.hy[0, i] * mod.x[t, i] for i in mod.i)
+            else:
+                return Constraint.Skip
 
         def yh1_rule(mod, t):
-            return mod.y1[t] == sum(mod.hy[1, i] * mod.x[t, i] for i in mod.i)
+            if t > 0:
+                return mod.y1[t] == sum(mod.hy[1, i] * mod.x[t, i] for i in mod.i)
+            else:
+                return Constraint.Skip
 
         self.yh0_con = Constraint(self.t, rule=yh0_rule)
         self.yh1_con = Constraint(self.t, rule=yh1_rule)

@@ -28,9 +28,9 @@ def main():
                    u_bounds=u_bounds,
                    ref_state=ref_state,
                    override_solver_check=True,
-                   var_bounds=state_bounds, 
-                   k_aug_executable='/home/dav0/devzone/k_aug/cmake-build-k_aug/bin/k_aug',
-                   dot_driver_executable='/home/dav0/devzone/k_aug/src/k_aug/dot_driver')
+                   var_bounds=state_bounds,
+                   k_aug_executable='/home/dav0/in_dev_/WorkshopFraunHofer/caprese/k_aug/bin/k_aug',
+                   dot_driver_executable='/home/dav0/in_dev_/WorkshopFraunHofer/caprese/k_aug/dot_sens')
     #: Covariance Matrices
     Q = {}
     U = {}

@@ -21,13 +21,13 @@ def main():
     state_bounds = {"Ca": (0.0, None), "T":(2.0E+02, None), "Tj":(2.0E+02, None)}
     ref_state = {("Ca", (0,)): 0.010}
     mod = cstr_rodrigo_dae(2,2)
-   
+
     e = MheGen_DAE(mod, 2, states, controls, states, measurements,
                    u_bounds=u_bounds,
                    ref_state=ref_state,
                    override_solver_check=True,
-                   var_bounds=state_bounds, 
-                   k_aug_executable='/home/dav0/devzone/k_aug/cmake-build-k_aug/k_aug')
+                   var_bounds=state_bounds,
+                   k_aug_executable='/home/dav0/in_dev_/WorkshopFraunHofer/caprese/k_aug/bin/k_aug')
 
     #: We need k_aug to run this :(
     Q = {}

@@ -121,7 +121,6 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
         cs = None
         for s in d_mod.component_objects(ContinuousSet):
             cs = s
-            print(s, "ContinuousS")
         if cs is None:
             raise RuntimeError("The model has no ContinuousSet")
         if not isinstance(new_timeset_bounds, tuple):
@@ -130,11 +129,10 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
         cs.clear()
         cs.construct()
         for component in [Var, DerivativeVar, Param, Expression, Constraint]:
-            print(component)
             for o in d_mod.component_objects(component):
                 # print(o)
                 #: This series of if conditions are in place to avoid some weird behaviour
-                print(o.index_set(), isinstance(o.index_set(), _SetProduct))
+                # print(o.index_set(), isinstance(o.index_set(), _SetProduct))
                 queue = [o.index_set()]
                 l = []
                 while queue:
@@ -145,14 +143,14 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
                         queue.extend(s.set_tuple)
 
                 if o._implicit_subsets is None:  #: simple
-                    print(o, "simple", len(l), l)
+                    # print(o, "simple", len(l), l)
                     if l is cs:
                         pass
                     else:
                         if isinstance(o, Param):
                             if not o._mutable:
                                 o.construct()
-                                print(o)
+                                #print(o)
                                 continue
                         # try:
                         if isinstance(o, Constraint):
@@ -176,7 +174,7 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
                             cs_found = True
                             break
                     if not cs_found:
-                            print(o, "not found")
+                            #print(o, "not found")
                             continue
 
                     # if cs in l:
@@ -191,7 +189,8 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
                     #     continue
                 o.clear()
                 o.construct()
-                o.reconstruct()
+                if not isinstance(o, Param):
+                    o.reconstruct()
 
                 # if isinstance(o, Var):
                 #     o.reconstruct()
@@ -212,6 +211,7 @@ def write_nl(d_mod, filename=None, labels=False):
     """
     if not filename:
         filename = d_mod.name + '.nl'
+    d_mod.pprint(filename="my_file.txt")
     d_mod.write(filename, format=ProblemFormat.nl, io_options={'symbolic_solver_labels': labels})
     cwd = getcwd()
     print("nl file {}".format(cwd + "/" + filename))

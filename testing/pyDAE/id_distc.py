@@ -78,7 +78,7 @@ def main():
                    override_solver_check=True,
                    var_bounds=state_bounds,
                    nfe_t=10,
-                   k_aug_executable='/home/dav0/devzone/k_aug/bin/k_aug')
+                   k_aug_executable='/home/dav0/in_dev_/WorkshopFraunHofer/caprese/k_aug/bin/k_aug')
     Q = {}
     U = {}
     R = {}

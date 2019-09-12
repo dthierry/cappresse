@@ -694,7 +694,10 @@ class DynGen_DAE(object):
 
         tn = sum(target[u] for u in self.u) ** (1 / len(self.u))
         cn = sum(current[u] for u in self.u) ** (1 / len(self.u))
-        pgap = abs((tn - cn) / cn)
+        if cn == 0:
+            pgap = 0
+        else:
+            pgap = abs((tn - cn) / cn)
         print("Current Gap /\% {:f}".format(pgap * 100))
         if pgap < 1e-05:
             ncont_steps = 2
