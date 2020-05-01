@@ -394,7 +394,9 @@ def aug_discretization(d_mod, nfe, ncp):
 def create_bounds(d_mod, bounds=None, clear=False, pre_clear_check=True):
     #: might want to do something about fixed variables
     if pre_clear_check:
-       for i in d_mod.component_objects(Constraint):
+       for i in d_mod.component_objects(Var):
+           if isinstance(i, DerivativeVar):
+               continue
            i.setlb(None)
            i.setub(None)
     if bounds is None:
