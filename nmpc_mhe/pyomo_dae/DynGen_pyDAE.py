@@ -132,12 +132,12 @@ class DynGen_DAE(object):
                     raise RuntimeError("k_aug not found")
 
         if self.dot_driver_executable:
-            self.dot_driver = SolverFactory("dot_driver",
+            self.dot_driver = SolverFactory("dot_sens",
                                        executable=self.dot_driver_executable)
             if self.dot_driver.available():
                 pass
             else:
-                self.dot_driver = SolverFactory("dot_driver")
+                self.dot_driver = SolverFactory("dot_sens")
                 if self.dot_driver.available():
                     pass
                 elif override_solver_check:

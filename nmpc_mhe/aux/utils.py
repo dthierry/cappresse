@@ -6,7 +6,7 @@ from pyomo.environ import *
 # from pyomo.dae import ContinuousSet, DerivativeVar
 from pyomo.core.base import Suffix, ConcreteModel, Var, Suffix, Constraint, ConstraintList, TransformationFactory
 from pyomo.opt import ProblemFormat
-from pyomo.core.base.numvalue import value  #: until they decide to change this
+from pyomo.core.base import numvalue
 from os import getcwd, remove
 
 __author__ = "David Thierry @dthierry"  #: March 2018
@@ -162,7 +162,8 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
                         continue
                 o.clear()
                 o.construct()
-                o.reconstruct()
+                if not isinstance(o, Param):
+                    o.reconstruct()
 
                 # if isinstance(o, Var):
                 #     o.reconstruct()
