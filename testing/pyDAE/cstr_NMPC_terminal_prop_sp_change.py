@@ -21,8 +21,8 @@ def main():
     u_bounds = {"u1": (200, 500)}
     state_bounds = {"Ca": (0.0, 1.), "T":(2.0E+02, 450.), "Tj":(2.0E+02, 400.)}
     
-    # ref_state = {("Ca", (0,)): 0.010, ('T', (0,)): 404.60344641487995}
-    ref_state = {("Ca", (0,)): 0.019, ('T', (0,)): 384.33582541449255}
+    ref_state = {("Ca", (0,)): 0.010, ('T', (0,)): 404.60344641487995}
+    # ref_state = {("Ca", (0,)): 0.019, ('T', (0,)): 384.33582541449255}
     mod = cstr_rodrigo_dae(1, 1)
     e = NmpcGen_DAE(mod, 2, states, controls,
                     var_bounds=state_bounds,
@@ -51,16 +51,15 @@ if __name__ == '__main__':
     e.new_weights_olnmpc(1E-04, 1e+06)
     e.solve_dyn(e.PlantSample, stop_if_nopt=True)
     
-    #here to set the ic!!!!
-    ref_state = {("Ca", (0,)): 0.019, ('T', (0,)): 384.33582541449255}
+    #here to set ic!!!!
     ps = e.PlantSample
     ref = e.curr_state_target
     tend = ps.t[-1]
-    now = 8
+    now = 7
     pert_Ca = [-0.005, -0.005, 0.04, 0.03, 0.035, 0.032, 0.001, -0.008, -0.005]
     pert_T = [10., -18., 5., 10., -5, 8., -15, 12, 20]
-    ps.Ca[(tend,(0,))].value = ref_state[("Ca", (0,))] + pert_Ca[now]
-    ps.T[(tend,(0,))].value = ref_state[("T", (0,))] + pert_T[now]
+    ps.Ca[(tend,(0,))].value = value(ps.Ca[(tend,(0,))]) + pert_Ca[now]
+    ps.T[(tend,(0,))].value = value(ps.T[(tend,(0,))]) + pert_T[now]
     ## ps.Tj[(tend,(0,))].value = ref[('Tj', (0,))] + pert_Tj[now]
     
     e.update_state_real()  # update the current state
@@ -83,6 +82,23 @@ if __name__ == '__main__':
     e.plant_uinject(e.PlantSample, src_kind="dict", skip_homotopy=True)
     e.noisy_plant_manager(sigma=0.001, action="apply", update_level=True)
     for i in range(0, 60):
+        # if i in [30 * (j * 2) for j in range(0, 100)]:
+        if i in [0, 30]:
+            ref_state = {("Ca", (0,)): 0.019, ('T', (0,)): 384.33582541449255}
+            e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
+            e.compute_QR_nmpc(n=-1)
+            e.add_terminal_property_nmpc(rhox = 100., rhou = 35.,
+                                                simulate_points = 50, state_norm = 0.005)
+            # e.delete_terminal_properties()
+            e.new_weights_olnmpc(1e-04, 1e+06)
+        # elif i in [30 * (j * 2 + 1) for j in range(0, 100)]:
+        elif i in [15, 45]:
+            ref_state = {("Ca", (0,)): 0.01, ('T', (0,)): 404.60344641487995}
+            e.change_setpoint(ref_state=ref_state, keepsolve=True, wantparams=True, tag="sp")
+            e.compute_QR_nmpc(n=-1)
+            e.add_terminal_property_nmpc(rhox = 100., rhou = 35.,
+                                                simulate_points = 50, state_norm = 0.005)
+            e.new_weights_olnmpc(1e-04, 1e+06)
        
         stat_plant = e.solve_dyn(e.PlantSample, stop_if_nopt=True)
         if stat_plant != 0:
@@ -90,7 +106,7 @@ if __name__ == '__main__':
         e.update_state_real()  # update the current state
         e.update_soi_sp_nmpc()
         e.preparation_phase_nmpc(as_strategy=False, make_prediction=False, plant_state=True)
-        # with open("fine.txt", "w") as f:
+        # with open("modify1.txt", "w") as f:
         #     e.olnmpc.pprint(ostream = f)
         stat_nmpc = e.solve_dyn(e.olnmpc, skip_update=False, max_cpu_time=300,
                                 jacobian_regularization_value=1e-04, tag="olnmpc",
