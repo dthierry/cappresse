@@ -8,8 +8,13 @@ from pyomo.core.base import Suffix, ConcreteModel, Var, Suffix, Constraint, Cons
 from pyomo.opt import ProblemFormat
 from pyomo.core.base import numvalue
 from os import getcwd, remove
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy.sparse import lil_matrix
+from scipy.sparse.linalg import splu
+from scipy.linalg import solve_discrete_are, inv, eig
 
-__author__ = "David Thierry @dthierry"  #: March 2018
+__author__ = "David Thierry @dthierry, Kuan-Han Lin"  #: March 2018, July 2020
 
 
 def t_ij(time_set, i, j):
@@ -431,3 +436,102 @@ def clone_the_model(d_mod):
     assert (src_id != nm_id)
     print("New model at {}".format(nm_id))
     return new_mod
+
+def symmetrize(MAT):
+    rows, cols = MAT.nonzero()
+    for i in range(0, len(cols)):
+        MAT[cols[i], rows[i]] = MAT[rows[i], cols[i]]  # symmetrize
+    return MAT
+
+def get_lu_KKT(namestamp = ""):
+    filename = "kkt" + str(namestamp) + ".in"
+    kkt_info = np.genfromtxt(filename, dtype=float)
+    row_kkt, _ = np.shape(kkt_info)
+    size_kkt = np.int(kkt_info[-1,0])
+    
+    kkt_half = lil_matrix((size_kkt, size_kkt))
+    for ii in range(0, row_kkt):
+       kkt_half[np.int(kkt_info[ii, 0]) - 1, np.int(kkt_info[ii, 1]) - 1] = kkt_info[ii, 2]
+    kkt = symmetrize(kkt_half) #build full kkt
+    kkt = kkt.tocsc()
+    lu_kkt = splu(kkt)
+    return lu_kkt, size_kkt
+    
+def get_jacobian_k_aug(namestamp = ""):
+    filename = "jacobi_debug" + str(namestamp) + ".in"
+    jac_info = np.genfromtxt(filename, dtype = float)
+    row_jac_info,_ = np.shape(jac_info)
+    row_jac = jac_info[0,0]
+    col_jac = jac_info[0,1]
+    jac = lil_matrix((np.int(row_jac),np.int(col_jac)))
+    for ii in range(1, row_jac_info): #first row is #of constraints, variables, and nonzeros
+        jac[np.int(jac_info[ii, 0]) - 1, np.int(jac_info[ii, 1]) - 1] = jac_info[ii, 2]  # row # in txt => index     
+    jac = jac.tocsc()
+    jac = jac.toarray()
+    sizejac = (row_jac, col_jac)
+    return jac, sizejac
+
+def dlqr(A,B,Q,R):
+    """Solve the discrete time lqr controller.
+ 
+    x[k+1] = A x[k] + B u[k]
+ 
+    cost = sum x[k].T*Q*x[k] + u[k].T*R*u[k]
+    """
+    #ref Bertsekas, p.151
+ 
+    #first, try to solve the ricatti equation
+    X = np.matrix(solve_discrete_are(A, B, Q, R))
+ 
+    #compute the LQR gain
+    K = np.matrix(inv(B.T*X*B+R)*(B.T*X*A))
+ 
+    eigVals, eigVecs = eig(A-B*K)
+ 
+    return K, X, eigVals
+
+def abline(slope, intercept, label = None):
+    """Plot a line from slope and intercept"""
+    axes = plt.gca()
+    x_vals = np.array(axes.get_xlim())
+    y_vals = intercept + slope * x_vals
+    plt.plot(x_vals, y_vals, '--', label = label)
+    
+    return None 
+
+# Solve y=ax+b
+def solve_bounded_line(xlist, ylist, relax = 1E-2):
+
+    m2 = ConcreteModel()
+    
+    m2.i = Set(initialize = range(len(xlist)))
+    
+    m2.a = Var() #slope
+    m2.b = Var() #intercept
+    
+    dict_xi = dict(zip(m2.i.value_list, xlist))
+    m2.xi = Param(m2.i, initialize = (dict_xi))
+    
+    dict_yi = dict(zip(m2.i.value_list, ylist))
+    m2.yi = Param(m2.i, initialize = (dict_yi))
+    
+    m2.yest = Var(m2.i, initialize=dict_yi)
+    
+    def cal_yest(m,i):
+        return m2.yest[i] == m2.a * m2.xi[i] + m2.b
+    
+    def smaller(m,i):
+        return m2.yest[i] >= m2.yi[i] + relax
+    
+    m2.con_cal_yest = Constraint(m2.i, rule = cal_yest)
+    m2.con_smaller = Constraint(m2.i, rule = smaller)
+    
+    m2.obj = Objective(expr = sum((m2.yest[i] - m2.yi[i])**2 for i in m2.i.value_list))
+    
+    with open("ipopt.opt", "w") as f:
+        f.close()
+    solver = SolverFactory("ipopt")
+    results = solver.solve(m2, tee = True)
+
+    return value(m2.a), value(m2.b)
+
