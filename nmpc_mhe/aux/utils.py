@@ -5,6 +5,7 @@ from pyomo.dae import *
 from pyomo.environ import *
 # from pyomo.dae import ContinuousSet, DerivativeVar
 from pyomo.core.base import Suffix, ConcreteModel, Var, Suffix, Constraint, ConstraintList, TransformationFactory
+from pyomo.core.base.set import BoundsInitializer
 from pyomo.opt import ProblemFormat
 from pyomo.core.base import numvalue
 from os import getcwd, remove
@@ -129,9 +130,26 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
             raise RuntimeError("The model has no ContinuousSet")
         if not isinstance(new_timeset_bounds, tuple):
             raise RuntimeError("new_timeset_bounds should be tuple = (t0, tf)")
-        cs._bounds = new_timeset_bounds
-        cs.clear()
-        cs.construct()
+            
+        def change_continuousset(cs, new_bounds):
+            cs.clear()
+            cs._init_domain._set = None
+            cs._init_domain._set = BoundsInitializer(new_bounds)
+            domain = cs._init_domain(cs.parent_block(), None)
+            cs._domain = domain
+            domain.parent_component().construct()
+            
+            for bnd in cs.domain.bounds():
+                # Note: the base class constructor ensures that any declared
+                # set members are already within the bounds.
+                if bnd is not None and bnd not in cs:
+                    cs.add(bnd)
+            cs._fe = sorted(cs)
+        change_continuousset(cs, new_timeset_bounds)
+        
+        # cs._bounds = new_timeset_bounds
+        # cs.clear()
+        # cs.construct()
         for component in [Var, DerivativeVar, Param, Expression, Constraint]:
             for o in d_mod.component_objects(component):
                 # print(o)
@@ -152,6 +170,9 @@ def augment_model(d_mod, nfe, ncp, new_timeset_bounds=None, given_name=None, ski
                                 o._data = {}   #: Why Bethany ??? :(
                             # o.pprint()
                             # continue
+                            o.reconstruct()
+                        elif isinstance(o, DerivativeVar):
+                            o.clear()
                             o.reconstruct()
                         else:
                             o.reconstruct()
