@@ -19,9 +19,8 @@ import sys
 import time
 import re
 import os
-__author__ = "David Thierry @dthierry"  #: March 2018
 
-
+__author__ = "David Thierry @dthierry, Kuan-Han Lin @kuanhanl"  #: March 2018, July 2020
 
 class LogfileError(RuntimeError):
     """Exception raised when the log file name is not well defined"""

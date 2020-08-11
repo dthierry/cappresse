@@ -15,7 +15,7 @@ from scipy.sparse import lil_matrix
 from scipy.sparse.linalg import splu
 from scipy.linalg import solve_discrete_are, inv, eig
 
-__author__ = "David Thierry @dthierry, Kuan-Han Lin"  #: March 2018, July 2020
+__author__ = "David Thierry @dthierry, Kuan-Han Lin @kuanhanl"  #: March 2018, July 2020
 
 
 def t_ij(time_set, i, j):

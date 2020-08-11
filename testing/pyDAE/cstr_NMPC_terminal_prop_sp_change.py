@@ -11,7 +11,7 @@ from nmpc_mhe.aux.utils import reconcile_nvars_mequations
 import matplotlib.pyplot as plt
 import sys, os
 
-__author__ = "Kuan-Han Lin" #: Jul 2020
+__author__ = "Kuan-Han Lin @kuanhanl" #: Jul 2020
 
 def main():
     states = ["Ca", "T", "Tj"]
@@ -29,7 +29,7 @@ def main():
                     u_bounds=u_bounds,
                     ref_state=ref_state,
                     override_solver_check=True,
-                    k_aug_executable='/home/khl/Apps/k_aug/bin/k_aug')
+                    k_aug_executable='/home/dav0/in_dev_/kslt/WorkshopFraunHofer/day3_caprese/k_aug/bin/k_aug')
     return e
 
 

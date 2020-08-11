@@ -12,14 +12,14 @@ from nmpc_mhe.aux.utils import clone_the_model, get_lu_KKT, get_jacobian_k_aug, 
 import sys
 import os
 import time
-import control
+# import control
 import numpy as np
 import matplotlib.pyplot as plt
 from pyomo.dae import DerivativeVar
 from copy import deepcopy
 from scipy.sparse import csc_matrix
 
-__author__ = "David Thierry @dthierry, Kuan-Han Lin" #: March 2018, Jul 2020
+__author__ = "David Thierry @dthierry, Kuan-Han Lin @kuanhanl" #: March 2018, Jul 2020
 
 """This version does not necesarily have the same time horizon/discretization as the MHE"""
 

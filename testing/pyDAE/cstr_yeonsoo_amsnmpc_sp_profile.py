@@ -11,7 +11,7 @@ from nmpc_mhe.aux.utils import reconcile_nvars_mequations
 import matplotlib.pyplot as plt
 import sys, os
 
-__author__ = "Kuan-Han Lin"  #: Jul 2020
+__author__ = "Kuan-Han Lin @kuanhanl" #: Jul 2020
 
 def main():
     states = ["z1", "z2"]
@@ -21,7 +21,7 @@ def main():
     
     ref_state = {("z1", (0,)):0.1768, ("z2",(0,)): 0.7083}
     mod = cstr_yeonsoo_dae(1, 1)
-    Ns_nmpc = 3
+    Ns_nmpc = 3 #declare how many sampling times are needed for amsNMPC
     e = NmpcGen_DAE(mod, 1., states, controls,
                     var_bounds=state_bounds,
                     u_bounds=u_bounds,
@@ -29,8 +29,8 @@ def main():
                     nfe_tnmpc = 50,
                     Ns_amsnmpc = Ns_nmpc,
                     override_solver_check=True,
-                    k_aug_executable='/home/khl/Apps/k_aug/bin/k_aug',
-                    dot_driver_executable='/home/khl/Apps/k_aug/dot_sens')
+                    k_aug_executable='/home/dav0/in_dev_/kslt/WorkshopFraunHofer/day3_caprese/k_aug/bin/k_aug',
+                    dot_driver_executable='/home/dav0/in_dev_/kslt/WorkshopFraunHofer/day3_caprese/k_aug/dot_sens')
     
     e.get_state_vars()
     e.load_iguess_steady()
@@ -81,7 +81,7 @@ def main():
         e.update_soi_sp_nmpc() #update current soi from PlantSample and sp from SteadyRef2
         e.print_r_nmpc()
         
-        #Online
+        #Online (su = sensitivity update)
         if i % Ns_nmpc == 0:
             #extended su NMPC,d1, this u is for i=1,4,7...
             e.sens_dot_amsnmpc(stage = 1, src = "real")
