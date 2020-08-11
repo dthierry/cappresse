@@ -12,7 +12,7 @@ from nmpc_mhe.aux.utils import clone_the_model, get_lu_KKT, get_jacobian_k_aug, 
 import sys
 import os
 import time
-# import control
+import control
 import numpy as np
 import matplotlib.pyplot as plt
 from pyomo.dae import DerivativeVar
