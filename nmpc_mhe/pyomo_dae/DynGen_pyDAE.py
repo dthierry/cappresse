@@ -19,9 +19,8 @@ import sys
 import time
 import re
 import os
-__author__ = "David Thierry @dthierry"  #: March 2018
 
-
+__author__ = "David Thierry @dthierry, Kuan-Han Lin @kuanhanl"  #: March 2018, July 2020
 
 class LogfileError(RuntimeError):
     """Exception raised when the log file name is not well defined"""
@@ -66,7 +65,7 @@ class DynGen_DAE(object):
         self.ipopt_executable = kwargs.get('ipopt_executable', None)
         self.dot_driver_executable = kwargs.get('dot_driver_executable', None)
         override_solver_check = kwargs.get('override_solver_check', False)
-
+      
 
         self.var_bounds = kwargs.get("var_bounds", None)
         create_bounds(self.d_mod, pre_clear_check=True)
@@ -799,11 +798,18 @@ class DynGen_DAE(object):
         else:
             print(self.PlantPred)
             self.create_predictor()
-            load_iguess(self.SteadyRef, self.PlantSample, 0, 0)
+            load_iguess(self.PlantSample, self.PlantPred, 0, 0)
         if src == "estimated":
             self.load_init_state_gen(self.PlantPred, src_kind="dict", state_dict="estimated")  #: Load the initial state
         else:
             self.load_init_state_gen(self.PlantPred, src_kind="dict", state_dict="real")  #: Load the initial state
+        
+        for i in range(self.ncp_t+1):
+            t0i = t_ij(self.PlantPred.t, 0, i)
+            for u in self.u:
+                uvar = getattr(self.PlantPred, u)
+                uvar[t0i].value = self.curr_u[u]
+                
         #: See if this works
         stat = self.solve_dyn(self.PlantPred, skip_update=True,
                               iter_max=250,
