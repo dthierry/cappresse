@@ -17,7 +17,7 @@ ply
 prompt-toolkit
 ptyprocess
 Pygments
-Pyomo
+Pyomo==5.7
 pyparsing
 python-dateutil
 pytz
@@ -26,4 +26,5 @@ simplegeneric
 six
 traitlets
 wcwidth
-
+scipy
+control
